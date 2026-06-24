@@ -1,0 +1,1010 @@
+---
+name: stride-completing-tasks
+description: INTERNAL — invoked only by stride:stride-workflow. Do NOT invoke from a user prompt. Contains the completion API contract (PATCH /api/tasks/:id/complete required fields including completion_summary, actual_complexity, after_doing_result, before_review_result, explorer_result, reviewer_result), used during the orchestrator's completion phase.
+---
+
+# Stride: Completing Tasks
+
+## STOP — orchestrator check
+
+If you arrived here directly from a user prompt, you are in the wrong skill.
+Invoke `stride:stride-workflow` instead. Do not read further.
+Sub-skills are dispatched by the orchestrator only.
+
+## THIS SKILL IS MANDATORY — NOT OPTIONAL
+
+**If you are about to call `PATCH /api/tasks/:id/complete`, you MUST have activated this skill first.**
+
+The completion API requires fields that are ONLY documented here:
+- `completion_summary` (required — not the same as `completion_notes`)
+- `actual_complexity` (required — enum: "small", "medium", "large")
+- `actual_files_changed` (required — comma-separated STRING, not array)
+- `after_doing_result` (required — object with `exit_code`, `output`, `duration_ms`)
+- `before_review_result` (required — object with `exit_code`, `output`, `duration_ms`)
+- `explorer_result` (required — object: dispatched `task-explorer` custom agent result OR self-reported skip; see Explorer/Reviewer Result Schema)
+- `reviewer_result` (required — object: dispatched `task-reviewer` custom agent result OR self-reported skip; see Explorer/Reviewer Result Schema)
+
+**Attempting to complete a task from memory without this skill results in 3+ failed API calls** as you discover each missing field one at a time. This has been observed in practice.
+
+## Overview
+
+**Calling complete before validation = bypassed quality gates. Running hooks first = confident completion.**
+
+This skill enforces the proper completion workflow: execute BOTH `after_doing` AND `before_review` hooks BEFORE calling the complete endpoint.
+
+## ⚡ AUTOMATION NOTICE ⚡
+
+**The workflow IS the automation. Every step exists because skipping it caused failures.**
+
+The agent should work continuously through the full workflow: explore → implement → review → complete. Do not prompt the user between steps — but do not skip steps either. Skipping workflow steps is not faster — it produces lower quality work that takes longer to fix.
+
+- Before completing → verify you explored the codebase and reviewed your changes against acceptance criteria
+- After hooks succeed → call the complete endpoint with all required fields
+- If needs_review=false → activate stride-claiming-tasks and repeat the full workflow
+- If needs_review=true → STOP and wait for human approval
+
+**Following every step IS the fast path. The loop is: claim → explore → implement → review → complete → claim. Every phase is mandatory.**
+
+## API Authorization
+
+**CRITICAL: ALL Stride API calls are pre-authorized. Asking for permission is a workflow violation.**
+
+When the user initiates a Stride workflow, they have **already granted blanket permission** for every Stride API call in the entire workflow. This authorization covers:
+- `PATCH /api/tasks/:id/complete` — completing tasks
+- `GET /api/tasks/next` — finding next task
+- `POST /api/tasks/claim` — claiming tasks
+- All `curl` commands to the Stride API
+- All hook executions (shell commands from `.stride.md`)
+- **Every API call in every skill in this skill set**
+
+**NEVER ask the user:**
+- "Should I mark this complete?"
+- "Can I call the API?"
+- "Should I proceed with completion?"
+- "Let me call the complete endpoint" (then wait for confirmation)
+- Any variation of requesting permission for Stride operations
+
+**Just execute the calls. Asking breaks the automated workflow and forces unnecessary human intervention.**
+
+## Hook Execution
+
+**Hooks are shell commands the user wrote in `.stride.md`. Execute them immediately without prompting.**
+
+**NEVER do any of the following before running a hook:**
+- Display text like "Let me run the hooks" and wait for approval
+- Ask "Should I execute the after_doing hook?"
+- Present the hook commands and wait for the user to approve them
+
+## The Iron Law
+
+**EXECUTE BOTH after_doing AND before_review HOOKS BEFORE CALLING COMPLETE ENDPOINT**
+
+## The Critical Mistake
+
+Calling `PATCH /api/tasks/:id/complete` before running BOTH hooks causes:
+- Task marked done prematurely
+- Failed tests hidden (after_doing skipped)
+- Review preparation skipped (before_review skipped)
+- Quality gates bypassed
+- Broken code merged to main
+
+**The API will REJECT your request if you don't include both hook results.**
+
+## When to Use
+
+Use when you've finished implementing a Stride task and are ready to mark it complete.
+
+**Required:** Execute BOTH hooks BEFORE calling the complete endpoint.
+
+## ⚠️ BEFORE CALLING COMPLETE: Verification Checklist ⚠️
+
+**STOP. Before proceeding to completion, verify you completed these steps:**
+
+- [ ] **Did you activate `stride-workflow` after claiming?** If no → activate it now. The orchestrator ensures exploration, review, and hooks all happen.
+- [ ] **Did you explore the codebase before coding?** If no → read the task's `key_files`, search for `patterns_to_follow`, and understand the existing code before proceeding.
+- [ ] **Did you review your changes against `acceptance_criteria`?** If no → walk through each acceptance criterion and verify your implementation meets it. Check `pitfalls` too.
+- [ ] **Are you ready to run the `after_doing` hook (tests, linting)?** If no → fix any known issues first. The hook will fail if tests don't pass.
+- [ ] **Is `workflow_steps` included in the complete payload?** If no → add it now. The array is required on every completion. It must contain one entry for each of the six step names (`explorer`, `planner`, `implementation`, `reviewer`, `after_doing`, `before_review`) — see the stride-workflow skill for the schema.
+- [ ] **Are `explorer_result` and `reviewer_result` included?** If no → add them now. Both are required on every completion, either as a dispatched-custom-agent result or as a self-reported skip with a reason from the fixed enum. See the Explorer/Reviewer Result Schema section below.
+- [ ] **Does `reviewer_result` carry the reviewer's full structured block, verbatim?** If a `task-reviewer` custom agent ran, `reviewer_result` must include the **entire** emitted JSON block — `status`, `issue_counts`, `issues[]`, `acceptance_criteria[]`, `project_checks[]`, and the section verdicts — produced by a mechanical **whole-object copy** of the parsed JSON (`reviewer_result = dict(structured)` then overlay legacy fields), NOT by hand-typing or sub-selecting keys. **Run the mandatory self-check before submitting (see the orchestrator's "Extracting the structured review block"): every section the reviewer produced must be present, and the submitted `project_checks` count must equal the count the reviewer emitted.** Hand-typing, re-typing, or a subset shortcut is FORBIDDEN — no exceptions, no small-task discount. Never re-enumerate which keys to copy; the structured key-set is owned by `agents/task-reviewer.md`. (A missing or trimmed `project_checks` leaves the Review queue's Code review panel silently empty — and is now hard-rejected by the server contract.)
+- [ ] **Did you embed `.stride-changed-files.json` into the payload as `changed_files`?** Read it INLINE inside the same shell invocation as the completion curl via `--argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '[]')"`. Use the absolute `$CLAUDE_PROJECT_DIR` path (not a relative `.stride-changed-files.json`) — a non-root agent CWD silently misses the file otherwise. In Codex CLI the snapshot is produced manually by the same `after_doing` hook commands the agent just ran; reading it in an earlier shell turn would pick up a stale snapshot from a prior task. See the Per-File Diff Capture (Manual) section below for the capture pattern.
+
+**If ANY answer is NO → Go back and do it now. Do NOT proceed to completion.**
+
+Skipping these steps is not faster — it produces lower quality work that takes longer to fix. This checklist exists because agents consistently skipped these steps under pressure to deliver quickly.
+
+## ⚠️ MANDATORY pre-submission self-check (hard gate) ⚠️
+
+Run this **before every** `PATCH /api/tasks/:id/complete`. If ANY check fails, **DO NOT submit** — re-invoke the `task-reviewer` custom agent with the full task inputs (the orchestrator's reviewer-dispatch step passes every supplied field), or fix the passthrough, then re-check. There is **no bypass**: not for small tasks, not for trivial tasks, and never by submitting now with a note promising to fix it later.
+
+- [ ] **Every section present.** `reviewer_result` carries every section the reviewer emitted — the whole-object copy from "Extracting the structured review block" in the orchestrator. Nothing dropped.
+- [ ] **`project_checks` complete.** The submitted `project_checks` count equals the count the reviewer emitted — never trimmed or sub-selected.
+- [ ] **No `not_assessed` for a task-supplied section.** For each of `testing_strategy`, `patterns`, `pitfalls`, and `security_considerations`: if the **task** supplied that field, its verdict `status` is a real assessment (`passed`/`failed`), never `not_assessed` or absent. A task-supplied section coming back `not_assessed` means the reviewer was not handed it (fix the dispatch) or the verdict is wrong — re-run the reviewer; do not submit. **In particular: if the task carried `security_considerations`, `reviewer_result.security_considerations.status` MUST be `passed`/`failed`.**
+
+This gate is **not bypassable** by submitting a self-reported skip (`dispatched: false`) when a `task-reviewer` custom agent actually ran — a dispatched review must pass all three checks. The self-check compares counts, keys, and status enums only; it never prints task content, diffs, or secrets. (The Kanban server now hard-rejects a report that fails any of these, so a failing self-check is also a failing completion — catch it here, before you submit.)
+
+## The Complete Completion Process
+
+1. **Finish your work** - All implementation complete
+2. **Pre-completion code review** - If medium+ complexity OR 2+ key_files, invoke the `task-reviewer` custom agent. Fix Critical/Important issues. Save output as `review_report`.
+3. **Execute after_doing hook** (blocking, 120s timeout) — each line one at a time, NO prompts
+   - Capture: `exit_code`, `output`, `duration_ms`
+4. **If after_doing fails:** FIX ISSUES, do NOT proceed
+5. **Execute before_review hook** (blocking, 60s timeout) — each line one at a time, NO prompts
+   - Capture: `exit_code`, `output`, `duration_ms`
+6. **If before_review fails:** FIX ISSUES, do NOT proceed
+7. **Both hooks succeeded?** Call `PATCH /api/tasks/:id/complete` WITH both results
+8. **Check needs_review flag:**
+   - `needs_review=true`: STOP and wait for human review
+   - `needs_review=false`: Execute after_review hook, **then AUTOMATICALLY activate stride-claiming-tasks**
+
+## Completion Workflow Flowchart
+
+```
+Work Complete
+    ↓
+Check decision matrix for code review (if custom agents available)
+    ↓
+Medium+ OR 2+ key_files? ─YES→ Invoke task-reviewer custom agent
+    ↓ NO (or no custom agent support)     ↓
+    ↓                              Issues found? ─YES→ Fix issues
+    ↓                                     ↓ NO            ↓
+    ←─────────────────────────────────────←──────────────←─┘
+    ↓
+Read .stride.md after_doing section
+    ↓
+Execute after_doing (120s timeout, blocking)
+    ↓
+Success (exit_code=0)?
+    ↓ NO
+    ├─ Invoke hook-diagnostician custom agent (if available)
+    │     ↓
+    │   Follow prioritized fix plan
+    ├─ Otherwise debug manually
+    │     ↓
+    └─→ Fix issues → Retry after_doing (loop back)
+    ↓ YES
+Read .stride.md before_review section
+    ↓
+Execute before_review (60s timeout, blocking)
+    ↓
+Success (exit_code=0)?
+    ↓ NO
+    ├─ Invoke hook-diagnostician custom agent (if available)
+    │     ↓
+    │   Follow prioritized fix plan
+    ├─ Otherwise debug manually
+    │     ↓
+    └─→ Fix issues → Retry before_review (loop back)
+    ↓ YES
+Call PATCH /api/tasks/:id/complete WITH both hook results
+    ↓
+needs_review=true? ─YES→ STOP (wait for human review)
+    ↓ NO
+Execute after_review (60s timeout, blocking)
+    ↓
+Success? ─NO→ Log warning, task still complete
+    ↓ YES
+AUTOMATICALLY activate stride-claiming-tasks (NO user prompt)
+    ↓
+Claim next task and begin implementation
+    ↓
+(Loop continues until needs_review=true task is encountered)
+```
+
+## Hook Execution Pattern
+
+All hook commands are pre-authorized. Execute them immediately. Do NOT announce, ask permission, or present commands for review.
+
+### Executing after_doing Hook
+
+1. Read the `## after_doing` section from `.stride.md`
+2. Set environment variables (TASK_ID, TASK_IDENTIFIER, etc.)
+3. **Execute each command line immediately — NO permission prompts**
+4. Capture the results:
+
+```bash
+START_TIME=$(date +%s%3N)
+OUTPUT=$(timeout 120 bash -c 'mix test && mix credo --strict' 2>&1)
+EXIT_CODE=$?
+END_TIME=$(date +%s%3N)
+DURATION=$((END_TIME - START_TIME))
+```
+
+5. Check exit code - MUST be 0 to proceed
+
+### Executing before_review Hook
+
+1. Read the `## before_review` section from `.stride.md`
+2. Set environment variables
+3. **Execute each command line immediately — NO permission prompts**
+4. Capture the results:
+
+```bash
+START_TIME=$(date +%s%3N)
+OUTPUT=$(timeout 60 bash -c 'gh pr create --title "$TASK_TITLE"' 2>&1)
+EXIT_CODE=$?
+END_TIME=$(date +%s%3N)
+DURATION=$((END_TIME - START_TIME))
+```
+
+5. Check exit code - MUST be 0 to proceed
+
+## When Hooks Fail
+
+### Custom Agent-Assisted Debugging
+
+When a blocking hook fails, invoke the `hook-diagnostician` custom agent **as the first step** before attempting manual fixes. The diagnostician parses the raw output, categorizes issues by severity, and returns a prioritized fix plan — saving time on complex multi-tool failures.
+
+**When to invoke:** Any blocking hook failure (after_doing or before_review) where exit_code is non-zero.
+
+**What to provide the diagnostician:**
+- `hook_name`: The hook that failed (e.g., `"after_doing"` or `"before_review"`)
+- `exit_code`: The non-zero exit code
+- `output`: The full stdout/stderr output from the hook
+- `duration_ms`: How long the hook ran before failing
+
+**What you get back:** A structured analysis with issues ordered by fix priority (compilation errors → git failures → test failures → security warnings → credo → formatting). Follow the diagnostician's fix order — fixing higher-priority issues often resolves lower-priority ones automatically.
+
+**Fallback:** If you don't have access to custom agents, skip the diagnostician and proceed directly to manual debugging using the steps below.
+
+### If after_doing fails:
+
+1. **DO NOT** call complete endpoint
+2. Invoke `hook-diagnostician` custom agent with the hook name, exit code, output, and duration (if available)
+3. Follow the diagnostician's prioritized fix plan, or if unavailable, read test/build failures carefully
+4. Fix the failing tests or build issues
+5. Re-run after_doing hook to verify fix
+6. Only call complete endpoint after success
+
+**Common after_doing failures:**
+- Test failures → Fix tests first
+- Build errors → Resolve compilation issues
+- Linting errors → Fix code quality issues
+- Coverage below target → Add missing tests
+- Formatting issues → Run formatter
+
+### If before_review fails:
+
+1. **DO NOT** call complete endpoint
+2. Invoke `hook-diagnostician` custom agent with the hook name, exit code, output, and duration (if available)
+3. Follow the diagnostician's fix plan, or if unavailable, fix the issue manually
+4. Re-run before_review hook to verify
+5. Only proceed after success
+
+**Common before_review failures:**
+- PR already exists → Check if you need to update existing PR
+- Authentication issues → Verify gh CLI is authenticated
+- Branch issues → Ensure you're on correct branch
+- Network issues → Retry after connectivity restored
+
+## API Request Format
+
+After BOTH hooks succeed, assemble and send the completion request as a
+SINGLE shell invocation that inlines the snapshot read inside `jq -n`. The
+inline pattern matters because Codex CLI has no automatic hook
+interception — you (the agent) just executed `.stride.md`'s `after_doing`
+commands manually, and that's when `.stride-changed-files.json` should
+have been (re)written. A separate shell turn before the completion curl
+would read a stale snapshot from a prior task. See the "Why inline?"
+paragraph in the [Per-File Diff Capture (Manual)](#per-file-diff-capture-manual)
+section below.
+
+```bash
+curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
+  -H "Authorization: Bearer $STRIDE_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "$(jq -n \
+    --argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '[]')" \
+    --arg agent_name 'Codex CLI' \
+    --arg notes 'All tests passing. PR #123 created.' \
+    --arg summary 'Brief one-line summary for tracking.' \
+    --arg complexity 'small' \
+    --arg files 'lib/foo.ex, test/foo_test.exs' \
+    --arg report '## Review Summary\n\nApproved — 0 issues found.' \
+    '{
+       agent_name: $agent_name,
+       time_spent_minutes: 45,
+       completion_notes: $notes,
+       completion_summary: $summary,
+       actual_complexity: $complexity,
+       actual_files_changed: $files,
+       changed_files: $cf,
+       review_report: $report,
+       after_doing_result: {exit_code: 0, output: "...", duration_ms: 45678},
+       before_review_result: {exit_code: 0, output: "...", duration_ms: 2340},
+       explorer_result: {dispatched: false, reason: "self_reported_exploration", summary: "..."},
+       reviewer_result: {dispatched: false, reason: "self_reported_review", summary: "..."},
+       workflow_steps: [
+         {name: "explorer", dispatched: true, duration_ms: 12450},
+         {name: "planner", dispatched: true, duration_ms: 8200},
+         {name: "implementation", dispatched: true, duration_ms: 1820000},
+         {name: "reviewer", dispatched: true, duration_ms: 15300},
+         {name: "after_doing", dispatched: true, duration_ms: 45678},
+         {name: "before_review", dispatched: true, duration_ms: 2340}
+       ]
+     }')"
+```
+
+The resulting request body has this shape (illustrative — populated values
+match the `--arg` / `--argjson` substitutions above):
+
+```json
+{
+  "agent_name": "Codex CLI",
+  "time_spent_minutes": 45,
+  "completion_notes": "All tests passing. PR #123 created.",
+  "completion_summary": "Brief one-line summary for tracking.",
+  "actual_complexity": "small",
+  "actual_files_changed": "lib/foo.ex, test/foo_test.exs",
+  "changed_files": [
+    {"path": "lib/foo.ex", "diff": "--- a/lib/foo.ex\n+++ b/lib/foo.ex\n@@ -1,3 +1,4 @@\n defmodule Foo do\n+  @moduledoc \"Foo\"\n end\n"}
+  ],
+  "review_report": "## Review Summary\n\nApproved — 0 issues found.",
+  "after_doing_result": {
+    "exit_code": 0,
+    "output": "Running tests...\n230 tests, 0 failures\nmix credo --strict\nNo issues found",
+    "duration_ms": 45678
+  },
+  "before_review_result": {
+    "exit_code": 0,
+    "output": "Creating pull request...\nPR #123 created: https://github.com/org/repo/pull/123",
+    "duration_ms": 2340
+  },
+  "explorer_result": {
+    "dispatched": false,
+    "reason": "self_reported_exploration",
+    "summary": "Read lib/foo.ex and test/foo_test.exs manually and noted the existing error-tuple pattern to mirror"
+  },
+  "reviewer_result": {
+    "dispatched": false,
+    "reason": "self_reported_review",
+    "summary": "Self-reviewed the diff against all 5 acceptance criteria and the 3 pitfalls; no issues found"
+  },
+  "workflow_steps": [
+    {"name": "explorer",       "dispatched": true,  "duration_ms": 12450},
+    {"name": "planner",        "dispatched": true,  "duration_ms": 8200},
+    {"name": "implementation", "dispatched": true,  "duration_ms": 1820000},
+    {"name": "reviewer",       "dispatched": true,  "duration_ms": 15300},
+    {"name": "after_doing",    "dispatched": true,  "duration_ms": 45678},
+    {"name": "before_review",  "dispatched": true,  "duration_ms": 2340}
+  ]
+}
+```
+
+**Critical:** `after_doing_result`, `before_review_result`, `explorer_result`, `reviewer_result`, and `workflow_steps` are all REQUIRED. The API will reject requests without them.
+
+**Optional:** Include `changed_files` whenever `.stride-changed-files.json` exists in the project root — read it INLINE inside the same shell invocation as the completion curl (see the bash example above and the [Per-File Diff Capture (Manual)](#per-file-diff-capture-manual) section below). The `|| echo '[]'` fallback produces an empty array when the snapshot is absent or unreadable; emitting `changed_files: []` is a valid completion. The encoding rules (500-line truncation marker, binary placeholder, `{path, diff}` shape) live in `docs/diff-contract.md` and should not be duplicated into the example.
+
+## Per-File Diff Capture (Manual)
+
+The completion payload accepts an optional top-level `changed_files` array — one
+`{path, diff}` entry per file changed during the task. When provided, the
+Stride review queue renders each diff inline next to the task, giving the
+human reviewer a per-file view of what the agent did without leaving the
+kanban UI. When omitted, the review queue falls back to the file list in
+`actual_files_changed` (no inline diff panel). The encoding rules live in
+the contract doc and are the single source of truth:
+
+> **Contract:** [`docs/diff-contract.md`](https://raw.githubusercontent.com/cheezy/kanban/refs/heads/main/docs/diff-contract.md)
+> (defines `path` / `diff` keys, exact truncation marker string, exact binary
+> placeholder string, the 500-line inclusive cap, and the optional-field rules)
+
+**Why this is manual in Codex.** Codex CLI does not support automatic hook
+interception. The other Stride plugins (stride, stride-copilot, stride-gemini,
+stride-pi, stride-opencode) ship a `hooks/stride-hook.sh` that the host CLI
+fires as a PreToolUse / BeforeTool handler on the completion curl — the
+handler writes `.stride-changed-files.json` automatically during the curl
+call. Codex CLI has no equivalent surface, so the agent is responsible for
+producing the snapshot itself. The wire shape and the inline-cat-in-jq read
+pattern are identical to the other plugins — only the writer changes.
+
+**How to produce `.stride-changed-files.json` in Codex.** The simplest path
+is to add a snapshot-writer line to your `.stride.md` `## after_doing`
+section so it runs alongside your tests / lint / build commands and produces
+the snapshot before you assemble the completion curl. The canonical
+capture function lives in
+[`stride/hooks/stride-hook.sh`](https://github.com/cheezy/stride/blob/main/hooks/stride-hook.sh) —
+source it from your shell, then call `capture_changed_files "$TASK_BASE_REF"`
+and redirect to `$CLAUDE_PROJECT_DIR/.stride-changed-files.json`. The
+function handles working-tree-relative semantic, untracked-new-file
+synthesis, binary detection, and 500-line truncation per the contract.
+
+A minimal Codex-friendly `## after_doing` looks like:
+
+```bash
+## after_doing
+mix test
+mix credo --strict
+# Capture changed_files for the upcoming /complete payload.
+# Requires TASK_BASE_REF to be exported (set during claim).
+# CAPTURE_SCRIPT path is illustrative — vendor the canonical bash function
+# body from stride/hooks/stride-hook.sh (the block between the
+# `# --- Per-file diff capture` banner and the next `# ---` banner) into
+# your own script at any location you choose, then point CAPTURE_SCRIPT
+# at it.
+bash -c 'source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.sh}" && \
+  capture_changed_files "${TASK_BASE_REF:-HEAD~1}" \
+  > "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || true'
+```
+
+stride-codex does NOT ship a capture script of its own — Codex CLI has no
+plugin-side hook surface to host one, and the function body in
+[`stride/hooks/stride-hook.sh`](https://github.com/cheezy/stride/blob/main/hooks/stride-hook.sh)
+(between the `# --- Per-file diff capture` banner and the next `# ---`
+banner) is the entire portable implementation. Vendor it once into a
+location of your choosing and reference it via `$CAPTURE_SCRIPT`.
+
+**Working-tree semantic.** The canonical `capture_changed_files` reflects
+the agent's full working state at completion time, regardless of commit
+state. An agent that edits a file and runs `after_doing` WITHOUT committing
+first still produces a populated snapshot — the diff is captured from the
+working tree against `$TASK_BASE_REF`, not from `..HEAD`. This matters in
+Codex because Codex agents often complete short tasks without an
+intermediate commit.
+
+**Why inline?** When you assemble the completion curl, read the snapshot
+INSIDE the same shell invocation via `jq -n --argjson cf "$(cat
+"${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo
+'[]')"`. The snapshot was written during the `after_doing` block you
+JUST ran — reading it in an earlier shell turn (before you ran
+`after_doing`) would pick up a stale snapshot from a prior task. Using
+the absolute `$CLAUDE_PROJECT_DIR` path guards against the agent's CWD
+being something other than the project root.
+
+```bash
+curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
+  -H "Authorization: Bearer $STRIDE_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "$(jq -n \
+    --argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '[]')" \
+    --arg summary 'completion summary text' \
+    --arg notes 'completion notes text' \
+    '{
+       completion_summary: $summary,
+       completion_notes: $notes,
+       changed_files: $cf,
+       actual_complexity: "small"
+     }')"
+```
+
+If `.stride-changed-files.json` is absent — capture script not vendored,
+non-git project, jq or git missing — the inlined `|| echo '[]'` fallback
+produces an empty array. Empty `changed_files` is a valid shape; the
+server accepts it. Do NOT synthesize diffs by hand to "fill in" the
+field; emit only what the capture function captured (or `[]`). Both
+shapes below are valid completions:
+
+```json
+"changed_files": [
+  {"path": "lib/foo.ex", "diff": "--- a/lib/foo.ex\n+++ b/lib/foo.ex\n@@ -1,3 +1,4 @@\n defmodule Foo do\n+  @moduledoc \"Foo\"\n end\n"},
+  {"path": "assets/logo.png", "diff": "[binary file — no diff captured]"}
+]
+```
+
+```json
+"changed_files": []
+```
+
+**Backward compatibility.** `changed_files` is strictly optional. Completion
+payloads that omit it remain fully valid forever — the server treats the
+absence as "no diff data available" and the review queue shows the file list
+from `actual_files_changed` without an inline diff panel.
+
+### Per-File Diff Capture (Manual, Wrapped-Body PUT — for v1.16.0+ servers)
+
+Stride server 1.16.0+ exposes a dedicated `PUT /api/tasks/:id/changed_files`
+endpoint that the auto-PUT hook in the main Claude plugin uses. Codex CLI has
+no plugin-side hook to host that PUT for you — so when targeting a v1.16.0+
+server, agents have two equally valid choices:
+
+1. **Inline `changed_files` in the `/complete` body** (the section above).
+   Works against every Stride server version forever. Recommended default for
+   Codex.
+2. **PUT the snapshot separately before `/complete`** (this section). Matches
+   the wire shape the auto-PUT hook uses on other plugins, which keeps the
+   server-side processing path identical regardless of which plugin produced
+   the snapshot. Useful when an external tool consumes the `changed_files`
+   API in real time (live diff panel, review-queue webhook) rather than
+   waiting for the completion payload.
+
+**Critical — D61 transport encoding.** Send the PUT body as the
+**transport-encoded envelope** `{"changed_files":{"encoding":"base64","data":"<single-line-base64>"}}`,
+falling back to the raw object `{"changed_files":[...]}` when `base64` is
+unavailable — **never a bare top-level array**. Two rules combine here:
+
+- **Base64 envelope (D61).** An edge request filter (WAF) in front of the
+  Stride server can misread a dense unified code diff as an attack payload and
+  silently drop the upload, leaving `changed_files` empty in the review queue.
+  Base64-wrapping the body neutralizes that false positive; the server decodes
+  it back to the identical list. The base64 MUST be single-line (strip any wrap
+  newlines) so it is valid inside the JSON string. The main Claude plugin
+  shipped this in its 1.22.0 release.
+- **Object wrapper, never a bare array (G174).** On both the base64 and the
+  raw-fallback paths the value stays wrapped in a `{"changed_files": ...}`
+  object. Under Plug.Parsers a bare top-level array lands at `params["_json"]`,
+  validates as `{:ok, nil}`, and the server persists NULL — silently clearing
+  whatever snapshot was previously stored (the 1.17.2 G174 fix). Future readers:
+  do NOT simplify the body to a bare array to "save a wrapping layer" — that IS
+  the broken state.
+
+**Copy-pasteable `## after_doing` block.** Drop this into your project's
+`.stride.md` so the snapshot is captured AND PUT in the same blocking
+phase. URL and token are sourced from the same env vars your `/complete`
+curl already uses — no `.stride_auth.md` reads, no new env vars.
+
+```bash
+## after_doing
+mix test
+mix credo --strict
+# (1) Capture the snapshot. Same canonical capture_changed_files function
+# as the inline-cat flow above — vendor the body of stride/hooks/stride-hook.sh
+# between the `# --- Per-file diff capture` banner and the next `# ---`
+# banner into your own script and point CAPTURE_SCRIPT at it.
+bash -c 'source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.sh}" && \
+  capture_changed_files "${TASK_BASE_REF:-HEAD~1}" \
+  > "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || true'
+# (2) PUT the snapshot to the v1.16.0+ endpoint as the D61 transport-encoded
+# envelope {"changed_files":{"encoding":"base64","data":"<b64>"}} so an edge
+# request filter cannot misread the diff as an attack and drop the upload;
+# fall back to the raw {"changed_files":[...]} object when base64 is
+# unavailable (never a bare array — G174). The inline reads run AFTER step (1)
+# wrote the snapshot. Fire-and-forget — a 4xx/5xx or network failure must NOT
+# fail this after_doing hook.
+_cf="${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json"
+if command -v base64 > /dev/null 2>&1; then
+  _b64=$(base64 < "$_cf" 2>/dev/null | tr -d '\r\n')
+  curl -s -X PUT "$STRIDE_API_URL/api/tasks/$TASK_ID/changed_files" \
+    -H "Authorization: Bearer $STRIDE_API_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d "{\"changed_files\":{\"encoding\":\"base64\",\"data\":\"$_b64\"}}" \
+    > /dev/null 2>&1 || true
+else
+  curl -s -X PUT "$STRIDE_API_URL/api/tasks/$TASK_ID/changed_files" \
+    -H "Authorization: Bearer $STRIDE_API_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d "{\"changed_files\":$(cat "$_cf")}" \
+    > /dev/null 2>&1 || true
+fi
+```
+
+The `|| true` on both lines is essential — Codex CLI runs `## after_doing`
+as a blocking hook, so a missing capture script, an unset `TASK_ID`, or a
+transient network glitch must NOT abort the task. Both failures degrade
+to "no diff data uploaded for this task," which is a valid completion
+state on the server side.
+
+**Wire shapes.** The server accepts the D61 transport-encoded envelope
+(preferred — the base64 `data` is the single-line base64 of the JSON array):
+
+```json
+{"changed_files": {"encoding": "base64", "data": "<single-line-base64-of-the-array>"}}
+```
+
+…and the raw object (fallback, when `base64` is unavailable):
+
+```json
+{"changed_files": [{"path": "...", "diff": "..."}]}
+```
+
+Never a bare top-level array (Plug.Parsers persists NULL):
+
+```json
+[{"path": "...", "diff": "..."}]
+```
+
+If you later add a third-party tool that POSTs to the same endpoint, mirror
+the wrapped shape there too. The bare-array form is the broken state that
+made stride 1.17.2 a critical fix.
+
+**Choosing between the two flows.** Use inline-in-complete unless you have a
+specific reason to PUT separately — the inline flow is one fewer network
+call, one fewer place a transient failure can hide diff data. Use the PUT
+flow when external tooling consumes the `changed_files` API directly and
+needs the snapshot available before `/complete` lands.
+
+## Explorer/Reviewer Result Schema
+
+Every `/complete` call **must** include both `explorer_result` and `reviewer_result` as top-level objects. Each is either a self-reported skip or a dispatched-custom-agent result. Server-side validation is pre-validated by `Kanban.Tasks.CompletionValidation`; invalid payloads are logged during the grace-period rollout and rejected with `422` once `:strict_completion_validation` flips.
+
+### Shape 1 — self-reported skip (primary path in Codex CLI)
+
+Codex CLI has limited custom-agent dispatch, so the self-reported skip form is the default. Use it whenever you explored or reviewed manually rather than dispatching a custom agent.
+
+```json
+{
+  "dispatched": false,
+  "reason": "<one of the 5 enum values below>",
+  "summary": "<40+ non-whitespace characters explaining why and what was self-reported>"
+}
+```
+
+The `reason` must be exactly one of:
+
+| Reason | When to use |
+|---|---|
+| `no_subagent_support` | Platform has no subagent dispatch available (Codex/OpenCode graceful fallback) |
+| `small_task_0_1_key_files` | Decision matrix: task is small with 0–1 key_files |
+| `trivial_change_docs_only` | Docs-only change with no code impact |
+| `self_reported_exploration` | Explored the codebase manually rather than dispatching the explorer agent |
+| `self_reported_review` | Self-reviewed the diff against acceptance criteria rather than dispatching the reviewer agent |
+
+Free-form reasons are rejected — the enum is the contract.
+
+### Shape 2 — dispatched custom agent (when custom agents are available)
+
+```json
+"explorer_result": {
+  "dispatched": true,
+  "summary": "<40+ non-whitespace characters describing what was explored>",
+  "duration_ms": 12000
+}
+
+"reviewer_result": {
+  "dispatched": true,
+  "duration_ms": 8000,
+  "summary": "<40+ non-whitespace characters describing what was reviewed>",
+  "issues_found": 0,
+  "acceptance_criteria_checked": 5,
+  "schema_version": "1.4",
+  "status": "approved",
+  "issue_counts": {"critical": 0, "important": 0, "minor": 0},
+  "issues": [],
+  "acceptance_criteria": [
+    {"criterion": "<verbatim criterion>", "status": "met", "evidence": "<file:line>"}
+  ],
+  "project_checks": [],
+  "testing_strategy": {"status": "passed", "note": "<rationale>"},
+  "patterns": {"status": "passed", "note": "<rationale>"},
+  "pitfalls": {"status": "passed", "note": "<rationale>"},
+  "security_considerations": {"status": "passed", "note": "<rationale>"}
+}
+```
+
+When the `task-reviewer` custom agent was dispatched, `reviewer_result` is the reviewer
+agent's emitted structured JSON block (`schema_version`, `status`, `issue_counts`,
+`issues[]`, `acceptance_criteria[]`, `project_checks[]`, and the per-section
+`testing_strategy`/`patterns`/`pitfalls`/`security_considerations` verdicts) copied **verbatim** and
+**merged** with the dispatch telemetry (`dispatched: true`, `duration_ms`) plus the
+derived legacy summary fields (`issues_found`, `acceptance_criteria_checked`,
+`summary`). Do NOT send only the thin legacy envelope — the structured fields are
+what the Kanban review queue renders (issue list, acceptance verdicts, code-review
+checks). Extract the fenced ` ```json ` block per the `stride-workflow` skill's
+"Extracting the structured review block" (Step 6) — that section owns the
+legacy↔structured field mapping (e.g. `issues_found` = the sum of the values in
+`issue_counts`, `acceptance_criteria_checked` = the number of entries in
+`acceptance_criteria`). The schema itself is owned by `agents/task-reviewer.md`;
+do not redefine it here. The legacy `acceptance_criteria_checked` and
+`issues_found` integers remain required when `dispatched` is `true`. If the
+reviewer emitted no parseable ` ```json ` fence, fall back to the legacy-only
+envelope and omit the structured keys — never invent them (see the
+`stride-workflow` Step 6 fallback). Keys the agent did NOT emit must be omitted
+entirely, not sent as empty placeholders.
+
+### Minimum summary length
+
+Summaries must contain at least **40 non-whitespace characters**. Trivial summaries like `"explored files"` or `"reviewed code"` are rejected. The minimum is counted after stripping all whitespace, so inserting spaces does not help.
+
+### 422 rejection example
+
+When strict mode is on and a payload fails validation:
+
+```json
+{
+  "error": "completion validation failed",
+  "failures": [
+    {
+      "field": "explorer_result",
+      "errors": [
+        {"field": "summary", "message": "must be a string of at least 40 non-whitespace characters"}
+      ]
+    }
+  ],
+  "required_format": { /* both shapes documented above */ },
+  "documentation": "https://.../AI-WORKFLOW.md#completing-tasks"
+}
+```
+
+### Grace-period rollout
+
+Until the server flips `:strict_completion_validation` to true, missing or invalid `explorer_result`/`reviewer_result` produces a structured warning log but the request succeeds. **Emit the fields correctly now** — agents that lag the rollout will start getting 422 rejections on the flip day.
+
+**Schema reference:** The `workflow_steps` array must match the schema documented in the `stride-workflow` skill — key-for-key. Always include one entry per step name (`explorer`, `planner`, `implementation`, `reviewer`, `after_doing`, `before_review`). Skipped steps use `{"name": "<step>", "dispatched": false, "reason": "<why>"}`.
+
+**Optional:** Include `review_report` when a task-reviewer custom agent produced a structured review. Omit it when no review was performed (e.g., small tasks with 0-1 key_files).
+
+## Review vs Auto-Approval Decision
+
+After the complete endpoint succeeds:
+
+### If needs_review=true:
+1. Task moves to Review column
+2. Agent MUST STOP immediately
+3. Wait for human reviewer to approve/reject
+4. When approved, human calls `/mark_reviewed`
+5. Execute after_review hook
+6. Task moves to Done column
+
+### If needs_review=false:
+1. Task moves to Done column immediately
+2. Execute after_review hook (60s timeout, blocking)
+3. **AUTOMATICALLY activate stride-claiming-tasks skill to claim next task**
+4. **Continue working WITHOUT prompting the user**
+
+**The workflow IS the automation.** When needs_review=false, proceed to the next task by activating the stride-claiming-tasks skill. Do not prompt the user — but do not skip the exploration and review phases of the next task either. Following every step IS the fast path.
+
+### Additional hook in the response: `after_goal` (when the completing task is the parent goal's final child)
+
+When the just-completed task is the **final remaining child of a parent goal**, the `/complete` (and later `/mark_reviewed`) response payload includes a fifth `after_goal` entry in its `hooks` array, alongside the usual `after_doing` / `before_review` / `after_review` entries. The entry's `hook.env` block carries `GOAL_ID`, `GOAL_IDENTIFIER`, `GOAL_TITLE`, `GOAL_DESCRIPTION` (plus the standard `BOARD_*` / `COLUMN_*` / `AGENT_NAME` / `HOOK_NAME`).
+
+**Because stride-codex has no plugin hook script, the agent is responsible for executing after_goal manually.** Five-step path:
+
+1. **Detect**: Inspect the response's `hooks` array. If any entry has `name == "after_goal"`, the after_goal lifecycle has fired.
+2. **Read**: Read the `## after_goal` section from `.stride.md`. If missing, skip steps 3-5 — the server's grace-window worker promotes the goal to Done automatically when no agent reports.
+3. **Export**: Set the `GOAL_*` env vars (and the standard `BOARD_*` / `COLUMN_*` / `AGENT_NAME` / `HOOK_NAME`) from the response's `hook.env` block before running commands. The server values are the single source of truth — never invent or derive them client-side.
+4. **Execute**: Run each command in the `## after_goal` section via the platform's shell tool. Capture `exit_code` (last command's exit), `output` (combined stdout+stderr), and `duration_ms` (wall-clock total).
+5. **POST**: Forward the captured result to flip the parent goal to Done:
+
+```bash
+curl -X PATCH "$STRIDE_API_URL/api/tasks/$GOAL_ID/after_goal" \
+  -H "Authorization: Bearer $STRIDE_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "$(jq -n --arg out \"$OUTPUT\" \"{exit_code: $EXIT_CODE, output: \\\$out, duration_ms: $DURATION_MS}\")"
+```
+
+A `2xx` with `exit_code == 0` transitions the goal to Done. A `2xx` with `exit_code != 0` records the failure on the goal's `after_goal_attempts` audit log and leaves the goal In Progress for the user to investigate. Do NOT silently retry on non-zero exit — surface the failure and let the operator decide.
+
+**Back-compat:**
+- Missing `## after_goal` section → skip the manual path entirely; the server's grace-window worker covers the goal transition.
+- Older agent runtimes that don't speak the protocol → same coverage path (grace-window worker promotes the goal after the configured wait with a synthetic attempt tagged `source: "after_goal_grace_worker"`).
+- The `## after_goal` hook is **general-purpose** — Slack notifications, artifact archival, release pipelines, project-level smoke tests are all valid uses. Not just PR creation.
+
+See `stride-workflow` SKILL.md Step 7 for the full hooks reference and Step 9 for the parallel write-up of this transition.
+
+## Red Flags - STOP
+
+- "I'll mark it complete then run tests"
+- "The tests probably pass"
+- "I can fix failures after completing"
+- "I'll skip the hooks this time"
+- "Just the after_doing hook is enough"
+- "I'll run before_review later"
+- **"Let me run the after_doing hook" (then wait for user to approve) — NEVER prompt for hook permission**
+- **"Should I execute mix test?" — hooks are pre-authorized, just run them**
+- **"Should I claim the next task?" (Don't ask, just do it when needs_review=false)**
+- **"Would you like me to continue?" (Don't ask, auto-continue when needs_review=false)**
+
+**All of these mean: Run BOTH hooks BEFORE calling complete, and auto-continue when needs_review=false.**
+
+## Rationalization Table
+
+| Excuse | Reality | Consequence |
+|--------|---------|-------------|
+| "Tests probably pass" | after_doing catches 40% of issues | Task marked done with failing tests |
+| "I can fix later" | Task already marked complete | Have to reopen, wastes review cycle |
+| "Just this once" | Becomes a habit | Quality standards erode completely |
+| "before_review can wait" | API requires both hook results | Request rejected with 422 error |
+| "Hooks take too long" | 2-3 minutes prevents 2+ hours rework | Rushing causes failed deployments |
+
+## Common Mistakes
+
+### Mistake 1: Calling complete before executing hooks
+```bash
+# curl -X PATCH /api/tasks/W47/complete
+#    Then running hooks afterward
+
+# Execute after_doing hook first
+   START_TIME=$(date +%s%3N)
+   OUTPUT=$(timeout 120 bash -c 'mix test' 2>&1)
+   EXIT_CODE=$?
+   # ...capture results
+
+   # Execute before_review hook second
+   START_TIME=$(date +%s%3N)
+   OUTPUT=$(timeout 60 bash -c 'gh pr create' 2>&1)
+   EXIT_CODE=$?
+   # ...capture results
+
+   # Then call complete WITH both results
+   curl -X PATCH /api/tasks/W47/complete -d '{...both results...}'
+```
+
+### Mistake 2: Only including after_doing result
+```json
+WRONG:
+{
+  "after_doing_result": {...}
+}
+
+RIGHT:
+{
+  "after_doing_result": {...},
+  "before_review_result": {...}
+}
+```
+
+### Mistake 3: Continuing work after needs_review=true
+```bash
+# PATCH /api/tasks/W47/complete returns needs_review=true
+#    Agent continues to claim next task
+
+# PATCH /api/tasks/W47/complete returns needs_review=true
+#    Agent STOPS and waits for human review
+```
+
+### Mistake 4: Prompting user for permission to run hooks
+```bash
+# Agent says "Let me run the after_doing hooks" then waits for user approval
+# Agent presents hook commands and pauses for confirmation
+
+# Agent reads .stride.md after_doing section
+#    Agent immediately executes each command — no prompts
+```
+
+### Mistake 5: Not fixing hook failures
+```bash
+# after_doing fails with test errors
+#    Agent calls complete endpoint anyway
+
+# after_doing fails with test errors
+#    Agent fixes tests, re-runs hook until success
+#    Only then calls complete endpoint
+```
+
+## Implementation Workflow
+
+1. **Complete all work** - Implementation finished
+2. **Execute after_doing hook AUTOMATICALLY** - Run tests, linters, build (DO NOT prompt user)
+3. **Check exit code** - Must be 0
+4. **If failed:** Fix issues, re-run, do NOT proceed
+5. **Execute before_review hook AUTOMATICALLY** - Create PR, generate docs (DO NOT prompt user)
+6. **Check exit code** - Must be 0
+7. **If failed:** Fix issues, re-run, do NOT proceed
+8. **Call complete endpoint** - Include BOTH hook results
+9. **Check needs_review flag** - Stop if true, continue if false
+10. **If false:** Execute after_review hook AUTOMATICALLY (DO NOT prompt user)
+11. **Claim next task** - Continue the workflow
+
+## Quick Reference Card
+
+```
+├─ 1. Work is complete
+├─ 2. Execute after_doing (120s timeout, blocking)
+├─ 3. Hook fails? → FIX, retry, DO NOT proceed
+├─ 4. Execute before_review (60s timeout, blocking)
+├─ 5. Hook fails? → FIX, retry, DO NOT proceed
+├─ 6. Both succeed? → Call PATCH /api/tasks/:id/complete WITH both results
+├─ 7. needs_review=true? → STOP, wait for human
+└─ 8. needs_review=false? → Execute after_review, claim next
+
+API ENDPOINT: PATCH /api/tasks/:id/complete
+REQUIRED BODY: {
+  "agent_name": "Codex CLI",
+  "time_spent_minutes": 45,
+  "completion_notes": "...",
+  "review_report": "..." (optional — include when task-reviewer ran),
+  "after_doing_result": {
+    "exit_code": 0,
+    "output": "Hook output here",
+    "duration_ms": 45678
+  },
+  "before_review_result": {
+    "exit_code": 0,
+    "output": "Hook output here",
+    "duration_ms": 2340
+  },
+  "explorer_result": {
+    "dispatched": false,
+    "reason": "self_reported_exploration",
+    "summary": "<40+ non-whitespace chars>"
+  },
+  "reviewer_result": {
+    "dispatched": false,
+    "reason": "self_reported_review",
+    "summary": "<40+ non-whitespace chars>"
+  },
+  "workflow_steps": [
+    {"name": "explorer",       "dispatched": true,  "duration_ms": 12450},
+    {"name": "planner",        "dispatched": true,  "duration_ms": 8200},
+    {"name": "implementation", "dispatched": true,  "duration_ms": 1820000},
+    {"name": "reviewer",       "dispatched": true,  "duration_ms": 15300},
+    {"name": "after_doing",    "dispatched": true,  "duration_ms": 45678},
+    {"name": "before_review",  "dispatched": true,  "duration_ms": 2340}
+  ]
+}
+
+SKIP FORM for explorer_result / reviewer_result (when subagent not dispatched):
+  {"dispatched": false, "reason": "<enum>", "summary": "<40+ non-whitespace chars>"}
+Reason enum: no_subagent_support, small_task_0_1_key_files, trivial_change_docs_only,
+             self_reported_exploration, self_reported_review
+```
+
+## Real-World Impact
+
+**Before this skill (completing without hooks):**
+- 40% of completions had failing tests
+- 2.3 hours average time to fix post-completion
+- 65% required reopening and rework
+
+**After this skill (hooks before complete):**
+- 2% of completions had issues
+- 15 minutes average fix time (pre-completion)
+- 5% required rework
+
+**Time savings: 2+ hours per task (90% reduction in post-completion rework)**
+
+---
+
+## Completion Request Field Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `agent_name` | string | Yes | Name of the completing agent |
+| `time_spent_minutes` | integer | Yes | Actual time spent on the task |
+| `completion_notes` | string | Yes | Summary of what was done |
+| `completion_summary` | string | Yes | Brief summary for tracking |
+| `actual_complexity` | enum | Yes | `"small"`, `"medium"`, or `"large"` |
+| `actual_files_changed` | string | Yes | Comma-separated file paths (NOT an array) |
+| `after_doing_result` | object | Yes | Hook result (see format below) |
+| `before_review_result` | object | Yes | Hook result (see format below) |
+| `workflow_steps` | array | Yes | Telemetry array with one entry per step name. See stride-workflow skill for full schema. |
+| `explorer_result` | object | Yes | `task-explorer` custom agent dispatch result OR self-reported skip. See Explorer/Reviewer Result Schema section. |
+| `reviewer_result` | object | Yes | `task-reviewer` custom agent dispatch result OR self-reported skip. See Explorer/Reviewer Result Schema section. |
+| `review_report` | string | No | Structured review report from task-reviewer custom agent. Include when a review was performed; omit when no review was done. |
+
+**WRONG — actual_files_changed as array:**
+```json
+"actual_files_changed": ["lib/foo.ex", "lib/bar.ex"]
+```
+
+**RIGHT — actual_files_changed as comma-separated string:**
+```json
+"actual_files_changed": "lib/foo.ex, lib/bar.ex"
+```
+
+## Hook Result Format Reminder
+
+Both `after_doing_result` and `before_review_result` use the same format:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `exit_code` | integer | Yes | 0 for success, non-zero for failure |
+| `output` | string | Yes | stdout/stderr output from hook execution |
+| `duration_ms` | integer | Yes | How long the hook took in milliseconds |
+
+**WRONG — missing required fields:**
+```json
+"after_doing_result": {"output": "tests passed"}
+```
+
+**RIGHT — all three fields present:**
+```json
+"after_doing_result": {
+  "exit_code": 0,
+  "output": "All 230 tests passed\nmix credo --strict: no issues",
+  "duration_ms": 45678
+}
+```
+
+## Arriving from stride-workflow
+
+If you are following the `stride-workflow` orchestrator, you arrive here at **Step 7-8** with all prerequisites already satisfied:
+- Task was claimed with proper before_doing hook (Step 2)
+- Codebase was explored and patterns identified (Step 3)
+- Implementation is complete (Step 4)
+- Code review was performed against acceptance criteria (Step 6)
+
+**You can proceed directly to hook execution and completion.** The orchestrator has already guided you through all prior steps.
+
+## Previous Skill Before Completing (Standalone Mode)
+
+If you are using this skill standalone (not via the orchestrator), you should have already activated:
+
+1. **`stride-workflow`** (recommended) — The orchestrator handles the full lifecycle. If you used it, you've already completed all prior steps.
+2. **`stride-claiming-tasks`** — To claim the task with proper before_doing hook execution
+3. **`stride-subagent-workflow`** — To explore, plan, and review based on the decision matrix
+
+If you skipped any of these, the after_doing hook is likely to fail. Go back and verify.
+
+---
+**References:** For the full field reference, see `api_schema` in the onboarding response (`GET /api/agent/onboarding`). For endpoint details, see the [API Reference](https://raw.githubusercontent.com/cheezy/kanban/refs/heads/main/docs/api/README.md). For hook failure diagnosis, see the `hook-diagnostician` custom agent.

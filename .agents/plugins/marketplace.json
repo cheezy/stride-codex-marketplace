@@ -3,5 +3,18 @@
   "interface": {
     "displayName": "Stride for Codex"
   },
-  "plugins": []
+  "plugins": [
+    {
+      "name": "stride-codex",
+      "source": {
+        "source": "local",
+        "path": "./plugins/stride-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
 }
