@@ -1,0 +1,23 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.sublime-*
+
+# Environment / secrets
+.env
+.env.local
+*.local
+.stride_auth.md
+
+# Stride orchestrator runtime state (per stride-workflow skill contract)
+.stride/
+.stride-env-cache
+.stride-changed-files.json
+.stride-diff-upload-state
