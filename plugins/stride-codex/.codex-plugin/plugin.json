@@ -1,6 +1,6 @@
 {
   "name": "stride-codex",
-  "version": "1.19.0",
+  "version": "1.20.0",
   "description": "Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition.",
   "skills": "./skills/"
 }
