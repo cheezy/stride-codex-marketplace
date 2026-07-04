@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.22.0] - 2026-07-03
+
+Enhancements release (**G297 — Stride-Codex Enhancements**): a batch of documentation-consistency, portability, and clarity fixes across the Codex skills and agents. Feature minor (1.21.0 → 1.22.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change.
+
+### Fixed — reviewer `schema_version` drift reconciled to 1.4 (W1505)
+
+`README.md` and `skills/stride-subagent-workflow/SKILL.md` still advertised a stale reviewer structured-block version (README said schema 1.3; the subagent-workflow worked examples used `schema_version` 1.2 and omitted the `security_considerations` verdict). Both were reconciled to the canonical **1.4** shape already defined in `agents/task-reviewer.md`, and both worked-example objects gained the missing `security_considerations` `{status, note}` verdict. The single-source-of-truth `agents/task-reviewer.md` was left unchanged.
+
+### Added — `after_goal` (fifth hook) awareness in the hook-diagnostician (W1506)
+
+`agents/hook-diagnostician.md` predated the `after_goal` hook: its frontmatter and Hook Timeout Handling section knew only the four task-scoped hooks. It now lists `after_goal` in the frontmatter hook set, adds an `after_goal` timeout row noting the timeout is **server-supplied** (honors the response `hook.timeout`, typically ~60s) rather than a fixed client constant, and explains that `after_goal` runs under `GOAL_*` (not `TASK_*`) env vars — so a failure referencing an unset `GOAL_*` points at the manual export step, not the hook body.
+
+### Fixed — the unexplained Step 5 numbering gap in stride-workflow (W1507)
+
+The orchestrator's steps ran 0,1,2,3,4,6,7,8,9 with the flowchart and Quick Reference silently skipping 5. Added a `## Step 5: (intentionally left blank)` placeholder noting the former *Activate Development Guidelines* step was removed in v1.8.0 (that skill is not distributed with the plugin) and the slot is preserved to keep the Steps 6–9 cross-references stable, and annotated the flowchart and Quick Reference 4-to-6 jump. No later steps were renumbered.
+
+### Changed — portable millisecond hook clock + `after_goal` timeout wrapper (W1508)
+
+Every GNU-only `date +%s%3N` in the manual hook-capture snippets (across `stride-workflow`, `stride-completing-tasks`, `stride-claiming-tasks`) was replaced with a portable `now_ms()` helper (`python3` milliseconds, with a whole-second `date +%s` fallback) plus a note that `%N` is GNU-only. The manual `after_goal` execution path now wraps its commands in a `timeout` derived from the server-supplied `hook.timeout` (ms → whole seconds, 60s fallback), with `HOOK_TIMEOUT_MS` added to the Step 3 export list. Per-hook timeout values (60/120/60) and the `{exit_code, output, duration_ms}` result shape are unchanged.
+
+### Changed — clarified the "one command at a time" hook rule for backslash continuation (W1509)
+
+Every hook-execution "one at a time" rule location (`AGENTS.md`, `README.md`, `skills/stride-workflow`, `skills/stride-completing-tasks`, `skills/stride-claiming-tasks`) now states that a trailing-backslash line continues onto the next physical line and the joined text is one logical command — so the rule targets logical commands, not physical lines — while preserving the intent against merging unrelated commands into one opaque script. The backslash-continued `gh pr create` examples are unchanged.
+
+### Added — document capturing `TASK_BASE_REF` at claim time (W1510)
+
+`skills/stride-claiming-tasks/SKILL.md` and `skills/stride-workflow/SKILL.md` Step 2 now instruct capturing `export TASK_BASE_REF=$(git rev-parse HEAD)` at claim time, **before** `before_doing` runs (which may `git pull`/commit and move HEAD), and `skills/stride-completing-tasks/SKILL.md` gained a warning that the `${TASK_BASE_REF:-HEAD~1}` fallback can diff against an unrelated pre-existing commit. `changed_files` remains optional and the `capture_changed_files` wire shape is unchanged.
+
+### Backward compatibility
+
+Documentation/skill-text only across all six changes. No hook logic, `.stride.md`, env-var matrix, or wire-shape change; the `{exit_code, output, duration_ms}` hook-result shape, the completion payload contract, and the `capture_changed_files` snapshot format are all unchanged.
+
+### Release
+
+stride-codex is **not** distributed through `stride-marketplace` (or any marketplace), so there is **no marketplace pin to update**. Release is **tag + `gh release`** on the `stride-codex` repository only.
+
+### Source
+
+G297 — Stride-Codex Enhancements (W1505, W1506, W1507, W1508, W1509, W1510).
+
 ## [1.21.0] - 2026-07-01
 
 ### Added — `API Notes & Limitations` section in the workflow orchestrator skill (G286 / W1418)

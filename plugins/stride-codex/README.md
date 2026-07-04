@@ -178,7 +178,7 @@ stride-enriching-tasks           ← WHEN a task has empty key_files/testing_str
 | Agent | Purpose |
 |-------|---------|
 | `task-explorer` | Explore key_files and patterns before implementation |
-| `task-reviewer` | Review changes against acceptance criteria before completion; emits a structured `reviewer_result` (schema 1.3) with `project_checks[]` (from a project-root `CODE-REVIEW.md`) and per-section testing_strategy/patterns/pitfalls/security_considerations verdicts — `security_considerations` is the fifth review_queue-scored field |
+| `task-reviewer` | Review changes against acceptance criteria before completion; emits a structured `reviewer_result` (schema 1.4) with `project_checks[]` (from a project-root `CODE-REVIEW.md`) and per-section testing_strategy/patterns/pitfalls/security_considerations verdicts — `security_considerations` is the fifth review_queue-scored field |
 | `task-enricher` | Populate sparse tasks (empty key_files/testing_strategy/verification_steps) before claiming |
 | `task-decomposer` | Break goals into dependency-ordered child tasks |
 | `hook-diagnostician` | Diagnose hook failures with prioritized fix plans |
@@ -198,7 +198,7 @@ The `stride-creating-tasks`, `stride-enriching-tasks`, and `stride-workflow` ski
 1. The skill instructs the agent which `.stride.md` section to execute
 2. The agent reads the `## section_name` from `.stride.md`
 3. The agent extracts commands from the ` ` `bash code block
-4. The agent executes each command **one at a time** via shell
+4. The agent executes each command **one at a time** via shell (a backslash-continued line is one logical command, not a merge of separate commands)
 5. If any command fails, the agent stops and fixes the issue before proceeding
 
 ### Hook Lifecycle
@@ -215,7 +215,7 @@ The `stride-creating-tasks`, `stride-enriching-tasks`, and `stride-workflow` ski
 
 ### Hook Execution Rules
 
-- Execute each command line **one at a time** — do not combine into a single script
+- Execute each command line **one at a time** — do not combine into a single script. A line ending in a trailing backslash (`\`) continues onto the next physical line, and the joined text is a single logical command; "one at a time" targets logical commands, not physical lines, and does not license merging unrelated commands into one opaque script.
 - **Never prompt for permission** — hooks are pre-authorized by the user who authored them
 - Capture exit codes — a non-zero exit code means the hook failed
 - Include each hook result in the matching API call: `before_doing_result` on the `POST /api/tasks/claim` body; `after_doing_result` and `before_review_result` on the `PATCH /api/tasks/:id/complete` body. (`after_goal` results POST separately to `PATCH /api/tasks/:goal_id/after_goal`.)

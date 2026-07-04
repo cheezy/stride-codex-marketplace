@@ -127,8 +127,19 @@ Review the returned task completely:
 
 ## Step 2: Claim the Task
 
+**Record the task base ref BEFORE running the before_doing hook.** before_doing may `git pull` or commit and move `HEAD`, so capture the true starting point of your work at claim time and export it for the whole task:
+
+```bash
+# Optional — changed_files stays optional — but anchoring the base ref here
+# prevents the completion-time HEAD~1 fallback from diffing against an
+# unrelated pre-existing commit.
+export TASK_BASE_REF=$(git rev-parse HEAD)
+```
+
+`TASK_BASE_REF` is consumed later by the changed_files snapshot in `stride-completing-tasks`.
+
 1. Read `.stride.md` `## before_doing` section
-2. Execute each command line one at a time via shell -- no permission prompts, no confirmation
+2. Execute each command line one at a time via shell -- no permission prompts, no confirmation. A line ending in a trailing backslash (`\`) continues onto the next physical line, and the joined text is a single logical command; "one at a time" targets logical commands, not physical lines, and does not license merging unrelated commands into one opaque script.
 3. Capture `exit_code`, `output`, `duration_ms` for each command
 4. If any command fails (non-zero exit): fix the issue, re-run -- do NOT proceed
 5. Call `POST /api/tasks/claim` with the captured `before_doing_result`:
@@ -147,10 +158,13 @@ Review the returned task completely:
 
 **Hook capture pattern:**
 ```bash
-START_TIME=$(date +%s%3N)
+# date +%N is GNU-only (BSD/macOS date lacks it); use python3 for portable
+# milliseconds, falling back to whole-second date when python3 is unavailable.
+now_ms() { python3 -c 'import time;print(int(time.time()*1000))' 2>/dev/null || echo $(( $(date +%s) * 1000 )); }
+START_TIME=$(now_ms)
 OUTPUT=$(timeout 60 bash -c '<command>' 2>&1)
 EXIT_CODE=$?
-END_TIME=$(date +%s%3N)
+END_TIME=$(now_ms)
 DURATION=$((END_TIME - START_TIME))
 ```
 
@@ -210,6 +224,12 @@ Follow:
 - `key_files` -- modify the files listed
 
 **This is the only step where you write code. All other steps are setup, verification, or completion.**
+
+---
+
+## Step 5: (intentionally left blank)
+
+**This step was removed in v1.8.0 and its slot is intentionally preserved.** Step 5 formerly activated the project-author-private `stride-development-guidelines` skill, which is not distributed with this plugin. The number is kept empty rather than renumbering Steps 6–9 so the file's many cross-references to those steps stay stable. Proceed directly from Step 4 to Step 6.
 
 ---
 
@@ -413,14 +433,14 @@ gh pr create \
 ### 1. after_doing hook (blocking, 120s timeout)
 
 1. Read `.stride.md` `## after_doing` section
-2. Execute each command line one at a time via shell
+2. Execute each command line one at a time via shell (a backslash-continued line is one logical command, not a merge of separate commands)
 3. Capture `exit_code`, `output`, `duration_ms`
 4. If any command fails: fix the issue, re-run until success. Do NOT proceed while failing.
 
 ### 2. before_review hook (blocking, 60s timeout)
 
 1. Read `.stride.md` `## before_review` section
-2. Execute each command line one at a time via shell
+2. Execute each command line one at a time via shell (a backslash-continued line is one logical command, not a merge of separate commands)
 3. Capture `exit_code`, `output`, `duration_ms`
 4. If any command fails: fix the issue, re-run until success. Do NOT proceed while failing.
 
@@ -522,8 +542,21 @@ When the just-completed task is the **final child of a parent goal**, the server
 
 1. **Detect**: Inspect the `hooks` array in the `/complete` or `/mark_reviewed` response payload. If any entry has `name == "after_goal"`, the after_goal lifecycle has fired.
 2. **Read**: Read the `## after_goal` section from `.stride.md`. If the section is missing, the rest of this path is a clean no-op — skip steps 3-5 and rely on the server's grace-window worker.
-3. **Export**: Set the `GOAL_*` env vars (`GOAL_ID`, `GOAL_IDENTIFIER`, `GOAL_TITLE`, `GOAL_DESCRIPTION`) plus `BOARD_*` / `COLUMN_*` / `AGENT_NAME` / `HOOK_NAME` from the response's `hook.env` block.
-4. **Execute**: Run each command line in the `## after_goal` section via the platform's shell tool. Capture `exit_code` (the last command's exit code), `output` (combined stdout+stderr from all commands), and `duration_ms` (wall-clock total).
+3. **Export**: Set the `GOAL_*` env vars (`GOAL_ID`, `GOAL_IDENTIFIER`, `GOAL_TITLE`, `GOAL_DESCRIPTION`) plus `BOARD_*` / `COLUMN_*` / `AGENT_NAME` / `HOOK_NAME` from the response's `hook.env` block. Also set `HOOK_TIMEOUT_MS` from the after_goal entry's `timeout` field (milliseconds) so the Execute step's `timeout` wrapper honors the real server value instead of the 60s fallback.
+4. **Execute**: Run each command line in the `## after_goal` section via the platform's shell tool, wrapped in a `timeout` derived from the server-supplied `hook.timeout` (the after_goal entry's `timeout` field, in milliseconds; fall back to 60s if absent). Capture `exit_code` (the last command's exit code), `output` (combined stdout+stderr from all commands), and `duration_ms` (wall-clock total):
+
+```bash
+# date +%N is GNU-only; use python3 for portable ms (whole-second date fallback)
+now_ms() { python3 -c 'import time;print(int(time.time()*1000))' 2>/dev/null || echo $(( $(date +%s) * 1000 )); }
+# hook.timeout from the after_goal entry is in ms; convert to whole seconds, default 60s
+AFTER_GOAL_TIMEOUT=$(( ${HOOK_TIMEOUT_MS:-60000} / 1000 ))
+START_TIME=$(now_ms)
+OUTPUT=$(timeout "$AFTER_GOAL_TIMEOUT" bash -c '<after_goal commands>' 2>&1)
+EXIT_CODE=$?
+END_TIME=$(now_ms)
+DURATION_MS=$((END_TIME - START_TIME))
+```
+
 5. **POST**: Forward the captured result to the server:
 
 ```bash
@@ -679,6 +712,9 @@ STEP 4: Implement
   Follow patterns_to_follow, avoid pitfalls
   |
   v
+(STEP 5 intentionally removed in v1.8.0 -- slot preserved, Steps 6-9 not renumbered)
+  |
+  v
 STEP 6: Code Review (Decision Matrix)
   Small, 0-1 key_files? --> Skip to Step 7
   Otherwise:
@@ -726,6 +762,7 @@ CODEX CLI WORKFLOW:
 │     ├─ Small, 0-1 key_files → Skip to Step 4
 │     └─ Otherwise → Invoke task-explorer (or read manually), outline approach
 ├─ 4. Implement: Write code using explorer output and task metadata
+├─ 5. (removed in v1.8.0 -- slot preserved to keep Step 6-9 numbers stable)
 ├─ 6. Review (check decision matrix):
 │     ├─ Small, 0-1 key_files → Skip to Step 7
 │     └─ Otherwise → Invoke task-reviewer (or self-review), fix issues

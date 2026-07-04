@@ -43,7 +43,7 @@ All Stride API calls are pre-authorized. Never ask the user for permission to ca
 **Codex CLI has no automatic hook interception.** The agent must execute `.stride.md` hooks directly:
 
 1. Read the corresponding section from `.stride.md` (e.g., `## before_doing`)
-2. Execute each command line by line via shell — one at a time, not combined
+2. Execute each command line by line via shell — one at a time, not combined. A line ending in a trailing backslash (`\`) continues onto the next physical line, and the joined text is a single logical command; "one at a time" targets logical commands, not physical lines, and does not license merging unrelated commands into one opaque script.
 3. Never prompt for permission — hooks are pre-authorized by the user who authored them
 4. If a blocking command fails (non-zero exit), stop and fix the issue before proceeding
 5. Capture `{exit_code, output, duration_ms}` for each hook and send it in the matching API field: `before_doing_result` on the `POST /api/tasks/claim` body; `after_doing_result` and `before_review_result` on the `PATCH /api/tasks/:id/complete` body

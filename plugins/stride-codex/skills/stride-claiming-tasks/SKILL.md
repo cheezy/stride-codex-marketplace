@@ -121,7 +121,7 @@ Before claiming any task, verify these files exist:
 3. **Review task details** - Read description, acceptance criteria, key files
 4. **Check task completeness** - If key_files is empty OR testing_strategy is missing OR verification_steps is empty, activate stride-enriching-tasks
 5. **Read .stride.md before_doing section** - Get the setup command
-6. **Execute before_doing hook** (blocking, 60s timeout) — Execute each line one at a time, NO permission prompts
+6. **Execute before_doing hook** (blocking, 60s timeout) — Execute each line one at a time, NO permission prompts (a backslash-continued line is one logical command, not a merge of separate commands)
    - Capture: `exit_code`, `output`, `duration_ms`
 7. **If before_doing fails:** FIX ISSUES, do NOT proceed
 8. **Hook succeeded?** Call `POST /api/tasks/claim` WITH hook result
@@ -174,16 +174,28 @@ All hook commands are pre-authorized. Execute them immediately. Do NOT announce,
 
 ### Executing before_doing Hook
 
+**First, record the task base ref — before before_doing runs.** before_doing may `git pull` or commit and move `HEAD`, so capture the true starting point at claim time and export it for the whole task:
+
+```bash
+# Optional — changed_files stays optional — but anchoring the base ref here
+# prevents the completion-time HEAD~1 fallback from diffing against an
+# unrelated pre-existing commit. Consumed later by the changed_files snapshot.
+export TASK_BASE_REF=$(git rev-parse HEAD)
+```
+
 1. Read the `## before_doing` section from `.stride.md`
 2. Set environment variables (TASK_ID, TASK_IDENTIFIER, etc.)
 3. **Execute each command line immediately — NO permission prompts**
 4. Capture the results:
 
 ```bash
-START_TIME=$(date +%s%3N)
+# date +%N is GNU-only (BSD/macOS date lacks it); use python3 for portable
+# milliseconds, falling back to whole-second date when python3 is unavailable.
+now_ms() { python3 -c 'import time;print(int(time.time()*1000))' 2>/dev/null || echo $(( $(date +%s) * 1000 )); }
+START_TIME=$(now_ms)
 OUTPUT=$(timeout 60 bash -c 'git pull origin main && mix deps.get' 2>&1)
 EXIT_CODE=$?
-END_TIME=$(date +%s%3N)
+END_TIME=$(now_ms)
 DURATION=$((END_TIME - START_TIME))
 ```
 
@@ -318,7 +330,8 @@ POST /api/tasks/claim
 #    Then running hook afterward
 
 # Execute before_doing hook first
-   START_TIME=$(date +%s%3N)
+   # date +%N is GNU-only; use python3 for portable ms (whole-second date fallback)
+   START_TIME=$(python3 -c 'import time;print(int(time.time()*1000))' 2>/dev/null || echo $(( $(date +%s) * 1000 )))
    OUTPUT=$(timeout 60 bash -c 'git pull && mix deps.get' 2>&1)
    EXIT_CODE=$?
    # ...capture results

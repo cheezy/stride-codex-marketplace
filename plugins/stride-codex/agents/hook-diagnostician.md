@@ -1,6 +1,6 @@
 ---
 name: hook-diagnostician
-description: Use this agent when a Stride hook (before_doing, after_doing, before_review, after_review) fails during task lifecycle. The agent parses the hook output, identifies failure patterns, categorizes issues by severity, and returns a prioritized fix plan.
+description: Use this agent when a Stride hook (before_doing, after_doing, before_review, after_review, after_goal) fails during the task or goal lifecycle. The agent parses the hook output, identifies failure patterns, categorizes issues by severity, and returns a prioritized fix plan.
 tools: ["read", "search"]
 ---
 
@@ -271,6 +271,9 @@ Suggested fix: Resolve conflicts in listed files. Open each file, find <<<< mark
 - after_doing: 120,000 ms
 - before_review: 60,000 ms
 - after_review: 60,000 ms
+- after_goal: server-supplied — honors the `hook.timeout` value in the API response (typically ~60,000 ms), not a fixed client-side constant. Compare the measured `duration_ms` against the response's `hook.timeout` rather than a hardcoded threshold.
+
+**after_goal env context:** Unlike the four task-scoped hooks (which carry `TASK_*` env vars), `after_goal` runs under `GOAL_*` env vars (`GOAL_ID`, `GOAL_IDENTIFIER`, `GOAL_TITLE`, `GOAL_DESCRIPTION`). When an after_goal failure references an unset or empty `GOAL_*` variable, the root cause is the **export step of the manual after_goal path** (the agent did not set the `GOAL_*` vars from the response's `hook.env` block before running the command) — not a bug in the command itself. Point the fix at the export step, not at the hook body.
 
 **When timeout detected:**
 ```
