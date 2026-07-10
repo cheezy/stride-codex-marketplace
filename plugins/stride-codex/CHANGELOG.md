@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.23.0] - 2026-07-10
+
+after_goal reliability port (**G319 — after_goal reliability port — stride-codex (docs-only)**): documents the canonical-file capture and the agent-run fresh-GET fallback so `after_goal` detection is truncation-proof on Codex CLI (which has no plugin hook script and reads the response from truncatable context). Feature minor (1.22.0 → 1.23.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change.
+
+### Added — capture the `/complete` and `/mark_reviewed` response to a canonical file (W1646)
+
+`skills/stride-completing-tasks/SKILL.md` now appends `| tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"` to the `/complete` curl so the full, untruncated response is written to a canonical file (with a `curl --output` fallback for `tee`-less shells), documents that `/mark_reviewed` uses the identical capture, and notes that `.stride/` must be gitignored (the root-level `.stride-changed-files.json` is a separate entry). `skills/stride-workflow/SKILL.md` references the capture from its after_goal detect step. Framing is adapted for Codex CLI — the capture is a durable record the agent itself can read, not a hook-truncation workaround (Codex has no hook script).
+
+### Changed — read the after_goal entry from the canonical file, not from context (W1647)
+
+The "Detect after_goal" step in both `skills/stride-completing-tasks/SKILL.md` and `skills/stride-workflow/SKILL.md` was rewritten from a "cat the file to eyeball it" note into a file-first `jq` read: it validity-gates the canonical file with `jq -e .`, isolates the after_goal entry with `.hooks[]? | select(.name == "after_goal")`, and reads `GOAL_*` / `HOOK_TIMEOUT_MS` from `.hook.env.*` / `.hook.timeout`, falling back to the in-context response only when the file is absent, empty, or invalid — and re-reads from the file rather than trusting env carried across shell turns. Both skills carry the identical `jq` block.
+
+### Added — the agent-run fresh `GET after_goal_status` as the truncation guarantee (W1648)
+
+Both skills gained an identical "Fresh-GET fallback" subsection: when the captured response is truncated or absent, the agent issues a fresh, self-contained `GET /api/tasks/:id/after_goal_status` (`:id` is the just-completed task's id; the endpoint is server-side, kanban W1613), writing the compact response to the canonical file with `curl -o` and parsing `.after_goal_armed` / `.env` from disk. URL/token are re-read durably from `.stride_auth.md` and `TASK_ID` is re-derived from the captured file — never a prior turn's export. The two detection paths are mutually exclusive (`## after_goal` runs at most once), and the docs make explicit that the grace-window worker only flips the goal's status and never performs the push.
+
+### Changed — AGENTS.md / README.md parity (W1649)
+
+`AGENTS.md` and `README.md` now describe the canonical-file capture and fresh-GET reliability model consistently with the skills, so the top-level docs no longer imply detection reads from truncatable context.
+
+### Backward compatibility
+
+Documentation/skill-text only across all four changes. No hook logic, `.stride.md`, env-var matrix, or wire-shape change; the `{exit_code, output, duration_ms}` hook-result shape, the completion payload contract, and the `capture_changed_files` snapshot format are all unchanged. The `.last-api-response.json` capture and the `GET /api/tasks/:id/after_goal_status` fallback are best-effort and additive — agents that skip them fall back to the server's grace-window worker exactly as before.
+
+### Release
+
+stride-codex is distributed through its own vendored marketplace **`stride-codex-marketplace`** (which in-repo copies `plugins/stride-codex/`), not the Claude Code `stride-marketplace`. A release is therefore two repos: (1) tag + `gh release` **v1.23.0** on the `stride-codex` plugin repo, and (2) re-vendor the plugin tree into `stride-codex-marketplace`, bump its README plugins-table version to match `plugin.json`, then commit + tag + `gh release` **v1.23.0** there (per that repo's `RELEASE.md`).
+
+### Source
+
+G319 — after_goal reliability port — stride-codex (docs-only) (W1646, W1647, W1648, W1649).
+
 ## [1.22.0] - 2026-07-03
 
 Enhancements release (**G297 — Stride-Codex Enhancements**): a batch of documentation-consistency, portability, and clarity fixes across the Codex skills and agents. Feature minor (1.21.0 → 1.22.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change.

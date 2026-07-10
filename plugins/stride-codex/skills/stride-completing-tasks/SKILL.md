@@ -329,8 +329,35 @@ curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
          {name: "after_doing", dispatched: true, duration_ms: 45678},
          {name: "before_review", dispatched: true, duration_ms: 2340}
        ]
-     }')"
+     }')" \
+  | tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"
 ```
+
+**Capture the response to the canonical file.** The `| tee` above writes the
+full, untruncated `/complete` response to
+`${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` **and** passes it
+through to stdout, so you still see the response inline. Codex CLI has no
+plugin hook reading your stdout — the capture is a durable record **you** can
+`cat` when the echoed response is truncated in your own context, which is
+exactly what the manual after_goal detection step below needs to inspect the
+full `hooks` array. Ensure the directory exists first
+(`mkdir -p "${CLAUDE_PROJECT_DIR:-.}/.stride"`). The same capture applies to
+the `/mark_reviewed` curl in the `needs_review=true` path — when you invoke
+`/mark_reviewed`, pipe its response through the identical
+`| tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"` so
+after_goal detection works the same way after a review approval.
+
+**Portability — `tee`-less shells.** `tee` is the one blessed pipe here (it
+preserves stdout while writing the file). Where `tee` is unavailable, use
+`curl --output "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"`
+instead — the response then goes to the file only, not stdout — or skip
+capture entirely and re-fetch the task's after_goal status if you need it.
+
+**Gitignore `.stride/`.** The `.stride/` directory holds ephemeral,
+agent-local state (`.last-api-response.json`); it **must** be listed in the
+project's `.gitignore` so these files never land in a commit. (The
+changed-files snapshot `.stride-changed-files.json` is a separate project-root
+dotfile — give it its own `.gitignore` entry too.)
 
 The resulting request body has this shape (illustrative — populated values
 match the `--arg` / `--argjson` substitutions above):
@@ -755,9 +782,78 @@ When the just-completed task is the **final remaining child of a parent goal**, 
 
 **Because stride-codex has no plugin hook script, the agent is responsible for executing after_goal manually.** Five-step path:
 
-1. **Detect**: Inspect the response's `hooks` array. If any entry has `name == "after_goal"`, the after_goal lifecycle has fired.
+1. **Detect (read the canonical file, not your context)**: The `/complete` and `/mark_reviewed` curls wrote the full, untruncated response to `${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` (the `| tee` capture in the API Request Format section above). Read the after_goal entry — **and** its `hook.env` `GOAL_*` values — from that file with `jq`, because your in-context copy of the response may be truncated. Fall back to the in-context response body **only** when the file is absent, empty, or not valid JSON. Re-read these values from the file here rather than trusting env carried across shell turns — the export below does not survive a fresh turn.
+
+```bash
+RESP="${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"
+# File-first: trust the canonical capture only when it is present, non-empty,
+# AND valid JSON. Otherwise fall back to the response body still visible in
+# your context (paste it into a temp file and point PAYLOAD_SRC at that).
+if [ -s "$RESP" ] && jq -e . "$RESP" > /dev/null 2>&1; then
+  PAYLOAD_SRC="$RESP"
+else
+  PAYLOAD_SRC="${TMPDIR:-/tmp}/stride-in-context-response.json"  # fallback: the response you can see in context
+fi
+
+# Isolate the after_goal entry. An empty result has TWO causes, distinguished in 1a below:
+# (a) PAYLOAD_SRC parsed as valid JSON but had no after_goal entry -> lifecycle did not fire;
+# (b) PAYLOAD_SRC was unusable (truncated/absent) -> do NOT assume; run the fresh GET (1a).
+AFTER_GOAL_ENTRY=$(jq -c '.hooks[]? | select(.name == "after_goal")' "$PAYLOAD_SRC")
+if [ -n "$AFTER_GOAL_ENTRY" ]; then
+  GOAL_ID=$(printf '%s' "$AFTER_GOAL_ENTRY"        | jq -r '.hook.env.GOAL_ID')
+  GOAL_IDENTIFIER=$(printf '%s' "$AFTER_GOAL_ENTRY" | jq -r '.hook.env.GOAL_IDENTIFIER')
+  GOAL_TITLE=$(printf '%s' "$AFTER_GOAL_ENTRY"      | jq -r '.hook.env.GOAL_TITLE')
+  GOAL_DESCRIPTION=$(printf '%s' "$AFTER_GOAL_ENTRY" | jq -r '.hook.env.GOAL_DESCRIPTION')
+  HOOK_TIMEOUT_MS=$(printf '%s' "$AFTER_GOAL_ENTRY"  | jq -r '.hook.timeout // 60000')
+fi
+```
+
+**1a. Fresh-GET fallback (when the handed response was truncated or absent).** An empty `AFTER_GOAL_ENTRY` has two very different causes — do not conflate them:
+
+- **`PAYLOAD_SRC` parsed as valid JSON but held no `after_goal` entry** → the lifecycle genuinely did not fire (this was not the parent goal's last child). Skip steps 2-5; you are done.
+- **`PAYLOAD_SRC` was absent, empty, or not valid JSON** (both the canonical file *and* the in-context fallback were unusable — the truncation case) → you cannot conclude anything yet. Ask the server directly with a fresh, self-contained `GET /api/tasks/:id/after_goal_status` (kanban W1613; `:id` is the **just-completed task's** id, not the goal's). Its response is deliberately compact and is never subject to output truncation.
+
+Source every input durably — re-read the URL/token from `.stride_auth.md` (the durable source your setup step already used) and re-derive `TASK_ID` from the captured response file. Never trust a variable an earlier turn exported.
+
+```bash
+# Durable re-read from .stride_auth.md (mirror the setup step) — NOT a prior turn's export.
+AUTH="${CLAUDE_PROJECT_DIR:-.}/.stride_auth.md"
+STRIDE_API_URL=$(grep -oE 'https?://[^`" ]+' "$AUTH" | head -n1)
+# If .stride_auth.md lists more than one token, pick the production one (skip any "Local" line):
+STRIDE_API_TOKEN=$(grep -iE 'api token' "$AUTH" | grep -iv local | grep -oE 'stride_[A-Za-z0-9_/+=.-]+' | head -n1)
+# TASK_ID: re-derive from the captured /complete response, not a claim-time export.
+TASK_ID=$(jq -r '.data.id // .data.identifier' "$PAYLOAD_SRC" 2>/dev/null)
+
+# Write the compact status straight to the canonical file with -o (no stdout to truncate),
+# then parse from disk.
+STATUS_FILE="${CLAUDE_PROJECT_DIR:-.}/.stride/.after-goal-status.json"
+curl -s --max-time 10 -o "$STATUS_FILE" \
+  -H "Authorization: Bearer $STRIDE_API_TOKEN" \
+  "$STRIDE_API_URL/api/tasks/$TASK_ID/after_goal_status"
+
+if jq -e . "$STATUS_FILE" > /dev/null 2>&1 && [ "$(jq -r '.after_goal_armed // false' "$STATUS_FILE")" = "true" ]; then
+  # Armed: rebuild the after_goal-entry shape the rest of this path expects, then
+  # re-derive GOAL_* with the SAME reads as the Detect block above.
+  AFTER_GOAL_ENTRY=$(jq -c '{hook: {env: (.env // {}), timeout: 60000}}' "$STATUS_FILE")
+  GOAL_ID=$(printf '%s' "$AFTER_GOAL_ENTRY"         | jq -r '.hook.env.GOAL_ID')
+  GOAL_IDENTIFIER=$(printf '%s' "$AFTER_GOAL_ENTRY" | jq -r '.hook.env.GOAL_IDENTIFIER')
+  GOAL_TITLE=$(printf '%s' "$AFTER_GOAL_ENTRY"      | jq -r '.hook.env.GOAL_TITLE')
+  GOAL_DESCRIPTION=$(printf '%s' "$AFTER_GOAL_ENTRY" | jq -r '.hook.env.GOAL_DESCRIPTION')
+  HOOK_TIMEOUT_MS=$(printf '%s' "$AFTER_GOAL_ENTRY"  | jq -r '.hook.timeout // 60000')
+  # ...proceed to steps 2-5.
+else
+  # Not armed, or the GET failed / returned invalid JSON: a clean no-op. Do NOT run
+  # ## after_goal and do NOT PATCH. Leave AFTER_GOAL_ENTRY empty and skip steps 2-5.
+  AFTER_GOAL_ENTRY=""
+fi
+```
+
+**Run `## after_goal` at most once.** The trust-the-handed-response path (the Detect block above) and this fresh-GET path are mutually exclusive — only reach the GET when the handed response was unusable. Never run both: a double-run would execute `## after_goal` twice and double-`PATCH` the result.
+
+**The grace-window worker never pushes.** When the fresh GET reports not-armed, when it fails, or when `.stride.md` has no `## after_goal` section, the goal still reaches Done — but only because the server's grace-window worker flips the goal's *status*. That worker never runs your `## after_goal` section, so any push / PR / notification that section performs happens **only** when the agent runs step 4 and `PATCH`es the result. If the goal's work must be pushed, the agent — not the worker — has to run `## after_goal`.
+
 2. **Read**: Read the `## after_goal` section from `.stride.md`. If missing, skip steps 3-5 — the server's grace-window worker promotes the goal to Done automatically when no agent reports.
-3. **Export**: Set the `GOAL_*` env vars (and the standard `BOARD_*` / `COLUMN_*` / `AGENT_NAME` / `HOOK_NAME`) from the response's `hook.env` block before running commands. Also set `HOOK_TIMEOUT_MS` from the after_goal entry's `timeout` field (milliseconds) so the Execute step's `timeout` wrapper honors the real server value instead of the 60s fallback. The server values are the single source of truth — never invent or derive them client-side.
+3. **Export**: The `GOAL_*` vars (plus the standard `BOARD_*` / `COLUMN_*` / `AGENT_NAME` / `HOOK_NAME`) and `HOOK_TIMEOUT_MS` were read from the after_goal entry's `hook.env` / `timeout` fields in the Detect jq block above (extend the same `jq -r '.hook.env.<VAR>'` reads for `BOARD_*` / `COLUMN_*` / `AGENT_NAME` / `HOOK_NAME`). Export them into the child process environment before running commands. The server values in the file are the single source of truth — never invent or derive them client-side, and re-read them from the file rather than relying on a prior turn's env.
 4. **Execute**: Run each command in the `## after_goal` section via the platform's shell tool, wrapped in a `timeout` derived from the server-supplied `hook.timeout` (the after_goal entry's `timeout` field, in milliseconds; fall back to 60s if absent). Capture `exit_code` (last command's exit), `output` (combined stdout+stderr), and `duration_ms` (wall-clock total):
 
 ```bash
