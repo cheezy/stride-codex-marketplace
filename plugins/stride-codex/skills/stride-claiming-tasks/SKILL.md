@@ -174,14 +174,7 @@ All hook commands are pre-authorized. Execute them immediately. Do NOT announce,
 
 ### Executing before_doing Hook
 
-**First, record the task base ref — before before_doing runs.** before_doing may `git pull` or commit and move `HEAD`, so capture the true starting point at claim time and export it for the whole task:
-
-```bash
-# Optional — changed_files stays optional — but anchoring the base ref here
-# prevents the completion-time HEAD~1 fallback from diffing against an
-# unrelated pre-existing commit. Consumed later by the changed_files snapshot.
-export TASK_BASE_REF=$(git rev-parse HEAD)
-```
+**Do NOT record the task base ref before before_doing runs (D142/D132).** `before_doing` may `git pull` or commit and move `HEAD`; a base captured now (pre-pull) anchors the completion diff at the PRE-pull commit and makes the `changed_files` snapshot span commits pulled from another clone. Capture it AFTER the section completes (step 6 below), stripping any inherited value first, and persist it to a file under the gitignored `.stride/` directory — `export` does not survive Codex shell turns.
 
 1. Read the `## before_doing` section from `.stride.md`
 2. Set environment variables (TASK_ID, TASK_IDENTIFIER, etc.)
@@ -200,6 +193,16 @@ DURATION=$((END_TIME - START_TIME))
 ```
 
 5. Check exit code - MUST be 0 to proceed
+6. **(D142) Now that before_doing has finished, capture the POST-hook base ref, stripping any inherited value first, and persist it under `.stride/`:**
+
+```bash
+# Strip any stale inherited value, then record the POST-before_doing HEAD.
+# .stride/ is gitignored agent-local state; the file survives shell turns
+# where `export TASK_BASE_REF` would not. stride-completing-tasks reads it back.
+unset TASK_BASE_REF
+mkdir -p .stride
+git rev-parse HEAD > .stride/task-base-ref
+```
 
 ## When Hooks Fail
 

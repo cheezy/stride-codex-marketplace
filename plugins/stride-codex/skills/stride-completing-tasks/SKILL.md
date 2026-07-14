@@ -437,9 +437,12 @@ is to add a snapshot-writer line to your `.stride.md` `## after_doing`
 section so it runs alongside your tests / lint / build commands and produces
 the snapshot before you assemble the completion curl. The canonical
 capture function lives in
-[`stride/hooks/stride-hook.sh`](https://github.com/cheezy/stride/blob/main/hooks/stride-hook.sh) —
-source it from your shell, then call `capture_changed_files "$TASK_BASE_REF"`
-and redirect to `$CLAUDE_PROJECT_DIR/.stride-changed-files.json`. The
+[`stride/hooks/stride-hook.sh`](https://github.com/cheezy/stride/blob/main/hooks/stride-hook.sh)
+**at v1.36.0 or later** —
+source it from your shell, then call
+`capture_changed_files "$(cat .stride/task-base-ref)"` (the base ref persisted
+after before_doing — see below) and redirect to
+`$CLAUDE_PROJECT_DIR/.stride-changed-files.json`. The
 function handles working-tree-relative semantic, untracked-new-file
 synthesis, binary detection, and 500-line truncation per the contract.
 
@@ -450,33 +453,63 @@ A minimal Codex-friendly `## after_doing` looks like:
 mix test
 mix credo --strict
 # Capture changed_files for the upcoming /complete payload.
-# Requires TASK_BASE_REF to be exported (set during claim).
-# CAPTURE_SCRIPT path is illustrative — vendor the canonical bash function
-# body from stride/hooks/stride-hook.sh (the block between the
-# `# --- Per-file diff capture` banner and the next `# ---` banner) into
-# your own script at any location you choose, then point CAPTURE_SCRIPT
-# at it.
+# (D142) Read the base ref from .stride/task-base-ref — the file
+# stride-claiming-tasks persisted AFTER before_doing ran. `export TASK_BASE_REF`
+# does NOT survive Codex's separate shell turns, so the env var is unreliable
+# here; the persisted file is the source of truth (HEAD~1 only as a last resort).
+# CAPTURE_SCRIPT path is illustrative — vendor the canonical bash function body
+# from stride/hooks/stride-hook.sh AT v1.36.0 OR LATER (the block between the
+# `# --- Per-file diff capture` banner and the next `# ---` banner) into your own
+# script at any location you choose, then point CAPTURE_SCRIPT at it.
 bash -c 'source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.sh}" && \
-  capture_changed_files "${TASK_BASE_REF:-HEAD~1}" \
+  capture_changed_files "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride/task-base-ref" 2>/dev/null || echo HEAD~1)" \
   > "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || true'
 ```
 
-**Base-ref warning.** The `${TASK_BASE_REF:-HEAD~1}` fallback applies only when
-`TASK_BASE_REF` is unset. Relying on the `HEAD~1` fallback diffs the working
-tree against whatever commit happens to sit one before `HEAD` — which may be an
-unrelated, pre-existing commit — so the snapshot can sweep in edits that were
-never part of this task. Set `TASK_BASE_REF=$(git rev-parse HEAD)` at **claim
-time** (see `stride-claiming-tasks` and `stride-workflow` Step 2), before
-before_doing runs, so the diff is anchored to the true start of your work.
-`changed_files` stays optional either way — an empty array is a valid
-completion; the base ref only makes a populated snapshot accurate.
+**Base-ref warning (D142/D132).** The `HEAD~1` fallback applies only when
+`.stride/task-base-ref` is absent. Relying on it diffs the working tree against
+whatever commit happens to sit one before `HEAD` — which may be an unrelated,
+pre-existing commit — so the snapshot can sweep in edits that were never part of
+this task. **Capture the base ref AFTER `before_doing` completes, never before,
+and persist it to `.stride/task-base-ref`** (see `stride-claiming-tasks` and
+`stride-workflow` Step 2). Capturing before `before_doing` would anchor the diff
+at the PRE-pull commit and make the snapshot span commits `before_doing`'s
+`git pull` fetched from another clone (the D132 incident); capturing after it,
+persisted to the gitignored `.stride/` dir, is the only reliable path in Codex
+because `export TASK_BASE_REF` does not survive shell turns. `changed_files`
+stays optional either way — an empty array is a valid completion; the base ref
+only makes a populated snapshot accurate.
 
+**Vendor the v1.36.0+ capture function (inherits the D137 committed-range fix).**
 stride-codex does NOT ship a capture script of its own — Codex CLI has no
 plugin-side hook surface to host one, and the function body in
 [`stride/hooks/stride-hook.sh`](https://github.com/cheezy/stride/blob/main/hooks/stride-hook.sh)
-(between the `# --- Per-file diff capture` banner and the next `# ---`
-banner) is the entire portable implementation. Vendor it once into a
-location of your choosing and reference it via `$CAPTURE_SCRIPT`.
+**at v1.36.0 or later** (between the `# --- Per-file diff capture` banner and the
+next `# ---` banner) is the entire portable implementation. Vendor it once into a
+location of your choosing and reference it via `$CAPTURE_SCRIPT`. At **v1.36.0+**
+that function carries the D142 D137 committed-range override: a path in the
+`base..HEAD` committed range survives the dirty-baseline filter, so files the
+task committed are never silently dropped from the snapshot. Re-vendoring an
+older copy re-introduces D137 — always pull the v1.36.0-or-later function body.
+
+**Trust-guard decision (D142 `resolve_snapshot_base`).** The canonical plugin's
+`resolve_snapshot_base` is a **separate** function from `capture_changed_files`
+(it is not part of the vendored block above). **stride-codex deliberately does
+NOT vendor it.** The trust guard exists to repair a base ref that was captured
+*before* `before_doing`'s pull, or inherited stale from a prior task/session —
+both of which this skill set now prevents at the source: the base is captured
+*after* `before_doing` completes and persisted to a fresh `.stride/task-base-ref`
+each claim (`stride-claiming-tasks` step 6 `unset`s any inherited value first).
+With the pre-pull and inherited-base vectors already closed, the guard's only
+remaining benefit is the push-in-`after_doing` / push-before-complete edge, which
+the guard resolves against `origin` refs and a once-per-task-window memoization —
+machinery that has no home in Codex's manual, hook-less, single-capture flow
+(there is no persisted `base=` self-heal to share a judgment with). Vendoring it
+would add a second function and a per-capture `origin`-diffing step for a
+narrow edge that the post-`before_doing` capture already makes rare. If a Codex
+workflow does push its own task commits before completing, capture the snapshot
+*before* that push (the base is still an ancestor of the working tree) rather
+than adopting the guard.
 
 **Working-tree semantic.** The canonical `capture_changed_files` reflects
 the agent's full working state at completion time, regardless of commit
@@ -582,10 +615,12 @@ mix test
 mix credo --strict
 # (1) Capture the snapshot. Same canonical capture_changed_files function
 # as the inline-cat flow above — vendor the body of stride/hooks/stride-hook.sh
-# between the `# --- Per-file diff capture` banner and the next `# ---`
-# banner into your own script and point CAPTURE_SCRIPT at it.
+# AT v1.36.0+ (inherits the D137 committed-range fix) between the
+# `# --- Per-file diff capture` banner and the next `# ---` banner into your own
+# script and point CAPTURE_SCRIPT at it. (D142) The base ref is read from
+# .stride/task-base-ref (persisted after before_doing), not the env var.
 bash -c 'source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.sh}" && \
-  capture_changed_files "${TASK_BASE_REF:-HEAD~1}" \
+  capture_changed_files "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride/task-base-ref" 2>/dev/null || echo HEAD~1)" \
   > "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || true'
 # (2) PUT the snapshot to the v1.16.0+ endpoint as the D61 transport-encoded
 # envelope {"changed_files":{"encoding":"base64","data":"<b64>"}} so an edge

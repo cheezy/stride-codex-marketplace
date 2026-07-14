@@ -127,22 +127,25 @@ Review the returned task completely:
 
 ## Step 2: Claim the Task
 
-**Record the task base ref BEFORE running the before_doing hook.** before_doing may `git pull` or commit and move `HEAD`, so capture the true starting point of your work at claim time and export it for the whole task:
-
-```bash
-# Optional — changed_files stays optional — but anchoring the base ref here
-# prevents the completion-time HEAD~1 fallback from diffing against an
-# unrelated pre-existing commit.
-export TASK_BASE_REF=$(git rev-parse HEAD)
-```
-
-`TASK_BASE_REF` is consumed later by the changed_files snapshot in `stride-completing-tasks`.
+**Capture the task base ref AFTER the before_doing hook completes — never before (D142/D132).** `before_doing` may `git pull` or commit and move `HEAD`; a base captured at claim time (pre-pull) anchors the completion diff at the PRE-pull commit and makes the `changed_files` snapshot span commits pulled from another clone — the D132 incident where a reviewer saw another machine's completed task inside an unrelated defect's Review diff. So capture `HEAD` only once the section has run, strip any inherited value first, and **persist it to a file under the gitignored `.stride/` directory**: `export` does NOT survive Codex's separate shell turns, so a persisted file is the only way the value reaches completion time (otherwise it silently falls back to `HEAD~1`).
 
 1. Read `.stride.md` `## before_doing` section
 2. Execute each command line one at a time via shell -- no permission prompts, no confirmation. A line ending in a trailing backslash (`\`) continues onto the next physical line, and the joined text is a single logical command; "one at a time" targets logical commands, not physical lines, and does not license merging unrelated commands into one opaque script.
 3. Capture `exit_code`, `output`, `duration_ms` for each command
 4. If any command fails (non-zero exit): fix the issue, re-run -- do NOT proceed
-5. Call `POST /api/tasks/claim` with the captured `before_doing_result`:
+5. **(D142) Now that before_doing has finished, capture the POST-hook base ref, stripping any inherited value first, and persist it under `.stride/`:**
+
+```bash
+# Strip any stale inherited value, then record the POST-before_doing HEAD.
+# .stride/ is gitignored agent-local state; the file survives shell turns
+# where `export TASK_BASE_REF` would not.
+unset TASK_BASE_REF
+mkdir -p .stride
+git rev-parse HEAD > .stride/task-base-ref
+```
+
+   `.stride/task-base-ref` is read back by the changed_files snapshot in `stride-completing-tasks` (the env var does not survive Codex shell turns).
+6. Call `POST /api/tasks/claim` with the captured `before_doing_result`:
 
 ```json
 {

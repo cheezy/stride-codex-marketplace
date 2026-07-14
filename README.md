@@ -36,7 +36,7 @@ codex plugin uninstall stride-codex    # Remove a plugin
 
 | Plugin | Version | Description |
 | --- | --- | --- |
-| [stride-codex](plugins/stride-codex) | 1.23.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex](plugins/stride-codex) | 1.24.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
 
 The plugin list above is kept in sync with the `plugins[]` array in
 [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json), and each

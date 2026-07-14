@@ -4,6 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.24.0] - 2026-07-14
+
+D142 base-ref port (**D145 — D142 base-ref guidance port — stride-codex (docs-only)**): inverts the base-ref timing instruction across all three lifecycle skills so the snapshot base is captured AFTER `before_doing` runs (not before), and persists it to disk so it survives Codex's separate shell turns. Feature minor (1.23.0 → 1.24.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change (stride-codex has no hook script; the agent runs `capture_changed_files` per these instructions).
+
+### Changed — capture `TASK_BASE_REF` AFTER before_doing, persisted to `.stride/` (D132)
+
+`skills/stride-workflow/SKILL.md` (Step 2) and `skills/stride-claiming-tasks/SKILL.md` previously PRESCRIBED the D132 bug — "record the task base ref BEFORE running the before_doing hook". Both are inverted in lockstep with **identical wording**: capture the base ref only once `before_doing` has finished (its `git pull` moves `HEAD`; a pre-pull base anchors the completion diff at the PRE-pull commit and sweeps in commits pulled from another clone — the D132 incident), `unset` any inherited value first, and persist it with `git rev-parse HEAD > .stride/task-base-ref`. Because `export TASK_BASE_REF` does NOT survive Codex's separate shell turns (it silently fell back to `HEAD~1` at completion), the value is written to a file under the gitignored `.stride/` agent-local state dir. `skills/stride-completing-tasks/SKILL.md` now reads the base from `.stride/task-base-ref` (`capture_changed_files "$(cat .stride/task-base-ref 2>/dev/null || echo HEAD~1)"`) at both capture sites, and its base-ref warning is inverted to match.
+
+### Changed — bump the vendored capture-function expectation to stride v1.36.0+ (D137)
+
+`skills/stride-completing-tasks/SKILL.md` now instructs vendoring the canonical `capture_changed_files` from `stride/hooks/stride-hook.sh` **at v1.36.0 or later**, so re-vendoring users inherit the D142 D137 committed-range override: a path in the `base..HEAD` committed range survives the dirty-baseline filter and files the task committed are never silently dropped. Re-vendoring an older copy re-introduces D137.
+
+### Documented — trust-guard (`resolve_snapshot_base`) decision: not vendored (D142)
+
+`skills/stride-completing-tasks/SKILL.md` records the decision that stride-codex deliberately does **not** vendor `resolve_snapshot_base` (a function separate from `capture_changed_files`). The guard repairs bases captured before the `before_doing` pull or inherited stale — both vectors are now closed at the source by the post-`before_doing` capture and the per-claim `.stride/task-base-ref` (re)write that `unset`s any inherited value. Its only remaining benefit is the push-in-`after_doing` edge, which it resolves via `origin`-diffing and a once-per-task-window memoization with no home in Codex's manual, hook-less, single-capture flow; the skill instead advises capturing the snapshot before any self-push.
+
+### Backward compatibility
+
+Documentation/skill-text only. No hook logic, `.stride.md`, env-var matrix, or wire-shape change; the `{exit_code, output, duration_ms}` hook-result shape, the completion payload contract, and the `capture_changed_files` snapshot format are all unchanged. Agents on the old guidance still complete tasks — the base-ref change only makes a populated snapshot accurate and stops a stale/pre-pull base from spanning another clone's commits.
+
+### Release
+
+Bump `.codex-plugin/plugin.json` to `1.24.0`, tag `v1.24.0`, and cut the GitHub release; re-vendor and release `stride-codex-marketplace` (README plugin-table version + RELEASE.md catalog validator).
+
+### Source
+
+D145 — mirrors the canonical `stride` plugin's D142 fix (`stride` v1.36.0). The D137 committed-range fix is inherited by re-vendoring the v1.36.0+ `capture_changed_files`; `resolve_snapshot_base` is documented as intentionally not vendored.
+
 ## [1.23.0] - 2026-07-10
 
 after_goal reliability port (**G319 — after_goal reliability port — stride-codex (docs-only)**): documents the canonical-file capture and the agent-run fresh-GET fallback so `after_goal` detection is truncation-proof on Codex CLI (which has no plugin hook script and reads the response from truncatable context). Feature minor (1.22.0 → 1.23.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change.
