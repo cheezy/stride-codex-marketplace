@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.25.0] - 2026-07-16
+
+Create-payload `agent_name` port (**W1686 — mirrors canonical stride W1684**): documents a top-level `agent_name` on every create request so agent attribution survives a forgotten `created_by_agent`. Feature minor (1.24.0 → 1.25.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change (stride-codex has no hook script).
+
+### Added — every documented create payload carries a top-level `agent_name` (W1686)
+
+`stride-creating-tasks`, `stride-creating-goals`, and `agents/task-decomposer.md` now document a top-level `agent_name` on every create request — beside the `task` root key for `POST /api/tasks` and beside the `goals` root key for `POST /api/tasks/batch` — set to the exact same plain agent name the port already sends as `agent_name` on claim and complete (`"Codex CLI"`, never the `ai_agent:<model>` token form). Per-task `created_by_agent` is forgotten in practice and cannot be backfilled (`PATCH` rejects it), so tasks lost their attribution permanently and the `/agents` feed rendered them with a `?` avatar. The root-level param is the always-sent fallback that kanban D137 teaches the server to read. Both creation skills gain the full five-step server resolution order (explicit `created_by_agent` → token `ai_agent:<model>` → top-level `agent_name` → token's last agent name → unset), an `agent_name` row in their field tables, and an explicit note that `agent_name` is display metadata only — never an authorization signal. Unlike the canonical plugin, this port has no `commands/` directory (Codex CLI has no command files — the orchestrator is the entry point, see `AGENTS.md`), so there is no `commands/create-goals.md` equivalent to update.
+
+### Fixed — `stride-creating-tasks` documented the single-create body without its `task` root key
+
+The skill's complete example was a bare task object, but `POST /api/tasks` requires a `{"task": {...}}` envelope and returns `422 Missing 'task' key` without it. Surfaced while placing `agent_name` "beside the task root key" — the key it had to sit beside was never documented. A new Request Envelope section shows the wrapper with `agent_name` as its top-level sibling, and the Quick Reference heading is renamed to name the block as the value of the `task` key rather than the request body; the single-goal format in `agents/task-decomposer.md` is corrected the same way. The port inherited this defect from the canonical plugin, where W1684 fixed it. (The canonical plugin also carried four unquoted JSON keys in these examples; this port's copies were already correctly quoted, so no equivalent fix was needed here.)
+
+### Backward compatibility
+
+Fully backward compatible, and safe to ship ahead of the server. No `.stride.md`, hook, env-var, or `.stride_auth.md` change. Unknown top-level keys are ignored by older servers, so sending `agent_name` before kanban D137 reaches production is a no-op. `created_by_agent` guidance is unchanged and still highest precedence — the new param is a fallback, never a replacement.
+
+### Release
+
+Bump `.codex-plugin/plugin.json` to `1.25.0`, tag `v1.25.0`, and cut the GitHub release; re-vendor and release `stride-codex-marketplace` (README plugin-table version + RELEASE.md catalog validator).
+
+### Source
+
+W1686 (mirrors canonical stride W1684, released as `stride` v1.37.0); W1687 cut this release. Kanban D137 ships the server half.
+
 ## [1.24.0] - 2026-07-14
 
 D142 base-ref port (**D145 — D142 base-ref guidance port — stride-codex (docs-only)**): inverts the base-ref timing instruction across all three lifecycle skills so the snapshot base is captured AFTER `before_doing` runs (not before), and persists it to disk so it survives Codex's separate shell turns. Feature minor (1.23.0 → 1.24.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change (stride-codex has no hook script; the agent runs `capture_changed_files` per these instructions).

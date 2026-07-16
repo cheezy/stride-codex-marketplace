@@ -191,6 +191,8 @@ The `stride-creating-tasks`, `stride-enriching-tasks`, and `stride-workflow` ski
 
 (v1.19.0+) The `stride-creating-tasks` and `stride-creating-goals` skills document the optional `created_by_agent` field — set it to the plugin's own agent name (`"Codex CLI"`, the same value sent as `agent_name` on claim/complete) so the `/agents` feed attributes the creating agent instead of a `?`. It is create-only and forbidden on `PATCH`, and the server propagates a batch goal's value to every nested child task.
 
+(v1.25.0+) Both creation skills also document the **top-level `agent_name`** on every create request — beside the `task` root key for `POST /api/tasks` and beside the `goals` root key for `POST /api/tasks/batch` — set to that same plain agent name. It is the always-sent fallback the server reads when `created_by_agent` is omitted (which cannot be backfilled), documented with the full five-step resolution order and an explicit note that `agent_name` is display metadata only, never an authorization signal. The same release adds a **Request Envelope** section: `POST /api/tasks` takes `{"agent_name": "...", "task": {...}}`, not a bare task object — the skill previously documented the body without its `task` root key, which the server rejects with a `422`.
+
 ## Hook Execution
 
 **Codex CLI has no automatic hook interception.** The agent must execute `.stride.md` hooks directly by reading the file and running each command via shell.
