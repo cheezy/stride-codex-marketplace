@@ -37,10 +37,33 @@ codex plugin uninstall stride-codex    # Remove a plugin
 | Plugin | Version | Description |
 | --- | --- | --- |
 | [stride-codex](plugins/stride-codex) | 1.25.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.1.0 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
 
 The plugin list above is kept in sync with the `plugins[]` array in
 [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json), and each
 version matches the vendored plugin's `.codex-plugin/plugin.json`.
+
+### stride-codex
+
+The core Stride task-lifecycle plugin: skills and agents for claiming, working,
+reviewing, and completing kanban tasks from Codex CLI. Install it with:
+
+```bash
+codex plugin install stride-codex
+```
+
+### stride-codex-exploratory-testing
+
+Structured, charter-based exploratory testing for Codex CLI — the "explored" half
+of *Tested = Checked + Explored*. Ships five doctrine skills (orchestrator,
+chartering, heuristics, oracles, session), five command-skills (charter,
+nightmare-headline, explore, recon, debrief), and two agents (charter-generator,
+explorer) for planning charters, running time-boxed sessions against a running
+app, and debriefing findings. Install it with:
+
+```bash
+codex plugin install stride-codex-exploratory-testing
+```
 
 ## How the catalog works
 
