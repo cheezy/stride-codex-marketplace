@@ -34,6 +34,8 @@ claim task → activate stride-subagent-workflow → implement → activate stri
 
 **Context-informed creation:** to create tasks/goals from existing project markdown, activate `stride-workflow` with a creation intent plus an optional directory path. The orchestrator reads the `.md` files into a read-only context bundle (via `glob`/`read`) and forwards it verbatim to `stride-creating-tasks` / `stride-creating-goals`. Codex CLI has no native command files — there are no `/stride:create-*` commands; the orchestrator invocation is the entry point, and the sub-skill `## STOP — orchestrator check` gate still applies.
 
+**Optional exploratory testing (v1.26.0+):** when the separate `stride-codex-exploratory-testing` plugin is installed, the lifecycle gains a gated **Step 6.5** (`stride-workflow`) / **Phase 3.5** (`stride-subagent-workflow`) that runs a task's `testing_strategy.manual_tests` as exploratory sessions — only when that plugin's skills/agents are present in the session AND the task carries `manual_tests`. It is optional, never gates completion, and degrades to noting manual tests as a human responsibility when the plugin is absent.
+
 ## API Authorization
 
 All Stride API calls are pre-authorized. Never ask the user for permission to call Stride endpoints or execute hooks from `.stride.md`. The user initiating a Stride workflow grants blanket authorization.

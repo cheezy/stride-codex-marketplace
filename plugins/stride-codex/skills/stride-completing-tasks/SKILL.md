@@ -791,6 +791,24 @@ Until the server flips `:strict_completion_validation` to true, missing or inval
 
 **Optional:** Include `review_report` when a task-reviewer custom agent produced a structured review. Omit it when no review was performed (e.g., small tasks with 0-1 key_files).
 
+## Recording Manual & Exploratory Testing Findings
+
+When manual testing was performed via the **stride-codex-exploratory-testing** plugin (per `stride-workflow` Step 6.5 / `stride-subagent-workflow` Phase 3.5 — which run only when the task's `testing_strategy.manual_tests` array is **non-empty** AND that plugin is **available** in the session), record the session's findings in the **existing tolerant completion fields**. Do **not** add anything new to the wire.
+
+**The two carriers — and the only two:**
+
+1. **`completion_notes`** — Summarize the exploratory session here: what was explored, which findings/bugs surfaced (with severity), and what remains unknown. This is the primary, always-available carrier and is used whether or not a reviewer ran.
+2. **`reviewer_result.testing_strategy.note`** — When a `task-reviewer` custom agent ran, reflect the manual-testing outcome inside the reviewer's structured `testing_strategy` verdict note (the same tolerant `{status, note}` object the reviewer already emits). Reuse the field exactly as the reviewer_result passthrough already does — do not add sibling keys. When no reviewer ran (e.g., a small task, or review skipped), the findings live in `completion_notes` alone.
+
+**Hard constraints (do not violate):**
+
+- **No new server-validated field.** Do NOT introduce a new top-level completion key (e.g. `manual_testing_result`, `exploratory_findings`) — reuse `completion_notes` and `reviewer_result.testing_strategy.note`. The strict-completion-validation contract stays intact; no new required fields are added, and nothing here relaxes an existing one.
+- **No seventh `workflow_steps` name.** The vocabulary stays exactly six — `explorer`, `planner`, `implementation`, `reviewer`, `after_doing`, `before_review`. Manual/exploratory testing does NOT get its own `workflow_steps` entry.
+
+**Fallback (plugin not used) — completion is unchanged.** When the stride-codex-exploratory-testing plugin was not used — it is absent from the session, the task had no `manual_tests`, or the app was not running — record nothing extra: the completion payload is exactly what it would have been without this section. This is a graceful no-op, never a failure, and it never blocks completion.
+
+**Security — redact before recording.** Findings written into `completion_notes` or the `testing_strategy.note` must NOT include real credentials, tokens, private user data, or internal hostnames captured during exploration — redact them first. Recording findings must never weaken the strict-completion-validation contract or add fields the server would reject.
+
 ## Review vs Auto-Approval Decision
 
 After the complete endpoint succeeds:

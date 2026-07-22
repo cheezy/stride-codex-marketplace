@@ -459,6 +459,10 @@ RIGHT (arrays of strings):
 **Valid keys:** `unit_tests`, `integration_tests`, `manual_tests`, `edge_cases`, `coverage_target`
 **All values** must be strings or arrays of strings.
 
+> **Charter-friendly `manual_tests` (advisory).** When the **stride-codex-exploratory-testing plugin is available** in the session (its skills and agents appear in the session), each `manual_tests` entry is run as an **exploratory charter**, so phrase each as a chartable scenario — a target plus the information or risk to discover — rather than a bare test fragment. This is **advisory only**: it does NOT change the required `testing_strategy` shape, does NOT make `manual_tests` entries longer-required, and does NOT alter the review_queue empty-pill gate — existing terse entries still validate.
+>
+> _Before:_ `"Test in multiple browsers"` → _After:_ `"Explore the theme toggle across browsers to discover rendering inconsistencies"`
+
 ### security_considerations
 
 ```json

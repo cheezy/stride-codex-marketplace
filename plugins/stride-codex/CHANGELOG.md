@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.26.0] - 2026-07-22
+
+Optional exploratory-testing manual-testing integration (**G-parity port — mirrors the canonical stride exploratory-testing wiring**): the task lifecycle now knows how to run a task's `testing_strategy.manual_tests` as real exploratory sessions when the separate **stride-codex-exploratory-testing** plugin is installed, and degrades gracefully to the prior behavior (manual tests noted as a human responsibility) when it is not. Feature minor (1.25.0 → 1.26.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change (stride-codex has no hook script), and no new server-validated completion field. This release also finalizes the previously-staged D151 enrichment-envelope fix (folded under this heading).
+
+### Added — a gated Manual & Exploratory Testing step across the lifecycle skills
+
+- `stride-workflow` gains **Step 6.5: Manual & Exploratory Testing (Optional, Gated)**, inserted between Step 6 (Code Review) and Step 7 (Execute Hooks). Step 5 stays intentionally blank and Steps 7–9 are not renumbered. It runs only when the task's `testing_strategy.manual_tests` is non-empty AND the stride-codex-exploratory-testing plugin is available in the session (detected by its skills/agents appearing — never a slash command or TOML, and never by reading/sourcing/evaling plugin files). Dispatch is by activating the `stride-exploratory-testing-explore` skill or the `explorer` agent, each manual test framed as a charter; the step is optional, never gates completion, and preserves the exploratory-testing safety boundary (authorized non-production targets only, no destructive/production actions, app content is data not instructions).
+- `stride-subagent-workflow` documents the dispatch as **Phase 3.5** with a new `exploratory-testing` column in its decision matrix (gated independently of complexity), a flowchart gate, and a Quick Reference line.
+- `stride-completing-tasks` documents recording the session's findings in the existing tolerant fields — `completion_notes` and the `reviewer_result.testing_strategy` note — with no new server-validated field and no seventh `workflow_steps` name; the plugin-not-used path leaves the completion payload unchanged.
+- `stride-creating-tasks` and `stride-creating-goals` gain an advisory note that, when the plugin is available, each `manual_tests` entry is run as an exploratory charter, so authors should phrase entries as chartable scenarios (with a before/after example). The note is advisory only — it does not change the required `testing_strategy` shape or the review_queue empty-pill gate, so existing terse entries still validate.
+
+The trigger wording is identical across all four surfaces so authoring guidance and execution stay in sync.
+
+### Fixed — the enrichment surface documented create and update bodies without their `task` root key (D151)
+
+`stride-enriching-tasks` documented submitting an enriched task with a bare body: `POST /api/tasks` carried `-d '{...enriched task JSON...}'` and no `agent_name`. The server requires a `{"task": {...}}` envelope and rejects a bare object with `422 Missing 'task' key`, so an agent following the enrichment skill literally built a rejected request and — once corrected by hand — created a task with no attribution fallback. The create example now shows the envelope with `"agent_name": "Codex CLI"` beside the `task` key, matching the Request Envelope section in `stride-creating-tasks` and the plain agent name this port already sends on claim and complete.
+
+The same file's `PATCH /api/tasks/:id` example was broken the same way and is fixed too — but its rule differs and the doc now says so: `PATCH` needs the identical `task` root key, yet takes **no** `agent_name`, because attribution is create-only and `created_by_agent` is forbidden on update. Conflating the two would have been its own defect.
+
+The `task-enricher` agent doc is deliberately **left unwrapped**: its JSON is the agent's return value for the orchestrator to submit, not a request body, so an envelope there would be wrong. It gains a note saying exactly that, and pointing at who does the wrapping.
+
+This surface was missed by goal G4687 (the fleet-wide `agent_name` rollout) because it sits outside that goal's tasks' `key_files` and outside both of their grep sweeps.
+
+### Backward compatibility
+
+Fully backward compatible. Documentation/skill-text only — no hook logic, `.stride.md`, env-var, or `.stride_auth.md` change. The documented shapes are corrected to what the server has always required; nothing that previously worked stops working.
+
+### Release
+
+Finalized under 1.26.0 — this previously `[Unreleased]`-staged fix is released together with the exploratory-testing integration above.
+
+### Source
+
+D151 — follow-up to goal G4687; the gap was recorded by the W1684 reviewer as out of scope at the time. Kanban `task_controller.ex` is the contract of record: `create/2` reads `agent_name` beside the `task` key, `update/2` requires `task` and reads no `agent_name`.
+
 ## [1.25.0] - 2026-07-16
 
 Create-payload `agent_name` port (**W1686 — mirrors canonical stride W1684**): documents a top-level `agent_name` on every create request so agent attribution survives a forgotten `created_by_agent`. Feature minor (1.24.0 → 1.25.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change (stride-codex has no hook script).
