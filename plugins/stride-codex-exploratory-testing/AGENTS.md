@@ -1,8 +1,10 @@
 # Stride Exploratory Testing for Codex CLI
 
-> **Scaffold skeleton.** The skill and agent tables below are stubbed and are
-> filled in by later tasks as the skills and agents are ported. The workflow,
-> safety-boundary, and Tool Name Mapping sections are stable.
+Structured, charter-based exploratory testing for the Codex CLI — the "explored"
+half of *Tested = Checked + Explored*. This file is the root context Codex loads;
+it lists the skills to activate, the agents that run the work, and the safety
+boundary every session obeys. Codex has **no slash commands** — every operation
+below is a **skill activation** by name.
 
 ## Mandatory Skill Activation Rules
 
@@ -11,23 +13,38 @@ These skills carry the chartering templates, heuristic catalogs, oracle strategi
 and session discipline that are NOT available elsewhere. Working from memory
 produces unfocused sessions and unreportable findings.
 
+**Doctrine skills** (the reusable knowledge):
+
 | Operation | Activate This Skill FIRST |
 |-----------|--------------------------|
-| Decide what to explore / frame a charter | _`chartering` (ported in a later task)_ |
-| Turn a charter into concrete probes | _`heuristics` (ported in a later task)_ |
-| Judge whether an observation is a defect | _`oracles` (ported in a later task)_ |
-| Run a time-boxed session end to end | _`session` (ported in a later task)_ |
-| Route an exploratory-testing request | _`stride-exploratory-testing` front door (ported in a later task)_ |
+| Route an exploratory-testing request / front door | `stride-exploratory-testing` |
+| Decide what to explore / frame a charter | `chartering` |
+| Turn a charter into concrete probes | `heuristics` |
+| Judge whether an observation is a defect | `oracles` |
+| Run a time-boxed session end to end | `session` |
+
+**Command-skills** (the end-to-end operations; activate by name):
+
+| Operation | Activate This Skill |
+|-----------|---------------------|
+| Turn a target into ranked charters | `stride-exploratory-testing-charter` |
+| Drive charters from a worst-case headline | `stride-exploratory-testing-nightmare-headline` |
+| Plan and run a full session, then debrief | `stride-exploratory-testing-explore` |
+| Reconnoiter an unfamiliar feature first | `stride-exploratory-testing-recon` |
+| Turn session notes into a stakeholder debrief | `stride-exploratory-testing-debrief` |
 
 ## Custom Agents
 
 Custom agents support the exploratory-testing lifecycle (each is a bare `.md` file
-under `agents/`, per Codex naming convention). Filled in by later tasks:
+under `agents/`, per Codex naming convention). The command-skills dispatch them —
+you do not activate them directly:
 
 - **charter-generator** — Turn a target or risk into a ranked list of well-formed
   exploratory-testing charters. Generates charters only; never runs a session.
+  Read-only (`read`, `search`, `glob`).
 - **explorer** — Run a single time-boxed session against ONE charter and return
-  structured findings, under the absolute safety boundary below.
+  structured findings, under the absolute safety boundary below. Exercises the app
+  via `read`, `search`, `glob`, and `shell`.
 
 ## Workflow Sequence
 
