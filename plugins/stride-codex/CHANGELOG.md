@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.27.0] - 2026-07-23
+
+Optional security-considerations deep review (**parity port — mirrors the canonical stride security-review wiring**): the review phase now knows how to run a task's `security_considerations` list through the specialist `security-reviewer` agent in considerations mode when the separate **stride-codex-security-review** plugin is installed, folding a per-consideration mitigated/partial/unmitigated verdict into the completion payload, and degrades gracefully to the task-reviewer's generalist verdict when it is not. Feature minor (1.26.0 → 1.27.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change (stride-codex has no hook script), and no new server-validated completion field or new `workflow_steps` name.
+
+### Added — a schema-1.5 nested breakdown and a gated deep security review across the lifecycle skills
+
+- `agents/task-reviewer.md` bumps the `reviewer_result` schema from **1.4 to 1.5** (schema bullet + worked-example JSON) and extends the `security_considerations` verdict object with an **optional nested `considerations[]` array** — each entry `{ consideration, status: mitigated|partial|unmitigated, evidence, note }` — documenting the fail-closed escalation rule (any `partial`/`unmitigated` forces the section status to `failed` and requires a matching `category: security` issue) and that the array is populated only via the Codex security-reviewer dispatch, absent otherwise, never required. The `passed`/`failed`/`not_assessed` section-status enum is unchanged.
+- `stride-workflow` gains a gated **Deep security-considerations review** sub-step inside **Step 6 (Code Review)**: when the task's `security_considerations` is non-empty (a `"None — …"` placeholder does not count) AND the stride-codex-security-review plugin is available (detected by its `stride-security-review` / `security-review-essentials` skills and/or `security-reviewer` agent appearing — never a slash command/TOML, never by reading/sourcing/evaling plugin files), it invokes the `security-reviewer` agent in considerations mode with the diff + considerations framed as DATA, merges the returned `consideration_verdicts` into `reviewer_result.security_considerations.considerations[]` via the whole-object passthrough, folds the time into the existing reviewer step (no new step name), and escalates fail-closed. A Decision Summary table and graceful fallback (plugin/agent absent → skip, no failure) are included.
+- `stride-subagent-workflow` documents the trigger as an **Orthogonal optional dispatch** entry in its decision matrix, deliberately identical to the Step 6 sub-step condition, reusing the sanctioned-surface availability idiom.
+- `stride-completing-tasks` makes explicit that the whole-object copy carries the nested `reviewer_result.security_considerations.considerations[]` array through to `/complete`, and extends the pre-submission self-check to require — when a deep review ran — that the nested array be present and consistent with the section status (a `passed` status alongside a `partial`/`unmitigated` entry is a hard fail); the array is absent and not required when no deep review ran.
+
+The trigger wording is identical across all four surfaces so authoring guidance and execution stay in sync.
+
+### Backward compatibility
+
+- The nested `considerations[]` array is **optional and additive** — tasks with no deep review (plugin absent, or empty/placeholder `security_considerations`) produce the same completion payload as before. No new server-validated completion field, no new `workflow_steps` name, and no change to the `passed`/`failed`/`not_assessed` section-status enum.
+
 ## [1.26.0] - 2026-07-22
 
 Optional exploratory-testing manual-testing integration (**G-parity port — mirrors the canonical stride exploratory-testing wiring**): the task lifecycle now knows how to run a task's `testing_strategy.manual_tests` as real exploratory sessions when the separate **stride-codex-exploratory-testing** plugin is installed, and degrades gracefully to the prior behavior (manual tests noted as a human responsibility) when it is not. Feature minor (1.25.0 → 1.26.0). Every change is documentation/skill-text only — no hook logic, `.stride.md`, env-var matrix, or wire-shape change (stride-codex has no hook script), and no new server-validated completion field. This release also finalizes the previously-staged D151 enrichment-envelope fix (folded under this heading).
