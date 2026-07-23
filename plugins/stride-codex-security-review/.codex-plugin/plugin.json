@@ -1,0 +1,6 @@
+{
+  "name": "stride-codex-security-review",
+  "version": "0.1.0",
+  "description": "AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition.",
+  "skills": "./skills/"
+}

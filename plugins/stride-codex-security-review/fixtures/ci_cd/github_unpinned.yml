@@ -1,0 +1,26 @@
+# Smoke-test fixture: CI/CD rule pack — Rule 1 (unpinned reference)
+#
+# Workflow references three external actions:
+#   - actions/checkout@v4         — tag float, NOT a SHA → flag
+#   - org/internal-action@main    — branch ref, NOT a SHA → flag
+#   - actions/cache@a1b2c3d4...   — 40-hex-char SHA → properly pinned, do NOT flag
+#
+# Expected: 2 supply_chain findings, 0 false positive on the pinned step.
+
+name: build
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: org/internal-action@main
+        with:
+          mode: build
+
+      - uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+        with:
+          path: ~/.npm
+          key: deps

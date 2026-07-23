@@ -1,0 +1,60 @@
+{
+  "findings": [
+    {
+      "confidence": "high",
+      "cwe": [
+        "CWE-89"
+      ],
+      "description": "User-supplied username is concatenated directly into a SQL string at the query call, allowing SQL injection.",
+      "file": "lib/users.py",
+      "line": 42,
+      "owasp": [
+        "A03:2021"
+      ],
+      "remediation": "Use a parameterized query so username is bound as a parameter rather than interpolated.",
+      "severity": "critical",
+      "vulnerability_class": "injection"
+    },
+    {
+      "confidence": "medium",
+      "cwe": [
+        "CWE-287"
+      ],
+      "description": "Login endpoint compares the password digest with a non-constant-time equality check.",
+      "file": "web/login.js",
+      "line": 17,
+      "owasp": [
+        "A07:2021"
+      ],
+      "remediation": "Use a constant-time comparison for secret material.",
+      "severity": "high",
+      "vulnerability_class": "authentication"
+    },
+    {
+      "confidence": "high",
+      "cwe": [
+        "CWE-601"
+      ],
+      "description": "Open redirect: the destination is taken from user input without a host allow-list.",
+      "file": "app/redirect.rb",
+      "line": 8,
+      "owasp": [
+        "A01:2021"
+      ],
+      "remediation": "Validate the redirect target against an allow-list of internal hosts.",
+      "severity": "medium",
+      "vulnerability_class": "input_validation"
+    },
+    {
+      "confidence": "low",
+      "cwe": [],
+      "description": "Informational: a defense-in-depth header is absent but no sensitive data is served here.",
+      "file": "config/headers.ex",
+      "line": 3,
+      "owasp": [],
+      "remediation": "Consider adding the header for defense in depth.",
+      "severity": "info",
+      "vulnerability_class": "insecure_config"
+    }
+  ]
+}

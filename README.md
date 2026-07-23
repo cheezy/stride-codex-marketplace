@@ -38,6 +38,7 @@ codex plugin uninstall stride-codex    # Remove a plugin
 | --- | --- | --- |
 | [stride-codex](plugins/stride-codex) | 1.26.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.1.0 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex-security-review](plugins/stride-codex-security-review) | 0.1.0 | AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition. |
 
 The plugin list above is kept in sync with the `plugins[]` array in
 [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json), and each
@@ -63,6 +64,22 @@ app, and debriefing findings. Install it with:
 
 ```bash
 codex plugin install stride-codex-exploratory-testing
+```
+
+### stride-codex-security-review
+
+AI-powered, semantic (not pattern-matching) security review of code changes for
+Codex CLI. Ships the `security-review-essentials` doctrine skill, the
+`stride-security-review` command-equivalent skill (full flag parity — `--full`,
+`--json`, `--sarif`, `--maestro`, `--rci`, `--baseline`, `--update-baseline`,
+`--patches`, `--base`, `--fail-on`, and `--considerations`), and the
+`security-reviewer` agent with seven
+framework rule packs plus Web/supply-chain/CI-CD and MAESTRO agentic classes. Returns
+severity-graded JSON findings and per-consideration mitigated/partial/unmitigated
+verdicts. Install it with:
+
+```bash
+codex plugin install stride-codex-security-review
 ```
 
 ## How the catalog works

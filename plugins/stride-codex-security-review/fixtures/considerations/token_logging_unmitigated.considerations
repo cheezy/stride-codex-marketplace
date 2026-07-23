@@ -1,0 +1,2 @@
+User-supplied input is parameterized before it reaches the SQL query
+Authentication tokens are never written to application logs

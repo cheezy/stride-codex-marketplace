@@ -1,0 +1,26 @@
+# Drone CI — positive control for CI/CD Rule 1 (external reference not pinned to SHA).
+# Each step's plugin/image is referenced by a floating tag (`latest`, a major tag, or a
+# branch) instead of an immutable digest, so the build trusts whatever the registry
+# currently serves for that tag.
+kind: pipeline
+type: docker
+name: default
+
+steps:
+  - name: build
+    image: node:20                      # floating tag, not node@sha256:...
+    commands:
+      - npm ci
+      - npm run build
+
+  - name: publish
+    image: plugins/docker:latest        # floating `latest` tag on a third-party plugin
+    settings:
+      repo: contoso/app
+      tags: latest
+
+  - name: notify
+    image: plugins/slack@main           # branch ref, not a pinned digest
+    settings:
+      webhook:
+        from_secret: slack_webhook

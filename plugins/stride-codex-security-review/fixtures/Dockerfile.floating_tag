@@ -1,0 +1,21 @@
+# Smoke-test fixture: supply_chain (floating-tag base image)
+#
+# Production-bound container image pinned to a floating tag instead of an
+# immutable digest. Tomorrow's `node:20` may have different vulnerabilities,
+# different patches, or in the worst case a compromised maintainer pushing
+# an attacker's image. Without a digest pin the build is reproducible only
+# by accident.
+
+FROM node:20
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+ENV NODE_ENV=production
+EXPOSE 3000
+
+CMD ["node", "server.js"]

@@ -1,0 +1,234 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "fixes": [
+            {
+              "description": {
+                "text": "Use a parameterized query so username is bound as a parameter rather than interpolated."
+              }
+            }
+          ],
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "lib/users.py"
+                },
+                "region": {
+                  "startLine": 42
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "User-supplied username is concatenated directly into a SQL string at the query call, allowing SQL injection."
+          },
+          "partialFingerprints": {
+            "stride/v1": "572a40cc1e8fdb62e2974d1d29b83e9aad7e1631386db9878e6ffb14c379bef2"
+          },
+          "properties": {
+            "security-severity": "9.0",
+            "tags": [
+              "CWE-89",
+              "A03:2021",
+              "confidence:high"
+            ]
+          },
+          "ruleId": "injection"
+        },
+        {
+          "fixes": [
+            {
+              "description": {
+                "text": "Same fix as the first occurrence."
+              }
+            }
+          ],
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "lib/users.py"
+                },
+                "region": {
+                  "startLine": 42
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Duplicate finding on the same file/line/class — must collapse during dedup."
+          },
+          "partialFingerprints": {
+            "stride/v1": "d262a61abc121450e4fa5741ac4f73ff984f1dae964f1077cd9ae9b60bbb1dee"
+          },
+          "properties": {
+            "security-severity": "9.0",
+            "tags": [
+              "CWE-89",
+              "A03:2021",
+              "confidence:high"
+            ]
+          },
+          "ruleId": "injection"
+        },
+        {
+          "fixes": [
+            {
+              "description": {
+                "text": "Use a constant-time comparison for secret material."
+              }
+            }
+          ],
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "web/login.js"
+                },
+                "region": {
+                  "startLine": 17
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Login endpoint compares the password digest with a non-constant-time equality check."
+          },
+          "partialFingerprints": {
+            "stride/v1": "9831985899adff3e6cdb0870f0cb8dc86d6e386db5acf5a60ce111d9b5802d83"
+          },
+          "properties": {
+            "security-severity": "7.0",
+            "tags": [
+              "CWE-287",
+              "A07:2021",
+              "confidence:medium"
+            ]
+          },
+          "ruleId": "authentication"
+        },
+        {
+          "fixes": [
+            {
+              "description": {
+                "text": "Validate the redirect target against an allow-list of internal hosts."
+              }
+            }
+          ],
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app/redirect.rb"
+                },
+                "region": {
+                  "startLine": 8
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Open redirect: the destination is taken from user input without a host allow-list."
+          },
+          "partialFingerprints": {
+            "stride/v1": "6dde9e527835a90c7aed80795d108161cf7a7c34831605c20adea9fc396b2686"
+          },
+          "properties": {
+            "security-severity": "5.0",
+            "tags": [
+              "CWE-601",
+              "A01:2021",
+              "confidence:high"
+            ]
+          },
+          "ruleId": "input_validation"
+        },
+        {
+          "fixes": [
+            {
+              "description": {
+                "text": "Consider adding the header for defense in depth."
+              }
+            }
+          ],
+          "level": "note",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "config/headers.ex"
+                },
+                "region": {
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Informational: a defense-in-depth header is absent but no sensitive data is served here."
+          },
+          "partialFingerprints": {
+            "stride/v1": "83f709c9d41115cb60a5ac84bf1e5bda6f569f3649545bbfd2e34f1a1291c62b"
+          },
+          "properties": {
+            "security-severity": "1.0",
+            "tags": [
+              "confidence:low"
+            ]
+          },
+          "ruleId": "insecure_config"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/cheezy/stride-codex-security-review",
+          "name": "stride-codex-security-review",
+          "rules": [
+            {
+              "helpUri": "https://github.com/cheezy/stride-codex-security-review#what-it-catches",
+              "id": "authentication",
+              "name": "authentication",
+              "shortDescription": {
+                "text": "authentication"
+              }
+            },
+            {
+              "helpUri": "https://github.com/cheezy/stride-codex-security-review#what-it-catches",
+              "id": "injection",
+              "name": "injection",
+              "shortDescription": {
+                "text": "injection"
+              }
+            },
+            {
+              "helpUri": "https://github.com/cheezy/stride-codex-security-review#what-it-catches",
+              "id": "input_validation",
+              "name": "input_validation",
+              "shortDescription": {
+                "text": "input_validation"
+              }
+            },
+            {
+              "helpUri": "https://github.com/cheezy/stride-codex-security-review#what-it-catches",
+              "id": "insecure_config",
+              "name": "insecure_config",
+              "shortDescription": {
+                "text": "insecure_config"
+              }
+            }
+          ],
+          "version": "PLUGIN_VERSION"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

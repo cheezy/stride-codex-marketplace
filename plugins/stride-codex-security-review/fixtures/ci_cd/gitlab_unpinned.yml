@@ -1,0 +1,24 @@
+# Smoke-test fixture: CI/CD rule pack — Rule 1 (unpinned reference, GitLab CI)
+#
+# Includes upstream CI templates by branch / tag — both mutable.
+#
+# Expected: 2 supply_chain findings, one per `include:` block.
+
+include:
+  - project: "shared-org/ci-templates"
+    ref: main
+    file: "/templates/build.yml"
+
+  - project: "shared-org/security"
+    ref: "v1.4.2"
+    file: "/security-scan.yml"
+
+stages:
+  - build
+
+build-job:
+  stage: build
+  image: ruby:3.2
+  script:
+    - bundle install
+    - bundle exec rake build

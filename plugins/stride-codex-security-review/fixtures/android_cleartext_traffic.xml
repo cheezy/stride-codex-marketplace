@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Vulnerable AndroidManifest.xml: cleartext traffic explicitly enabled
+  with no networkSecurityConfig.
+
+  Trust boundary: android:usesCleartextTraffic="true" tells the platform
+  to permit HTTP everywhere. With no networkSecurityConfig resource the
+  developer has not scoped the cleartext allowance to any specific
+  internal-only host. A coffee-shop MITM intercepts every API call.
+
+  Expected finding: insecure_config (high), CWE-319, A02:2021.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.myapp">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="MyApp"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="true">
+
+        <!--
+          android:networkSecurityConfig is ABSENT, so the developer has not
+          even scoped the cleartext allowance to specific debug-only hosts.
+          On Android 9+ (target SDK >= 28) the default is "false"; here it
+          is explicitly turned back on.
+        -->
+
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,26 @@
+# Tekton — positive control for CI/CD Rule 1 (external reference not pinned to SHA).
+# The PipelineTask resolves a remote Task bundle by a floating tag, and a step image
+# is referenced by tag rather than an immutable digest, so the build trusts whatever
+# the registry currently serves.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: build-and-push
+spec:
+  tasks:
+    - name: clone
+      taskRef:
+        resolver: bundles
+        params:
+          - name: bundle
+            value: gcr.io/tekton-releases/catalog/upstream/git-clone:latest   # floating tag, not @sha256
+          - name: name
+            value: git-clone
+    - name: build
+      runAfter: [clone]
+      taskSpec:
+        steps:
+          - name: build
+            image: gcr.io/kaniko-project/executor:v1.9.0   # mutable version tag, not a digest
+            script: |
+              /kaniko/executor --dockerfile=Dockerfile --destination=contoso/app:latest

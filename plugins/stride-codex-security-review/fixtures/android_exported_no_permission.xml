@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Vulnerable AndroidManifest.xml: exported components with no permission.
+
+  Trust boundary: any other app on the device (or any web page via deep
+  link) can invoke these components. AdminActivity transfers money,
+  DeleteAccountReceiver wipes data, BackgroundExportService leaks data
+  off-device. None require a permission with signature protection level.
+
+  Expected finding: authorization (high), CWE-927, A01:2021.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.myapp">
+
+    <application
+        android:label="MyApp"
+        android:theme="@style/AppTheme">
+
+        <!-- VULNERABLE: exported=true with no android:permission. Any app
+             on the device can launch this Activity with an Intent. -->
+        <activity
+            android:name=".AdminActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.myapp.action.TRANSFER" />
+            </intent-filter>
+        </activity>
+
+        <!-- VULNERABLE: exported=true; permission references "normal"
+             protectionLevel — any app can request that permission and call
+             this receiver. -->
+        <receiver
+            android:name=".DeleteAccountReceiver"
+            android:exported="true"
+            android:permission="com.example.myapp.permission.NORMAL">
+            <intent-filter>
+                <action android:name="com.example.myapp.action.WIPE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- VULNERABLE: exported=true with no permission attribute.
+             Background data-export service is callable by any app. -->
+        <service
+            android:name=".BackgroundExportService"
+            android:exported="true" />
+    </application>
+
+    <!-- "normal" protectionLevel means any app can request and be granted
+         this permission. The receiver above is effectively unprotected. -->
+    <permission
+        android:name="com.example.myapp.permission.NORMAL"
+        android:protectionLevel="normal" />
+</manifest>

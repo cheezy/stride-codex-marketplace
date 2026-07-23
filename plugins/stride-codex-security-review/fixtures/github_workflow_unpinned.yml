@@ -1,0 +1,36 @@
+# Smoke-test fixture: supply_chain (CI workflow unpinned reference)
+#
+# This GitHub Actions workflow references external actions by major-version
+# floats (`@v4`, `@v3`) instead of immutable commit SHAs. If any of those
+# upstream repos is compromised, the next run inherits the attacker's
+# code with no notice — even though the workflow file itself is unchanged.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Bad: floating major-version reference. v4 today, v4-with-malware tomorrow.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Worse: a branch reference, which can change on every push.
+      - uses: some-org/build-action@main
+
+      - run: npm ci
+      - run: npm test
+
+      # Best practice (NOT to flag): SHA-pinned reference.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: build-output
+          path: dist/

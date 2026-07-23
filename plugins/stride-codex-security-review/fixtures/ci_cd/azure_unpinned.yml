@@ -1,0 +1,28 @@
+# Azure Pipelines — positive control for CI/CD Rule 1 (external reference not pinned to SHA).
+# A pipeline resource and a task are referenced by floating tag/branch instead of an
+# immutable commit SHA, so a compromised upstream silently flows into the build.
+trigger:
+  - main
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      name: contoso/build-templates
+      ref: refs/heads/main          # floating branch ref — NOT a pinned commit SHA
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+
+  # Marketplace task referenced by major-version float, not a pinned version/SHA.
+  - task: NodeTool@0
+    inputs:
+      versionSpec: '20.x'
+
+  - template: build.yml@templates   # pulled from the branch-pinned repo resource above
+
+  - script: npm ci && npm run build
+    displayName: Build

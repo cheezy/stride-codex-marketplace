@@ -1,0 +1,32 @@
+# Smoke-test fixture: supply_chain (CI workflow unpinned reference, GitLab CI)
+#
+# This GitLab CI file `include`s a remote pipeline by branch reference
+# (`ref: main`). Every pipeline run pulls whatever the upstream project's
+# main branch happens to be at that moment. Compromising the upstream
+# repo lands attacker-controlled jobs in this project's pipeline.
+#
+# Same defect class as the GitHub Actions fixture, different platform —
+# proves the supply_chain rule is platform-neutral.
+
+include:
+  # Bad: ref is a branch name, not a SHA.
+  - project: "shared-org/ci-templates"
+    ref: main
+    file: "/templates/build.yml"
+
+  # Bad: ref is a tag, which is mutable on GitLab (`git push --tags --force`).
+  - project: "shared-org/security-scan"
+    ref: "v2.1"
+    file: "/templates/security.yml"
+
+stages:
+  - build
+  - test
+
+build:
+  stage: build
+  # Bad: container image tag is floating.
+  image: node:20
+  script:
+    - npm ci
+    - npm run build

@@ -1,0 +1,12 @@
+# Positive control for the supply-chain 'typosquat / hallucinated package name' sub-rule.
+# This is a Python pip requirements file. Most entries are legitimate, but two names are
+# deliberate typosquats of popular packages — a heuristic catch (no registry lookup):
+#   reqeusts  -> typosquat of `requests`
+#   python-dateutl -> typosquat of `python-dateutil`
+# Installing either pulls whatever an attacker has parked under that near-miss name.
+flask==3.0.0
+requests==2.31.0
+reqeusts==2.31.0
+numpy==1.26.4
+python-dateutl==2.8.2
+sqlalchemy==2.0.25

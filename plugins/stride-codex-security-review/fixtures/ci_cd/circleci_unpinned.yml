@@ -1,0 +1,26 @@
+# Smoke-test fixture: CI/CD rule pack — Rule 1 (unpinned reference, CircleCI)
+#
+# Orb references use semver, not an immutable digest. CircleCI orbs are
+# republished under the same version namespace; only a digest is immutable.
+#
+# Expected: 2 supply_chain findings.
+
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@4.1.0
+  node:    circleci/node@volatile
+
+jobs:
+  build:
+    docker:
+      - image: cimg/node:20.11
+    steps:
+      - checkout
+      - node/install-packages
+      - run: npm run build
+
+workflows:
+  build-and-test:
+    jobs:
+      - build

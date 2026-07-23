@@ -1,0 +1,59 @@
+{
+  "findings": [
+    {
+      "severity": "critical",
+      "file": "lib/users.py",
+      "line": 42,
+      "vulnerability_class": "injection",
+      "cwe": ["CWE-89"],
+      "owasp": ["A03:2021"],
+      "description": "User-supplied username is concatenated directly into a SQL string at the query call, allowing SQL injection.",
+      "remediation": "Use a parameterized query so username is bound as a parameter rather than interpolated.",
+      "confidence": "high"
+    },
+    {
+      "severity": "critical",
+      "file": "lib/users.py",
+      "line": 42,
+      "vulnerability_class": "injection",
+      "cwe": ["CWE-89"],
+      "owasp": ["A03:2021"],
+      "description": "Duplicate finding on the same file/line/class — must collapse during dedup.",
+      "remediation": "Same fix as the first occurrence.",
+      "confidence": "high"
+    },
+    {
+      "severity": "high",
+      "file": "web/login.js",
+      "line": 17,
+      "vulnerability_class": "authentication",
+      "cwe": ["CWE-287"],
+      "owasp": ["A07:2021"],
+      "description": "Login endpoint compares the password digest with a non-constant-time equality check.",
+      "remediation": "Use a constant-time comparison for secret material.",
+      "confidence": "medium"
+    },
+    {
+      "severity": "medium",
+      "file": "app/redirect.rb",
+      "line": 8,
+      "vulnerability_class": "input_validation",
+      "cwe": ["CWE-601"],
+      "owasp": ["A01:2021"],
+      "description": "Open redirect: the destination is taken from user input without a host allow-list.",
+      "remediation": "Validate the redirect target against an allow-list of internal hosts.",
+      "confidence": "high"
+    },
+    {
+      "severity": "info",
+      "file": "config/headers.ex",
+      "line": 3,
+      "vulnerability_class": "insecure_config",
+      "cwe": [],
+      "owasp": [],
+      "description": "Informational: a defense-in-depth header is absent but no sensitive data is served here.",
+      "remediation": "Consider adding the header for defense in depth.",
+      "confidence": "low"
+    }
+  ]
+}

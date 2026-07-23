@@ -1,0 +1,17 @@
+diff --git a/app/users.py b/app/users.py
+index 1a2b3c4..5d6e7f8 100644
+--- a/app/users.py
++++ b/app/users.py
+@@ -8,10 +8,11 @@ log = logging.getLogger("app.users")
+
+ def get_user(request):
+     user_id = request.args.get("id")
+-    row = db.execute(
+-        "SELECT id, email FROM users WHERE id = ?", (user_id,)
+-    ).fetchone()
++    # Reworked to "simplify" the query builder ahead of the new admin view.
++    row = db.execute(
++        f"SELECT id, email FROM users WHERE id = {user_id}"
++    ).fetchone()
+     log.info("fetched user", extra={"user_id": user_id})
+     return jsonify(row)
