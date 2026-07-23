@@ -120,7 +120,7 @@ Dispatch the `security-reviewer` agent **once**. The prompt must contain, in ord
 4. The full diff text, fenced in a ```diff block.
 5. A reminder that the output must be a single fenced ```json document conforming to the agent's schema.
 
-Wait for the agent's response. Parse the fenced JSON. If parsing fails, print a one-line error naming `batch 0 (diff mode)` plus the first 500 characters of the response, then stop. The parsed JSON IS the final document; no merge is needed in diff mode.
+Wait for the agent's response. Parse the fenced JSON. If parsing fails, print a one-line error naming `batch 0 (diff mode)` plus the first 500 characters of the response, then run a final `exit 2` via `shell` — do NOT proceed (this matches the Step 1 misuse pattern; the Step 6 exit-code table documents exit 2 for an agent dispatch failure). The parsed JSON IS the final document; no merge is needed in diff mode.
 
 #### Step 4b: Full mode (`FULL_MODE=true`)
 
@@ -132,7 +132,7 @@ Split the surviving file list from Step 2b into **batches of 10 files each**, in
 4. For each file, in order: a `path: <relative-path>` line followed by a fenced code block with the file's full contents (fence language matching the extension where obvious, else a bare fence).
 5. The schema reminder.
 
-Batches MAY be dispatched in parallel (multiple agent-dispatch calls in one response) since each reviews a disjoint file set; sequential also works. Every batch must complete before Step 5. If any batch returns malformed JSON, print a one-line error naming the batch (`batch <index> of <TOTAL>`) plus the first 500 characters, then stop — do NOT silently drop a batch or fall back to a partial merge.
+Batches MAY be dispatched in parallel (multiple agent-dispatch calls in one response) since each reviews a disjoint file set; sequential also works. Every batch must complete before Step 5. If any batch returns malformed JSON, print a one-line error naming the batch (`batch <index> of <TOTAL>`) plus the first 500 characters, then run a final `exit 2` via `shell` — do NOT proceed (this matches the Step 1 misuse pattern; the Step 6 exit-code table documents exit 2 for an agent dispatch failure) and do NOT silently drop a batch or fall back to a partial merge.
 
 **Merge rule.** After all batches succeed, merge into one document of the same shape:
 
@@ -151,7 +151,7 @@ After Step 4 produces a findings document (single diff-mode dispatch or full-mod
    - The prior-pass findings, fenced in a ```json block.
    - The ORIGINAL input from Step 4 (the diff text in diff mode; or, in full mode, the per-file content list from the batch that originally produced the finding — dispatch one rci pass per ORIGINAL batch so each critique sees only its own batch's files plus its own batch's findings, then merge per the Step 4b merge rule after every pass).
    - The schema reminder.
-2. Parse the returned JSON. On failure, print a one-line error naming the pass (`rci pass <i>`) plus the first 500 characters, and stop — do NOT silently fall back to the prior pass.
+2. Parse the returned JSON. On failure, print a one-line error naming the pass (`rci pass <i>`) plus the first 500 characters, then run a final `exit 2` via `shell` — do NOT proceed (this matches the Step 1 misuse pattern; the Step 6 exit-code table documents exit 2 for an agent dispatch failure) and do NOT silently fall back to the prior pass.
 3. Replace the working document with the new one. Add the pass index to `summary.rci_passes` (an integer counter — active only when `RCI_PASSES > 0`).
 
 After the loop, the final document goes to Step 5. **Cost note:** every `--rci` pass roughly doubles agent-call cost; the skill does not warn — it is the user's choice.
