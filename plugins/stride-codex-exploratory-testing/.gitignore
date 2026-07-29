@@ -2,6 +2,7 @@
 .stride/
 .stride-env-cache
 .stride-changed-files.json
+.stride_auth.md
 
 # Environment
 .env
