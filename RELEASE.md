@@ -51,11 +51,24 @@ so it must be updated to match the vendored `plugin.json` on every sync.
 4. Secret-scan the whole history, then commit and push:
 
    ```bash
-   git grep -nI 'BEGIN .*PRIVATE KEY\|stride_dev_[A-Za-z0-9+/]\|stride_prod_' $(git rev-list --all) | grep -v 'your_token_here'   # expect empty
+   git grep -nI 'BEGIN .*PRIVATE KEY\|stride_dev_[A-Za-z0-9+/]\|stride_prod_' $(git rev-list --all) \
+     | grep -vE 'your_token_here|TEST_TOKEN|DO_NOT_LEAK|SHOULD_NOT_MATCH|should_not_match|abc123'   # expect empty
    git add -A
    git commit -m "Sync <name> to X.Y.Z"
    git push origin main
    ```
+
+   The `grep -vE` filter suppresses **self-describing synthetic fixtures** that vendored plugins
+   legitimately ship — negative-test canaries and documentation placeholders whose names announce
+   what they are (`..._your_token_here`, `..._TEST_TOKEN_FOR_SMOKE_TEST_ONLY`, `..._DO_NOT_LEAK`,
+   the last being a string whose whole purpose is to prove a redaction path works). Each is
+   byte-identical to its public upstream repo. Without the filter the scan returns those hits on
+   every release and the checklist item becomes unsatisfiable — which trains the next engineer to
+   wave it through, the opposite of what a gate is for.
+
+   **If the scan returns a hit that is not obviously one of those, treat it as a real credential:
+   stop, do not commit, and rotate it.** Widen this filter only for a fixture you have actually
+   opened and read.
 
 5. Tag and publish the GitHub release:
 
