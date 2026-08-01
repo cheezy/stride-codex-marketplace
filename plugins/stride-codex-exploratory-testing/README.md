@@ -74,7 +74,7 @@ depth lives:
 | Engine | What it does | Home |
 |---|---|---|
 | **Charters** | Give a session its mission: what to explore, with what resources, to discover what information. | `chartering` skill; the `stride-exploratory-testing-charter` and `stride-exploratory-testing-nightmare-headline` skills |
-| **Heuristics** | Idea generators — cheat sheets, Tours, and SFDPOT — for when you're stuck. | `heuristics` skill |
+| **Heuristics** | Idea generators — cheat sheets, Tours, and SFDPOT — for when you're stuck. | `heuristics` skill (SFDPOT lives in `chartering`) |
 | **Variables** | The factors you can deliberately vary (data, state, sequence, environment). | `heuristics` skill (variable catalog) |
 | **Oracles** | How you decide something is actually *wrong*. | `oracles` skill |
 | **Observation** | Noticing what the system actually did — not what you expected. | `session` skill; the `explorer` agent |
