@@ -202,6 +202,19 @@ DURATION=$((END_TIME - START_TIME))
 unset TASK_BASE_REF
 mkdir -p .stride
 git rev-parse HEAD > .stride/task-base-ref
+
+# Record which paths were ALREADY dirty, staged, or untracked at claim time.
+# This block is mirrored in `stride-workflow` Step 2 — keep the two in sync;
+# an edit here needs the matching edit there.
+# These are not lines you wrote, and nothing else can tell them apart later:
+# git blame reports a pre-claim edit and your own uncommitted edit identically
+# as "Not Committed Yet", and an after_doing that stages everything commits
+# both. The exploratory escalation's provenance test subtracts this file.
+# The pair must cover staged, unstaged AND untracked paths: a bare
+# `git diff --name-only` reports unstaged changes only, so a path a human
+# `git add`ed before the claim would be missed entirely.
+{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } \
+  | sort -u > .stride/task-dirty-baseline
 ```
 
 ## When Hooks Fail

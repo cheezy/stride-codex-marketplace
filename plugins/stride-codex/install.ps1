@@ -132,6 +132,9 @@ Write-Host ("  Skills: {0} skills" -f $installedSkills)
 Write-Host ("  Agents: {0} agents" -f $installedAgents)
 Write-Host ""
 Write-Host "Next steps:"
-Write-Host "  1. Create .stride_auth.md with your API credentials (see README)"
-Write-Host "  2. Create .stride.md with your hook commands"
-Write-Host "  3. Add .stride_auth.md to .gitignore"
+Write-Host "  1. Add to .gitignore FIRST: .stride_auth.md, .stride/, and .exploratory/"
+Write-Host "     (.gitignore is inert for a path git already tracks, so do this before"
+Write-Host "      your first session; .exploratory/ applies when the exploratory-testing"
+Write-Host "      plugin is installed and its artifacts arrive untracked)"
+Write-Host "  2. Create .stride_auth.md with your API credentials (see README)"
+Write-Host "  3. Create .stride.md with your hook commands"

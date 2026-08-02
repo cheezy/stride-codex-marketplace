@@ -13,3 +13,6 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Stride agent-local state (never commit — holds a live API token)
+.stride_auth.md
