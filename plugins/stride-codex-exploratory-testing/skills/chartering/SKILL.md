@@ -74,20 +74,23 @@ Brainstorm the nightmares — "App Bills Customers Twice on Retry", "Export Leak
 
 This is the risk-driven engine behind the `stride-exploratory-testing-nightmare-headline` command-skill.
 
-## Enumerating targets with SFDPOT
+## Enumerating targets with SFDIPOT
 
-When you need to be *systematic* about what to charter — to make sure you looked at the whole product, not just the obvious parts — walk the **SFDPOT** lens from the Heuristic Test Strategy Model. It is a coverage heuristic for generating candidate targets:
+When you need to be *systematic* about what to charter — to make sure you looked at the whole product, not just the obvious parts — walk the **SFDIPOT** lens from the Heuristic Test Strategy Model. It is a coverage heuristic for generating candidate targets:
 
 | | Dimension | Charter prompts |
 |---|---|---|
 | **S** | **Structure** | What the product is made of — files, code, modules, hardware. What component's internals carry risk? |
 | **F** | **Function** | What the product does — every feature and how they interact. Which function is new, complex, or error-prone? |
 | **D** | **Data** | What it processes — inputs, outputs, states, big/small/null/malformed values, sequences over time. What data shapes break it? |
+| **I** | **Interfaces** | What it exchanges data across — APIs, imports and exports, UI surfaces, integration points between systems. Which boundary carries assumptions neither side checks? |
 | **P** | **Platform** | What it depends on — OS, browser, hardware, third-party services, configuration. Which platform combination is under-tested? |
 | **O** | **Operations** | How it's used — real personas, usage patterns, environments, edge-case workflows. Whose real-world use is unusual? |
 | **T** | **Time** | How timing affects it — sequences, races, timeouts, scheduling, DST, order-of-operations. Where does timing matter? |
 
-Sweep SFDPOT over a feature and you get a spread of candidate charters that a single obvious angle would miss. Use it as an idea generator, not a checklist to grind through — stop when you have enough charters to fill the sessions you can actually run.
+**Interfaces and Platform collide on third-party services** — route the *contract* question (what the other side actually sends back, in what order, with what column layout) to Interfaces, and the *dependency* question (availability, timeouts, configuration, the edge in front of you) to Platform. Without that split, Interfaces charters degenerate into restated Platform ones.
+
+Sweep SFDIPOT over a feature and you get a spread of candidate charters that a single obvious angle would miss. Use it as an idea generator, not a checklist to grind through — stop when you have enough charters to fill the sessions you can actually run.
 
 ## Handling the two common failure shapes
 
@@ -100,4 +103,4 @@ Keep every example **generic**: no real credentials, customer data, or internal 
 
 ## Handing off
 
-Once you have charters, the tester picks one and runs a time-boxed session with the `session` skill, generating probes with `heuristics` and judging them with `oracles`. Un-run charters go on a backlog; new charters discovered mid-session are added to it.
+Once you have charters, the tester picks one and runs a time-boxed session with the `session` skill, generating probes with `heuristics` and judging them with `oracles`. Un-run charters go on a backlog; new charters discovered mid-session are added to it. That backlog is a real file — `.exploratory/backlog.md`, defined by the `session` skill's *Session artifacts on disk* section — so charters survive the conversation instead of evaporating with it.

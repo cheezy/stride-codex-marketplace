@@ -78,4 +78,6 @@ Security-flavored Never/Always examples (e.g. "never store secrets in cleartext"
 
 ## Handing off
 
-The `chartering` skill sets the mission and the `heuristics` skill generates the probes; this skill judges what those probes reveal. Findings you classify as defects flow into the session notes and debrief (the `session` skill); known-bad-but-expected observations are recorded but not re-reported.
+The `chartering` skill sets the mission and the `heuristics` skill generates the probes; this skill judges what those probes reveal. Known-bad-but-expected observations are recorded but not re-reported.
+
+A finding you classify as a **Defect** does not go straight into the report. Hand it to the **`bug-advocacy`** skill first: it owns the work between "an oracle says this is wrong" and "a stakeholder can act on this" — Replicate, Isolate, Maximize, Generalize, Externalize, And say it clearly, plus the severity rubric that makes ratings comparable across sessions. From there the write-up flows into the session notes and debrief (the `session` skill).

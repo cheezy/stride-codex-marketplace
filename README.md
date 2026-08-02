@@ -37,7 +37,7 @@ codex plugin uninstall stride-codex    # Remove a plugin
 | Plugin | Version | Description |
 | --- | --- | --- |
 | [stride-codex](plugins/stride-codex) | 1.29.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
-| [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.1.0 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.2.0 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-security-review](plugins/stride-codex-security-review) | 0.1.1 | AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-ideation](plugins/stride-codex-ideation) | 0.3.0 | Ideation skills and custom agents for Stride kanban — Codex CLI edition. |
 

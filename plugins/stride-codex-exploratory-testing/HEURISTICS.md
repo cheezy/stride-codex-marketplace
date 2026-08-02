@@ -27,7 +27,7 @@ want to widen it. Grab a lens below by name, then read its entry in the skill.
 
 ## Related lenses in other skills
 
-- **SFDPOT** (Structure, Function, Data, Platform, Operations, Time) — a coverage
+- **SFDIPOT** (Structure, Function, Data, Interfaces, Platform, Operations, Time) — a coverage
   lens for generating charter *targets*. Lives in the
   [`chartering` skill](skills/chartering/SKILL.md).
 - **Consistency oracles** and the **HTSM quality criteria** — for deciding whether
@@ -36,5 +36,5 @@ want to widen it. Grab a lens below by name, then read its entry in the skill.
 > These are lenses, not laws. Use the one that fits the risk in front of you and
 > ignore the rest.
 
-Tours and SFDPOT / HTSM are the work of James Whittaker and James Bach respectively;
+Tours and SFDIPOT / HTSM are the work of James Whittaker and James Bach respectively;
 see the [README's Sources & attribution section](README.md#sources--attribution).

@@ -2,8 +2,8 @@
 # Structure smoke test for the stride-codex-exploratory-testing plugin.
 #
 # Asserts the plugin ships every file the Codex CLI edition requires: a
-# valid manifest with the four Codex keys, all five command-skills, all
-# five doctrine skills, both agents, the three README-referenced fixtures,
+# valid manifest with the four Codex keys, all seven command-skills, all
+# six doctrine skills, both agents, the three README-referenced fixtures,
 # and the root docs (including AGENTS.md and both installers). Codex ships
 # NO command files, so there is no commands/ check. Pure shell + python3
 # (for JSON) — no network, no jq.
@@ -57,7 +57,9 @@ for skill in \
   stride-exploratory-testing-nightmare-headline \
   stride-exploratory-testing-explore \
   stride-exploratory-testing-recon \
-  stride-exploratory-testing-debrief; do
+  stride-exploratory-testing-debrief \
+  stride-exploratory-testing-pair \
+  stride-exploratory-testing-harden; do
   if [ -f "${PLUGIN_ROOT}/skills/${skill}/SKILL.md" ]; then
     ok "skills/${skill}/SKILL.md exists"
   else
@@ -67,7 +69,7 @@ done
 
 # --- Doctrine skills --------------------------------------------------------
 
-for skill in stride-exploratory-testing chartering heuristics oracles session; do
+for skill in stride-exploratory-testing chartering heuristics oracles session bug-advocacy; do
   if [ -f "${PLUGIN_ROOT}/skills/${skill}/SKILL.md" ]; then
     ok "skills/${skill}/SKILL.md exists"
   else
@@ -76,12 +78,12 @@ for skill in stride-exploratory-testing chartering heuristics oracles session; d
 done
 
 # Count only real SKILL.md files (the .gitkeep placeholder is ignored):
-# 5 command-skills + 5 doctrine skills = 10.
+# 7 command-skills + 6 doctrine skills = 13.
 SKILL_COUNT=$(find "${PLUGIN_ROOT}/skills" -mindepth 2 -maxdepth 2 -name SKILL.md | wc -l | tr -d ' ')
-if [ "$SKILL_COUNT" -eq 10 ]; then
-  ok "exactly 10 SKILL.md files present (.gitkeep ignored)"
+if [ "$SKILL_COUNT" -eq 13 ]; then
+  ok "exactly 13 SKILL.md files present (.gitkeep ignored)"
 else
-  nope "expected 10 SKILL.md files, found ${SKILL_COUNT}" ""
+  nope "expected 13 SKILL.md files, found ${SKILL_COUNT}" ""
 fi
 
 # --- Agents (Codex: bare *.md files, no commands/ directory) -----------------

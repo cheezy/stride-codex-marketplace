@@ -1,6 +1,6 @@
 ---
 name: stride-exploratory-testing
-description: Use when you want to test software the way a skilled human tester does — discovering risks, questions, and bugs that scripted or automated checks miss. This is the front door to the stride-codex-exploratory-testing plugin: it teaches the mental model (Tested = Checked + Explored), frames a time-boxed session, and routes each request to the right sub-skill (chartering, heuristics, oracles, session) or command-skill (stride-exploratory-testing-charter, stride-exploratory-testing-nightmare-headline, stride-exploratory-testing-explore, stride-exploratory-testing-recon, stride-exploratory-testing-debrief). Invoke it when the user asks to "explore", "poke at", "do exploratory/manual testing on", "find bugs in", "charter a session for", or otherwise investigate a feature rather than confirm a known expectation.
+description: Use when you want to test software the way a skilled human tester does — discovering risks, questions, and bugs that scripted or automated checks miss. This is the front door to the stride-codex-exploratory-testing plugin: it teaches the mental model (Tested = Checked + Explored), frames a time-boxed session, and routes each request to the right sub-skill (chartering, heuristics, oracles, bug-advocacy, session) or command-skill (stride-exploratory-testing-charter, stride-exploratory-testing-nightmare-headline, stride-exploratory-testing-explore, stride-exploratory-testing-recon, stride-exploratory-testing-debrief, stride-exploratory-testing-pair, stride-exploratory-testing-harden). Invoke it when the user asks to "explore", "poke at", "do exploratory/manual testing on", "find bugs in", "charter a session for", or otherwise investigate a feature rather than confirm a known expectation.
 skills_version: "1.0"
 ---
 
@@ -21,6 +21,8 @@ Codex CLI has no slash commands: every command entry point below is a **skill ac
 
 A product with a green test suite is *checked*, not *tested*. This plugin supplies the "explored" half.
 
+And it supplies the bridge back. The two halves are not two tracks — an exploratory finding that never becomes a check is a bug that was found once and can return unnoticed. The `stride-exploratory-testing-harden` skill walks a confirmed bug back across the line, drafting a regression check from the isolated repro the `bug-advocacy` skill already produced.
+
 Exploration is a **simultaneous** loop, not a phase:
 
 1. **Design** the next probe from what you know so far.
@@ -30,7 +32,7 @@ Exploration is a **simultaneous** loop, not a phase:
 
 ## The five engines
 
-Every exploratory session runs on five engines. Each sub-skill deepens one or more of them:
+Every exploratory session runs on five engines. Most sub-skills deepen one or more of them; `session` and `bug-advocacy` sit around the loop rather than inside it — one holds the session together, the other takes over once a result has been judged a defect:
 
 | Engine | What it does | Where the depth lives |
 |---|---|---|
@@ -38,11 +40,11 @@ Every exploratory session runs on five engines. Each sub-skill deepens one or mo
 | **Observation** | Noticing what the system actually did — not what you expected. Fed by oracles. | `oracles` skill |
 | **Variables** | The factors you can deliberately vary — data, state, sequence, timing, environment, configuration. | `heuristics` skill (variable catalog) |
 | **Oracles** | How you decide something is *wrong* — consistency heuristics, references, claims, user expectations. | `oracles` skill |
-| **Heuristics** | Idea generators that get you unstuck — cheat sheets, Tours, SFDPOT, and other lenses. | `heuristics` skill (SFDPOT lives in `chartering`) |
+| **Heuristics** | Idea generators that get you unstuck — cheat sheets, Tours, SFDIPOT, and other lenses. | `heuristics` skill (SFDIPOT lives in `chartering`) |
 
 ## The session lifecycle (time-boxed)
 
-Exploration is managed as **time-boxed sessions** (Session-Based Test Management, ~60–120 min of uninterrupted, chartered, reviewable work). One session runs:
+Exploration is managed as **time-boxed sessions** (Session-Based Test Management, ~60–120 min of uninterrupted, chartered, reviewable work — that is the **human** box; an agent-run session is bounded by a probe budget instead, see the `session` skill). One session runs:
 
 1. **Charter** — state the mission before touching the system.
 2. **Recon** — a quick pass to learn the landscape and refine the charter.
@@ -62,7 +64,7 @@ The `session` skill owns this lifecycle end to end; activating the `stride-explo
 
 ## When NOT to invoke
 
-- The user wants to **write or fix an automated test** (a check) — that's a coding task, not exploration. Use the project's testing skills.
+- The user wants to **write or fix an automated test** (a check) from scratch — that's a coding task, not exploration. Use the project's testing skills. *One exception:* turning a bug **this plugin already found** into a regression check is the `stride-exploratory-testing-harden` skill, which drafts from the isolated repro rather than from a blank page.
 - The expectation is fully known and the ask is "confirm X still works" — that's checking; a scripted test is the right tool.
 - The user is mid-implementation and needs the code changed, not investigated.
 - There is no running system (or realistic stand-in) to explore — exploration needs something to observe.
@@ -74,15 +76,18 @@ Match the user's request to the right destination. The orchestrator frames and r
 | The user wants to… | Route to |
 |---|---|
 | Frame a mission / decide *what* to test / write a charter | **`chartering`** skill |
-| Enumerate targets systematically / apply SFDPOT | **`chartering`** skill (SFDPOT lens) |
+| Enumerate targets systematically / apply SFDIPOT | **`chartering`** skill (SFDIPOT lens) |
 | Generate a risk-driven charter from "what's the worst that could happen" | Activate the **`stride-exploratory-testing-nightmare-headline`** skill |
 | Create one or more charters interactively | Activate the **`stride-exploratory-testing-charter`** skill |
 | Get unstuck / generate test ideas / apply a cheat sheet or a Tour | **`heuristics`** skill |
 | Know the factors to vary (data, state, sequence, environment) | **`heuristics`** skill (variable catalog) |
 | Decide "is this actually a bug?" / apply consistency oracles | **`oracles`** skill |
+| Is this bug report good enough? / how do I write this up? / how severe is it? | **`bug-advocacy`** skill |
 | Run a full time-boxed session with notes and a debrief | **`session`** skill |
 | Do a quick reconnaissance pass over an unfamiliar feature | Activate the **`stride-exploratory-testing-recon`** skill |
 | Run an exploratory session end-to-end (plan and execute) | Activate the **`stride-exploratory-testing-explore`** skill |
+| Test alongside a human who is driving the app themselves | Activate the **`stride-exploratory-testing-pair`** skill |
+| Turn a session's findings into regression checks / "make sure this bug can't come back" | Activate the **`stride-exploratory-testing-harden`** skill |
 | Close out a session and produce a structured debrief | Activate the **`stride-exploratory-testing-debrief`** skill |
 
 Two subagents support the command-skills rather than being invoked directly: **`charter-generator`** (turns a target + risk into candidate charters) and **`explorer`** (executes a charter's exploration loop and reports findings). Reach for the command-skills above; they dispatch these agents for you.
@@ -95,7 +100,7 @@ The richer models the sub-skills provide are **lenses, not laws** — reach for 
 
 - **SBTM** (Session-Based Test Management) — the charter → session → debrief management frame used above.
 - **Tours** — themed walkthroughs (the money tour, the landmark tour, the back-alley tour…) that bias exploration toward a particular kind of risk. Cataloged in `heuristics`.
-- **SFDPOT** (Structure, Function, Data, Platform, Operations, Time) — a coverage heuristic for making sure you looked at the whole product. Cataloged in `chartering`.
+- **SFDIPOT** (Structure, Function, Data, Interfaces, Platform, Operations, Time) — a coverage heuristic for making sure you looked at the whole product. Cataloged in `chartering`.
 
 Use them as idea generators feeding the design/execute/learn/steer loop — never as a script to march through.
 

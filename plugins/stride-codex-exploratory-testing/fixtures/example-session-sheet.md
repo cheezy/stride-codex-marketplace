@@ -1,8 +1,12 @@
 # Example session sheet
 
-A worked **SBTM session sheet** for charter #1 from the
+A worked **human-run SBTM session sheet** for charter #1 from the
 [example charter set](example-charters.md), run against the fictional *ExpenseFlow*
-demo target. It follows the section skeleton from the `session` skill exactly. All
+demo target. It follows the section skeleton from the `session` skill exactly — the
+human-run form, with a wall-clock `DURATION` and Task Breakdown Metric percentages a
+tester with a clock can report honestly. An **agent-run** session is bounded by a
+probe budget instead and reports counts; that contract is the `session_sheet` object
+in `agents/explorer.md`, and the split is *Who the box binds* in the `session` skill. All
 data is synthetic; `demo.example.com` and `<tenant A>` / `<tenant B>` are
 placeholders standing in for anything real.
 
@@ -86,3 +90,42 @@ OFF-CHARTER PARKING LOT
   are not yet bugs.
 - **OFF-CHARTER PARKING LOT** captures valuable detours as future charters instead of
   letting them derail this box.
+
+---
+
+## The same session, agent-run
+
+The sheet above is what a **human** tester produces. An `explorer` agent running the
+same charter cannot report a `DURATION` or Task Breakdown Metric percentages — it has
+no clock — so its sheet swaps those two blocks for the counts it kept as it went.
+`AREAS COVERED`, `BUGS`, `QUESTIONS / RISKS`, and the parking lot are identical in
+form. `NOTES` is too, with one exception: the two wall-clock asides in the 250 MB note
+("ran the full 90s", "Setup cost real time") are things an agent cannot observe either,
+so it records that cost in the unit it does have — "this one probe plus its setup cost
+9 of the session's 34 tool calls".
+
+```
+TESTER / DATE
+  explorer subagent / 2026-07-20
+
+SESSION BUDGET
+  Probe budget: 12 (band 8-20)        Tool-call ceiling: 60
+  Probes attempted: 7 (on-charter 6, off-charter 1)
+  Probes that produced a finding: 5
+  Tool calls used: 34
+  Heuristics applied: Violate Format, Goldilocks, Follow the Data, Interrupt
+  Stopped: charter_quiet (5 of the 12 probes unspent — the budget is a ceiling,
+    not a quota)
+```
+
+Read as JSON, that is the `session_sheet` object in `agents/explorer.md`: `tester`,
+`probe_budget`, `probes_attempted`, `probes_with_finding`, `on_charter_probes`,
+`off_charter_probes`, `tool_calls_used`, `areas_covered`, `heuristics_applied`, and
+`stop_reason`.
+
+The *shape* the percentages carried survives — most of the session served the charter,
+one detour produced a new candidate charter — but nothing here is estimated. And
+`Stopped: charter_quiet` with probes unspent is the point of the budget: a session that
+stops because the charter went quiet is **complete**, while one that stops on
+`probe_budget_exhausted` was budget-bound and probably has more to find. A session
+blocked before its first probe reports these counters as **zero**, not absent.

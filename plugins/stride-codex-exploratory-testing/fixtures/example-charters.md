@@ -36,7 +36,7 @@ Ranked by risk × payoff. The top charter drove the
 > whether any row can leak across tenants.
 
 - **Risk:** data corruption and cross-tenant leakage — the highest-stakes pair here.
-- **SFDPOT lens:** Data, Structure. **Variables:** Format, Size, Files & storage.
+- **SFDIPOT lens:** Data, Structure. **Variables:** Format, Size, Files & storage.
 - **Nightmare headline it defends against:** *"Expense App Imports One Tenant's
   Receipts Into Another's Books."*
 
@@ -49,7 +49,7 @@ Ranked by risk × payoff. The top charter drove the
 
 - **Risk:** an approved-then-recalled report that still exports; money moves on a
   stale state.
-- **SFDPOT lens:** Operations, Time. **Variables:** Timing, Sequence, Count.
+- **SFDIPOT lens:** Operations, Time. **Variables:** Timing, Sequence, Count.
 - **Heuristic:** *Interrupt* — start an action, interrupt it, resume from a stale tab.
 
 ### 3. Date-range filter — boundary and reversed ranges
@@ -60,7 +60,7 @@ Ranked by risk × payoff. The top charter drove the
 > the totals.
 
 - **Risk:** finance trusts a total that silently drops the last day of the month.
-- **SFDPOT lens:** Data, Time. **Variables:** Position (boundaries), Geography/locale.
+- **SFDIPOT lens:** Data, Time. **Variables:** Position (boundaries), Geography/locale.
 - **Heuristic:** *Goldilocks* (too early / just right / too late), *Reverse*.
 
 ### 4. Multi-tab session handling
@@ -71,7 +71,7 @@ Ranked by risk × payoff. The top charter drove the
 > **to discover** stale-write, silent-logout, and CSRF-token-desync problems.
 
 - **Risk:** a silent logout that discards a half-written report without warning.
-- **SFDPOT lens:** Platform, Operations. **Variables:** Timing, Input method.
+- **SFDIPOT lens:** Platform, Operations. **Variables:** Timing, Input method.
 - **Web heuristic:** *Multiple Tabs / Windows*, *Cookies / Session*.
 
 ### 5. Receipt export — tenant isolation and format fidelity
@@ -83,7 +83,7 @@ Ranked by risk × payoff. The top charter drove the
 > Unicode, or double-count on retry.
 
 - **Risk:** an export that leaks rows or double-bills on a retry click.
-- **SFDPOT lens:** Data, Structure. **Variables:** Format, Count, Size.
+- **SFDIPOT lens:** Data, Structure. **Variables:** Format, Count, Size.
 - **Nightmare headline:** *"Finance Export Bills Customers Twice After a Double-Click."*
 
 ---
