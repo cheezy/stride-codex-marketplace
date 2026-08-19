@@ -128,7 +128,7 @@ This gate is **not bypassable** by submitting a self-reported skip (`dispatched:
 ## The Complete Completion Process
 
 1. **Finish your work** - All implementation complete
-2. **Pre-completion code review** - If medium+ complexity OR 2+ key_files, invoke the `task-reviewer` custom agent. Fix Critical/Important issues. Save output as `review_report`.
+2. **Pre-completion code review** - If the `stride-workflow` Step 3 decision matrix says YES in the **Review** column for this task's row, invoke the `task-reviewer` custom agent. **Read the column; do not re-derive the condition here** (D221). Fix Critical/Important issues. Save output as `review_report`.
 3. **Execute after_doing hook** (blocking, 120s timeout) — each line one at a time, NO prompts. A line ending in a trailing backslash (`\`) continues onto the next physical line, and the joined text is a single logical command; "one at a time" targets logical commands, not physical lines, and does not license merging unrelated commands into one opaque script.
    - Capture: `exit_code`, `output`, `duration_ms`
 4. **If after_doing fails:** FIX ISSUES, do NOT proceed
@@ -147,7 +147,7 @@ Work Complete
     ↓
 Check decision matrix for code review (if custom agents available)
     ↓
-Medium+ OR 2+ key_files? ─YES→ Invoke task-reviewer custom agent
+Matrix Review column says YES? ─YES→ Invoke task-reviewer custom agent
     ↓ NO (or no custom agent support)     ↓
     ↓                              Issues found? ─YES→ Fix issues
     ↓                                     ↓ NO            ↓
