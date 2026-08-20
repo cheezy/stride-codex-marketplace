@@ -208,8 +208,21 @@ DURATION=$((END_TIME - START_TIME))
 | medium (any) | Skip | YES | YES | YES |
 | large (any) | Skip | YES | YES | YES |
 | Defect type | Skip | YES | Skip (unless large) | YES |
+| Complexity absent or unrecognised | Skip | YES | YES | YES |
 
+<!-- canon:decision-matrix-authority v1 -->
 **This matrix is the SOLE decision point for the Decompose, Explore, Plan, and Review columns.** Nothing elsewhere in this plugin may state a second, separately-satisfiable condition for any of them; where other prose mentions one of these steps it describes what this matrix already decided and defers to it. **If any prose appears to give an independent trigger, the matrix wins.** That ambiguity was defect D221, and this rule is its fix.
+
+<!-- canon:row-precedence v1 -->
+**A task can satisfy several rows at once, and the order that settles which one governs is close to the printed order but not identical to it — `Defect type` is the single row that moves, rising from sixth to third.** A `medium` defect answers to `medium (any)` and to `Defect type` alike; leaving that unsettled would put the same D221 ambiguity the paragraph above closed for prose straight back inside the table. Work through the candidates this way:
+
+1. **Branch A takes precedence over everything.** A goal, a `large` task with no children, or a 25+ hour estimate goes to decomposition, and the remaining rows are simply not consulted.
+2. **Next, `small, 0-1 key_files` — and it does not care what type the task is.** The row is there for cost, not for classification: one file is one file, and calling that work a defect does not enlarge it.
+3. **Next, `Defect type`.** It beats `medium (any)` and `large (any)` because it is the row written specifically about defects. Read its `Skip (unless large)` cell as two cases: `Plan = YES` when the defect is `large`, and `Plan = Skip` for every other defect.
+4. **Next, whichever complexity row fits** — `small, 2+ key_files`, `medium (any)` or `large (any)`.
+5. **Last, `Complexity absent or unrecognised`.** It applies only where `complexity` is missing or holds a value outside the three known ones. Nothing else reaches it, and it never arbitrates between two rows that both matched.
+
+Run any task through those five and a single row is left standing, which is the premise the per-column instructions already rely on. The position of item 2 carries weight: hoist `Defect type` above it and every one-file defect would suddenly draw an explorer and a reviewer, which Branch B says it should not. A rule written to remove an ambiguity ought to leave routing untouched, and this ordering does.
 
 ### Branch A: Goal / Large Undecomposed Task
 
@@ -986,6 +999,25 @@ Each element of `workflow_steps` is an object with these keys:
 | `dispatched` | boolean | Always | `true` if the step ran; `false` if intentionally skipped |
 | `duration_ms` | integer | When `dispatched=true` | Wall-clock time the step took, in milliseconds |
 | `reason` | string | When `dispatched=false` | Short explanation of why the step was skipped |
+| `reason_code` | enum | Optional, when `dispatched=false` | Which category of skip this was, in a countable form (D239). Send it **with** `reason`, not instead of it; anything outside the six listed below draws a `422`, and leaving the key off is fine |
+
+<!-- canon:reason-code-vocabulary v1 -->
+### Picking a `reason_code`
+
+An entry marked `dispatched: false` MAY also carry a `reason_code`. It accompanies the prose `reason` and does not stand in for it — the code is the part that can be counted across tasks, the prose is the part a person reads. Six values are permitted and no others:
+
+| Code | Use when |
+|---|---|
+| `decision_matrix_skip` | This task's row in the Step 3 matrix marks the step skipped |
+| `ran_inline` | The work happened, but the main loop did it instead of a dispatched agent |
+| `hook_body_empty` | That `.stride.md` section has an empty body, so there is nothing for the hook to run (`after_doing` / `before_review` only) |
+| `subsumed_by_task_spec` | The task spec had already decided the question this step exists to answer |
+| `folded_into_prior_step` | The output belongs to a step that ran earlier and produced it |
+| `matrix_deviation` | The matrix asked for the step and it was skipped anyway |
+
+**Only `matrix_deviation` admits a departure from the matrix**, which is the whole point of having it. If the matrix asked for a step and it did not happen, that is the code to file — `decision_matrix_skip` would misreport the departure as something the matrix sanctioned, and the aggregate would read clean. Use `reason` to explain what drove it.
+
+Send anything outside these six and the completion API answers `422`. Leaving `reason_code` off altogether remains fine: a prose `reason` on its own is still a complete skip record (D239).
 
 ### End-of-Workflow Example (full dispatch)
 

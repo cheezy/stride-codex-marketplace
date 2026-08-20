@@ -64,7 +64,7 @@ Activate this skill **after claiming a task** (via `stride-claiming-tasks`) and 
 
 ## Decision Matrix
 
-Use this matrix to determine which custom agents to invoke based on task attributes. **This table is a MIRROR of the decision matrix in `stride-workflow` Step 3, restricted to the agent columns (plus this port's exploratory-testing column). It must agree with that matrix row for row, and where the two diverge, `stride-workflow` Step 3 is authoritative. Do not state an independent trigger for any column in this file; that was defect D221.**
+Use this matrix to determine which custom agents to invoke based on task attributes. **This table is a MIRROR of the decision matrix in `stride-workflow` Step 3, restricted to the agent columns (plus this port's exploratory-testing column). It must agree with that matrix row for row, and where the two diverge, `stride-workflow` Step 3 is authoritative. Do not state an independent trigger for any column in this file; that was defect D221.** Read its **Row precedence** rule too: more than one row can match, and that ordering lives there rather than being restated here.
 
 | Task Attributes | task-decomposer | task-explorer | Plan | task-reviewer | exploratory-testing |
 |---|---|---|---|---|---|
@@ -76,6 +76,7 @@ Use this matrix to determine which custom agents to invoke based on task attribu
 | Goal type | Run | Skip* | Skip* | Skip* | Skip |
 | Large complexity, not yet decomposed | Run | Skip* | Skip* | Skip* | Skip |
 | 25+ hour estimate, not yet decomposed | Run | Skip* | Skip* | Skip* | Skip |
+| Complexity absent or unrecognised | Skip | Run | Run | Run | Gated† |
 
 *After decomposition, each resulting child task follows its own row in this matrix when claimed individually.
 

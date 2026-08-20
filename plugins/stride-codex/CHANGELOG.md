@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added — row precedence for the Step 3 matrix, and the `reason_code` skip vocabulary (W2110, D239)
+
+Two rules this port owed the fleet's canon had no substance behind them at all, and a third gap fell out of writing the first.
+
+**Row precedence.** The Step 3 decision matrix can match a task on more than one row — a `medium` defect matches both `medium (any)` and `Defect type` — and the table stated no order, so the ambiguity D221 removed from the prose was still sitting inside the table. Step 3 now states the reading order explicitly: Branch A leads, `small, 0-1 key_files` comes next regardless of task type, `Defect type` follows, then the plain complexity row, and the fallback closes it out. Any task now resolves to a single row, which is what the per-column instructions had been assuming all along. The order is not arbitrary — placing the type row above the small-single-file row would flip Explore and Review to YES for every small one-file defect and contradict Branch B, so the order chosen is the one that resolves the ambiguity without changing behaviour.
+
+**A fallback row.** The matrix had no row for a task whose `complexity` is missing or unrecognised; such a task matched nothing and the reader was left to guess. `Complexity absent or unrecognised` now appears last — Decompose Skip, Explore YES, Plan YES, Review YES — and the precedence rule confines it to that purpose: it fires only on a missing or unknown value, never as a tiebreaker between rows that did match. The `stride-subagent-workflow` mirror gains the same row, since that table is required to agree with Step 3 row for row.
+
+**The `reason_code` vocabulary (D239).** A `workflow_steps` entry with `dispatched: false` may now carry an optional `reason_code` alongside its prose `reason` — never instead of it, because the code is what aggregates across tasks and the prose is what a human reads. The Per-Step Schema table gains the key, and a new "Picking a `reason_code`" subsection gives the six permitted values: `decision_matrix_skip`, `ran_inline`, `hook_body_empty`, `subsumed_by_task_spec`, `folded_into_prior_step`, and `matrix_deviation`. The list is closed — a value outside it is rejected with a `422` — and omitting the key stays valid, so no payload that completes today stops completing. `matrix_deviation` is the one code that admits a departure from the matrix: it exists so a step that was required and skipped anyway cannot be filed as though the matrix had approved it.
+
+This release also places the canon anchor comments for all four in-scope rules beside the rules they mark, so the fleet drift check can see them. Documentation-only and producer-side: no completion field is added and no server-side behaviour changes.
+
 ## [1.31.0] - 2026-08-19
 
 ### Fixed — the failed-verdict `note` rule the server already enforces (D240)
