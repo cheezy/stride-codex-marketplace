@@ -67,24 +67,31 @@ so it must be updated to match the vendored `plugin.json` on every sync.
 5. Secret-scan the whole history, then commit and push:
 
    ```bash
-   git grep -nI 'BEGIN .*PRIVATE KEY\|stride_dev_[A-Za-z0-9+/]\|stride_prod_' $(git rev-list --all) \
-     | grep -vE 'your_token_here|TEST_TOKEN|DO_NOT_LEAK|SHOULD_NOT_MATCH|should_not_match|abc123'   # expect empty
+   git grep -nI 'BEGIN [A-Z ]*PRIVATE KEY\|ghp_[A-Za-z0-9]\{20,\}\|github_pat_[A-Za-z0-9_]\{20,\}\|stride_dev_[A-Za-z0-9+/=]\{30,\}\|stride_prod_[A-Za-z0-9+/=]\{30,\}' $(git rev-list --all)   # expect empty
    git add -A
    git commit -m "Sync <name> to X.Y.Z"
    git push origin main
    ```
 
-   The `grep -vE` filter suppresses **self-describing synthetic fixtures** that vendored plugins
-   legitimately ship — negative-test canaries and documentation placeholders whose names announce
-   what they are (`..._your_token_here`, `..._TEST_TOKEN_FOR_SMOKE_TEST_ONLY`, `..._DO_NOT_LEAK`,
-   the last being a string whose whole purpose is to prove a redaction path works). Each is
-   byte-identical to its public upstream repo. Without the filter the scan returns those hits on
-   every release and the checklist item becomes unsatisfiable — which trains the next engineer to
-   wave it through, the opposite of what a gate is for.
+   **Expect literally zero output.** Any hit is a real finding — stop, do not commit, and rotate
+   the credential. There is no allow-list to consult and none to widen.
 
-   **If the scan returns a hit that is not obviously one of those, treat it as a real credential:
-   stop, do not commit, and rotate it.** Widen this filter only for a fixture you have actually
-   opened and read.
+   Each clause bounds the *shape* of a real credential rather than listing exceptions, which is
+   what lets the gate be satisfiable. A genuine token is a long run of unbroken base64; the
+   self-describing fixtures a vendored plugin legitimately ships — negative-test canaries and
+   documentation placeholders whose names announce what they are — are short and word-shaped, so
+   the `{30,}` bound excludes them by construction instead of by name. `BEGIN [A-Z ]*PRIVATE KEY`
+   still matches every real PEM header (`RSA`, `EC`, `OPENSSH`, and the bare form) while no longer
+   matching the line you are reading.
+
+   That last point is why this shape replaced an earlier bare-prefix pattern plus a `grep -vE`
+   allow-list, rather than the allow-list simply being extended. Two defects made that form
+   unsatisfiable, and only one of them was fixable by extension. The list had stopped covering the
+   fixtures actually in the tree, which a wider list would have solved. But the pattern also
+   matched **its own definition in this file**, and it did so in every historical commit of it —
+   and an allow-list cannot fix that without suppressing `RELEASE.md` itself, which would blind the
+   scan to a real key committed here. A gate that cannot return empty trains its reader to wave
+   hits through, which is the failure worth caring about on a public repository.
 
 6. Tag and publish the GitHub release:
 
