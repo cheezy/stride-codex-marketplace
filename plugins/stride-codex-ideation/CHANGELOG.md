@@ -4,6 +4,14 @@ All notable changes to the `stride-codex-ideation` plugin are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-08-21
+
+Documentation only. The ideation loop, the decomposer, and the plugin's command-skills are unchanged.
+
+### Fixed
+
+- **The README described the default `lean` profile as matching "upstream v0.3.0 behavior".** Defining a profile by a version number of a different plugin asks the reader to reconstruct that release from a changelog before they can tell what the default does. The sentence now describes the profile directly: `lean` runs the shared core only — the seven gated sections plus the mandatory framing checkpoint, premortem, and challenge gate — with no profile-specific forcing questions and no optional document sections.
+
 ## [0.3.0] - 2026-07-04
 
 Review-queue hardening pass: the decomposer contract, stridify stamping, batch validator, and calibration fixtures are updated so goals and tasks shipped through this port are fully attributed and score complete against Stride's review queue, plus a sweep of stale documentation references left over from the Codex port.

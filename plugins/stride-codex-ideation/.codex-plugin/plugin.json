@@ -1,6 +1,6 @@
 {
   "name": "stride-codex-ideation",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Ideation skills and custom agents for Stride kanban — Codex CLI edition.",
   "skills": "./skills/"
 }

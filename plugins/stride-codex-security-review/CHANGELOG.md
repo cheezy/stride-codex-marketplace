@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-08-21
+
+Housekeeping. No change to the command-skill, the reviewer agent, or the analysis methodology.
+
+### Security
+
+- **`.gitignore` now covers `.stride_auth.md`.** The file carries a live Stride API token and is written into whatever repository the agent workflow runs in. It sat alongside the three Stride state paths this file already ignored, but was not itself listed — so the only thing keeping the token out of a commit was that no `git add -A` had happened while it was on disk.
+
 ## [0.1.1] - 2026-07-23
 
 ### Fixed
