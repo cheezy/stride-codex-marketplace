@@ -44,7 +44,7 @@ if ! command -v git > /dev/null 2>&1; then
 fi
 
 # Create directories
-mkdir -p "$INSTALL_DIR/skills" "$INSTALL_DIR/agents"
+mkdir -p "$INSTALL_DIR/skills" "$INSTALL_DIR/agents" "$INSTALL_DIR/hooks"
 
 # Clone to temp directory
 TMPDIR=$(mktemp -d)
@@ -67,6 +67,15 @@ agent_count=$(find "$TMPDIR/stride-codex/agents" -maxdepth 1 -name '*.md' | wc -
 echo "Installing $agent_count agents..."
 cp "$TMPDIR/stride-codex/agents/"*.md "$INSTALL_DIR/agents/"
 
+# Copy the hook surface (W2141). Only the two runtime files ship — the test
+# script stays in the repo. Codex discovers a plugin-bundled hooks/hooks.json
+# by default, so without this copy the hook surface would be inert.
+echo "Installing hooks..."
+cp "$TMPDIR/stride-codex/hooks/stride-hook.sh" "$INSTALL_DIR/hooks/stride-hook.sh"
+cp "$TMPDIR/stride-codex/hooks/stride-stop-gate.sh" "$INSTALL_DIR/hooks/stride-stop-gate.sh"
+cp "$TMPDIR/stride-codex/hooks/hooks.json" "$INSTALL_DIR/hooks/hooks.json"
+chmod +x "$INSTALL_DIR/hooks/stride-hook.sh" "$INSTALL_DIR/hooks/stride-stop-gate.sh"
+
 # Copy AGENTS.md to project root if --project, or to global dir
 if [ "$MODE" = "project" ]; then
   cp "$TMPDIR/stride-codex/AGENTS.md" ./AGENTS.md
@@ -85,6 +94,7 @@ echo ""
 echo "Installed:"
 echo "  Skills: $(ls "$INSTALL_DIR/skills/" | wc -l | tr -d ' ') skills"
 echo "  Agents: $(ls "$INSTALL_DIR/agents/"*.md 2>/dev/null | wc -l | tr -d ' ') agents"
+echo "  Hooks:  $(ls "$INSTALL_DIR/hooks/" 2>/dev/null | wc -l | tr -d ' ') files"
 echo ""
 echo "Next steps:"
 echo "  1. Add to .gitignore FIRST: .stride_auth.md, .stride/, and .exploratory/"
@@ -93,3 +103,22 @@ echo "      your first session; .exploratory/ applies when the exploratory-testi
 echo "      plugin is installed and its artifacts arrive untracked)"
 echo "  2. Create .stride_auth.md with your API credentials (see README)"
 echo "  3. Create .stride.md with your hook commands"
+echo "  4. Register the hook. This is a loose .agents/ install, NOT a plugin"
+echo "     bundle, so $INSTALL_DIR/hooks/hooks.json is not auto-discovered."
+if [ "$MODE" = "project" ]; then
+  echo "     Add this to .codex/hooks.json in this repo:"
+else
+  echo "     Add this to ~/.codex/hooks.json:"
+fi
+echo ""
+echo '       {"hooks":{'
+echo '         "PostToolUse":[{"matcher":"Bash","hooks":[{'
+echo '           "type":"command","async":false,"timeout":60,'
+echo "           \"command\":\"$INSTALL_DIR/hooks/stride-hook.sh post\"}]}],"
+echo '         "Stop":[{"hooks":[{'
+echo '           "type":"command","async":false,"timeout":10,'
+echo "           \"command\":\"$INSTALL_DIR/hooks/stride-stop-gate.sh\"}]}]}}"
+echo ""
+echo "  5. Approve the hook when Codex prompts. Hook definitions are trust-hash"
+echo "     pinned, so a fresh approval is required after any update that changes"
+echo "     hooks/stride-hook.sh, hooks/stride-stop-gate.sh or hooks/hooks.json."

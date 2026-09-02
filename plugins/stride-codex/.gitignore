@@ -16,3 +16,7 @@ Thumbs.db
 
 # Stride agent-local state (never commit — holds a live API token)
 .stride_auth.md
+
+# Stride agent-local state (hook working files: loop-state record, API response
+# capture). Agent-local by design — never commit.
+.stride/

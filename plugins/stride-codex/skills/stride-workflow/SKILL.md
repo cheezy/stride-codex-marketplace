@@ -716,7 +716,7 @@ The five recognized `.stride.md` hook sections, in lifecycle order:
 | `## after_review` | After `PATCH /api/tasks/:id/mark_reviewed` succeeds | yes | 60s | Merge, deploy, cleanup |
 | `## after_goal` | After the parent goal's final child task completes | yes | 60s | Project-level rollups, goal-completion notifications, archival |
 
-**stride-codex has no hook script — the agent reads `.stride.md` and runs each hook manually via the platform's shell tool.** A missing `## after_goal` section is a clean no-op (the server's grace-window worker promotes the goal automatically when no agent reports). See [Step 9](#step-9-post-completion-decision) for the manual after_goal execution path.
+**stride-codex's plugin hook script records loop state only and never executes a `.stride.md` section — the agent reads `.stride.md` and runs each hook manually via the platform's shell tool.** A missing `## after_goal` section is a clean no-op (the server's grace-window worker promotes the goal automatically when no agent reports). See [Step 9](#step-9-post-completion-decision) for the manual after_goal execution path.
 
 ### Hook Environment Variables
 
@@ -865,7 +865,7 @@ Call `PATCH /api/tasks/:id/complete` with ALL required fields:
 
 When the just-completed task is the **final child of a parent goal**, the server bundles a fifth `after_goal` entry in the `hooks` array of the response of `/complete` (when `needs_review=false`) or `/mark_reviewed` (when `needs_review=true`), alongside the primary hook entries.
 
-**Because stride-codex has no plugin hook script, the agent is responsible for the entire after_goal lifecycle.** Manual execution path:
+**Because stride-codex's plugin hook script records loop state only and never executes a `.stride.md` section, the agent is responsible for the entire after_goal lifecycle.** Manual execution path:
 
 1. **Detect (read the canonical file, not your context)**: The completion curls write the full response to the canonical file `${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` (via `| tee`, with a `curl --output` fallback for `tee`-less shells — see `stride-completing-tasks`). Read the after_goal entry **and** its `hook.env` `GOAL_*` values from that file with `jq` — file-first, because your in-context copy of the response may be truncated — falling back to the response body still visible in your context only when the file is absent, empty, or not valid JSON. Re-read from the file rather than trusting env carried across shell turns. The `.stride/` directory holds agent-local state and must be gitignored.
 

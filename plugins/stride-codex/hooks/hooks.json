@@ -1,0 +1,34 @@
+{
+  "_comment": "Stride Codex hook registration (W2141). VERIFIED against the Codex hooks documentation (developers.openai.com/codex/hooks -> learn.chatgpt.com/docs/hooks), not guessed: (a) PostToolUse is the event that fires after a tool call returns, carrying stdout/stderr/exit-code, and it is observe-only, which is all this hook needs; (b) the matcher for shell and unified-exec operations is the literal string \"Bash\" -- NOT \"shell\". Codex's tool-name mapping in AGENTS.md calls the tool `shell`, but the hook MATCHER is documented as Bash, and the matcher is what this file must carry; (c) timeout is in SECONDS, defaulting to 600 when omitted -- do NOT copy Gemini's 300000, which is a milliseconds value, nor treat 10000 as 10 seconds. 60s is far beyond this script's real cost (a handful of jq invocations) and it fails safe regardless, since the script always exits 0; (d) async defaults to false already, and it is stated explicitly because G421 records that an async handler cannot apply control effects and completes silently -- the sibling Stop gate depends on that, and the record must be on disk before the next turn begins or that gate reads a stale world; (e) plugin-bundled hooks load alongside ~/.codex/hooks.json, <repo>/.codex/hooks.json and the config.toml [hooks] tables, and hooks/hooks.json is the DEFAULT bundled path -- which is why .codex-plugin/plugin.json deliberately gains no \"hooks\" key: the default path already resolves this file, and adding an unvalidated key to that manifest risks breaking plugin load for no gain. SCOPE: this file is the PLUGIN-BUNDLED registration. The installers perform a LOOSE .agents/ install instead, which is not a plugin bundle -- .agents/hooks/ is not a scanned location and ${PLUGIN_ROOT} is not set there -- so that path requires the user to register the handler by hand with an absolute path, which both installers print and the README documents under 'Registering the hook'. UNVERIFIED, and the one thing here that is: ${PLUGIN_ROOT} is documented as an ENVIRONMENT VARIABLE given to plugin hooks (alias ${CLAUDE_PLUGIN_ROOT}), while documented ${...} substitution INSIDE the command string covers event fields rather than plugin paths. The expansion is QUOTED so an install path containing whitespace or shell metacharacters cannot split into the wrong argv or be evaluated -- inert under a non-expanding host, correct under a shell-expanding one. This registration relies on the command being run through a shell, which the docs' own `python3 ~/.codex/hooks/...` example implies, since tilde expansion is a shell feature. If the hook never fires, that assumption is the first thing to check: substitute the absolute installed path for ${PLUGIN_ROOT}, or register the script manually in ~/.codex/hooks.json. Stop (W2142): the Stop-hook gate. No matcher -- Stop is not tool-scoped. Registered under the Stop spelling ONLY; a second spelling would double-fire the gate and double-spend its bounded block budget. async is false for the reason given in (d): an async handler applies no control effect, so the gate would silently do nothing. timeout 10 (SECONDS) is a third bound beyond the gate's own curl --connect-timeout 3 / --max-time 5, and a timeout there fails OPEN, permitting the stop. Note that hook definitions are trust-hash pinned, so this entry -- and every later edit to either hook script -- costs a fresh user approval, and the gate does not fire until that approval is given.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "name": "stride-after-tool",
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}\"/hooks/stride-hook.sh post",
+            "async": false,
+            "timeout": 60,
+            "description": "Records .stride/.loop-state.json after a successful Stride completion; clears it on any claim"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "name": "stride-stop-gate",
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}\"/hooks/stride-stop-gate.sh",
+            "async": false,
+            "timeout": 10,
+            "description": "Refuses to end a session while a completed task has gone unclaimed and Stride's Ready column still holds a claimable task"
+          }
+        ]
+      }
+    ]
+  }
+}

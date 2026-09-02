@@ -42,7 +42,7 @@ All Stride API calls are pre-authorized. Never ask the user for permission to ca
 
 ## Hook Execution
 
-**Codex CLI has no automatic hook interception.** The agent must execute `.stride.md` hooks directly:
+**Codex CLI does have a hook system** (stable since rust-v0.124.0), and this plugin registers two hooks in `hooks/hooks.json`. One records `.stride/.loop-state.json` after a successful completion and clears it on any claim; the other is a `Stop` gate that refuses to end a session while a completed task has gone unclaimed and a claimable task remains (bounded to 2 refusals per completion, and skippable with `STRIDE_ALLOW_STOP=1`). **Neither executes a `.stride.md` section.** So hook execution itself remains the agent's job — the agent must execute `.stride.md` hooks directly:
 
 1. Read the corresponding section from `.stride.md` (e.g., `## before_doing`)
 2. Execute each command line by line via shell — one at a time, not combined. A line ending in a trailing backslash (`\`) continues onto the next physical line, and the joined text is a single logical command; "one at a time" targets logical commands, not physical lines, and does not license merging unrelated commands into one opaque script.

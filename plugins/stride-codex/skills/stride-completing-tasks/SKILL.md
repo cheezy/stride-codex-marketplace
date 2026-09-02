@@ -290,9 +290,9 @@ When a blocking hook fails, invoke the `hook-diagnostician` custom agent **as th
 
 After BOTH hooks succeed, assemble and send the completion request as a
 SINGLE shell invocation that inlines the snapshot read inside `jq -n`. The
-inline pattern matters because Codex CLI has no automatic hook
-interception — you (the agent) just executed `.stride.md`'s `after_doing`
-commands manually, and that's when `.stride-changed-files.json` should
+inline pattern matters because Codex CLI's hook surface records loop state
+only and never executes a `.stride.md` section — you (the agent) just
+executed `.stride.md`'s `after_doing` commands manually, and that's when `.stride-changed-files.json` should
 have been (re)written. A separate shell turn before the completion curl
 would read a stale snapshot from a prior task. See the "Why inline?"
 paragraph in the [Per-File Diff Capture (Manual)](#per-file-diff-capture-manual)
@@ -870,7 +870,7 @@ After the complete endpoint succeeds:
 
 When the just-completed task is the **final remaining child of a parent goal**, the `/complete` (and later `/mark_reviewed`) response payload includes a fifth `after_goal` entry in its `hooks` array, alongside the usual `after_doing` / `before_review` / `after_review` entries. The entry's `hook.env` block carries `GOAL_ID`, `GOAL_IDENTIFIER`, `GOAL_TITLE`, `GOAL_DESCRIPTION` (plus the standard `BOARD_*` / `COLUMN_*` / `AGENT_NAME` / `HOOK_NAME`).
 
-**Because stride-codex has no plugin hook script, the agent is responsible for executing after_goal manually.** Five-step path:
+**Because stride-codex's plugin hook script records loop state only and never executes a `.stride.md` section, the agent is responsible for executing after_goal manually.** Five-step path:
 
 1. **Detect (read the canonical file, not your context)**: The `/complete` and `/mark_reviewed` curls wrote the full, untruncated response to `${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` (the `| tee` capture in the API Request Format section above). Read the after_goal entry — **and** its `hook.env` `GOAL_*` values — from that file with `jq`, because your in-context copy of the response may be truncated. Fall back to the in-context response body **only** when the file is absent, empty, or not valid JSON. Re-read these values from the file here rather than trusting env carried across shell turns — the export below does not survive a fresh turn.
 

@@ -50,10 +50,17 @@ irm https://raw.githubusercontent.com/cheezy/stride-codex/main/install.ps1 -OutF
 ```bash
 git clone https://github.com/cheezy/stride-codex.git
 
-# Copy skills and agents
+# Copy skills, agents and the hook surface
 cp -r stride-codex/skills/ .agents/skills/
 cp -r stride-codex/agents/ .agents/agents/
 cp stride-codex/AGENTS.md AGENTS.md
+
+# The hook surface. Only the two runtime files; the test script stays in the
+# repo. -p preserves the executable bit on stride-hook.sh.
+mkdir -p .agents/hooks
+cp -p stride-codex/hooks/stride-hook.sh .agents/hooks/stride-hook.sh
+cp -p stride-codex/hooks/stride-stop-gate.sh .agents/hooks/stride-stop-gate.sh
+cp stride-codex/hooks/hooks.json .agents/hooks/hooks.json
 ```
 
 For Windows manual installation, use `Copy-Item`:
@@ -61,13 +68,19 @@ For Windows manual installation, use `Copy-Item`:
 ```powershell
 git clone https://github.com/cheezy/stride-codex.git
 
-# Copy skills and agents
+# Copy skills, agents and the hook surface
 Copy-Item -Recurse stride-codex\skills\* .agents\skills\
 Copy-Item -Recurse stride-codex\agents\*.md .agents\agents\
 Copy-Item stride-codex\AGENTS.md .\AGENTS.md
+
+# The hook surface. Only the two runtime files; the test script stays in the repo.
+New-Item -ItemType Directory -Force -Path .agents\hooks | Out-Null
+Copy-Item stride-codex\hooks\stride-hook.sh .agents\hooks\stride-hook.sh
+Copy-Item stride-codex\hooks\stride-stop-gate.sh .agents\hooks\stride-stop-gate.sh
+Copy-Item stride-codex\hooks\hooks.json .agents\hooks\hooks.json
 ```
 
-Codex CLI discovers skills in `.agents/skills/` or `.codex/skills/` and agents in `.agents/agents/` automatically.
+Codex CLI discovers skills in `.agents/skills/` or `.codex/skills/` and agents in `.agents/agents/` automatically. **Hooks are the exception — `.agents/hooks/` is not a scanned location.** A `.agents/` install is a loose tree, not a plugin bundle, so the copied `hooks/hooks.json` is not picked up on its own and the handler must be registered once by hand; see [The Stride hook surface](#the-stride-hook-surface).
 
 ## Setup
 
@@ -139,7 +152,7 @@ git push origin main
 ` ` `
 ```
 
-**`after_goal` (v1.11.0+):** the Stride server bundles an `after_goal` entry in the `hooks` array of the response of `/complete` or `/mark_reviewed` when the completing task is the final child of a parent goal. Codex CLI has no plugin hook script, so the agent is responsible for the entire after_goal lifecycle: detect the entry by reading the **canonical capture file** (below) rather than truncatable context, read `## after_goal` from `.stride.md`, export `GOAL_ID` / `GOAL_IDENTIFIER` / `GOAL_TITLE` / `GOAL_DESCRIPTION` from the entry's `hook.env` block, execute the section's commands via shell, capture `{exit_code, output, duration_ms}`, and POST the result to `PATCH /api/tasks/:goal_id/after_goal` to flip the goal to Done. A missing `## after_goal` section is a clean no-op (back-compat — the server's grace-window worker covers the goal transition, flipping only the goal's status; it never runs `## after_goal` or performs any push). The hook is general-purpose — Slack notifications, artifact archival, release pipelines, project-level smoke tests are all valid uses.
+**`after_goal` (v1.11.0+):** the Stride server bundles an `after_goal` entry in the `hooks` array of the response of `/complete` or `/mark_reviewed` when the completing task is the final child of a parent goal. Codex CLI's plugin hook script records loop state only and never executes a `.stride.md` section, so the agent remains responsible for the entire after_goal lifecycle: detect the entry by reading the **canonical capture file** (below) rather than truncatable context, read `## after_goal` from `.stride.md`, export `GOAL_ID` / `GOAL_IDENTIFIER` / `GOAL_TITLE` / `GOAL_DESCRIPTION` from the entry's `hook.env` block, execute the section's commands via shell, capture `{exit_code, output, duration_ms}`, and POST the result to `PATCH /api/tasks/:goal_id/after_goal` to flip the goal to Done. A missing `## after_goal` section is a clean no-op (back-compat — the server's grace-window worker covers the goal transition, flipping only the goal's status; it never runs `## after_goal` or performs any push). The hook is general-purpose — Slack notifications, artifact archival, release pipelines, project-level smoke tests are all valid uses.
 
 **Truncation-proof detection (v1.23.0+):** the `/complete` and `/mark_reviewed` curls capture the full response to `${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` (via `tee`, with a `curl --output` fallback for `tee`-less shells), and the detect step reads the after_goal entry and `GOAL_*` env from that file with `jq` — not from the agent's truncatable context. If the file is absent, empty, or invalid JSON, a fresh, self-contained `GET /api/tasks/:id/after_goal_status` re-confirms whether after_goal is armed, sourcing the URL/token durably from `.stride_auth.md` and `TASK_ID` from the captured file rather than a prior turn's export. The two detection paths are mutually exclusive, so `## after_goal` runs at most once. The `.stride/` directory holds this agent-local state and must be gitignored. See `stride-workflow` SKILL.md Step 7+9 for the full procedure.
 
@@ -213,7 +226,183 @@ The `stride-creating-tasks`, `stride-enriching-tasks`, and `stride-workflow` ski
 
 ## Hook Execution
 
-**Codex CLI has no automatic hook interception.** The agent must execute `.stride.md` hooks directly by reading the file and running each command via shell.
+**Codex CLI does have a hook system** (stable since rust-v0.124.0), and this plugin registers one hook — see [The Stride hook surface](#the-stride-hook-surface) below. That hook records loop state only; **it never executes a `.stride.md` section.** Executing those remains the agent's job: it reads the file and runs each command via shell.
+
+### The Stride hook surface
+
+`hooks/hooks.json` registers **two** handlers: a `PostToolUse` handler on the
+`Bash` matcher running `hooks/stride-hook.sh post`, and a `Stop` handler
+running `hooks/stride-stop-gate.sh`. Codex discovers a plugin-bundled
+`hooks/hooks.json` by default, alongside `~/.codex/hooks.json`,
+`<repo>/.codex/hooks.json` and the `config.toml` `[hooks]` tables.
+
+#### The recorder — `stride-hook.sh`
+
+It does exactly one thing, and deliberately nothing else:
+
+- After a **successful** `PATCH /api/tasks/:id/complete`, it writes
+  `.stride/.loop-state.json` with four keys — `identifier`, `needs_review`
+  (verbatim from the API response, as a real JSON boolean), `completed_at`
+  (ISO-8601 UTC) and `session_id`.
+- After **any** claim — successful, failed, or against an empty queue — it
+  removes that file.
+
+The record is written by the hook rather than by the agent on purpose: an
+agent-written marker is exactly as skippable as the instruction it replaces,
+and this file is meant to be evidence the agent cannot forget to leave.
+
+It never writes to stdout, always exits 0, and never fails a completion
+because the record could not be written — the record is a gate input, not a
+correctness dependency. It makes no network calls, executes no `.stride.md`
+section, and reads the API response only from the hook event for the call
+being hooked, never from `.stride/.last-api-response.json` (that file survives
+across calls, so a truncated or 422 response would otherwise inherit the
+previous claim's payload and record a completion that never happened).
+
+#### The gate — `stride-stop-gate.sh`
+
+Fires on `Stop` and refuses to end a session while work demonstrably remains.
+It blocks in exactly **one** case: the loop-state record exists, its
+`needs_review` is the boolean `false`, and `GET /api/tasks/next` answers 200
+with a claimable identifier. A block is
+`{"decision":"block","reason":"..."}` on stdout with exit 0 — on a Stop event
+that does not reject anything, it forces the session to continue using the
+reason as the new instruction.
+
+**Everything else permits, and every failure permits** — no loop-state file, an
+unparseable record, a completion that needs review, an unreachable or non-200
+API, an unparseable body, no claimable task, an identifier that is not
+identifier-shaped, or a block counter that cannot be written. The gate fails
+open by construction: it is a nudge, and it must never be able to trap a
+session.
+
+It is bounded so it cannot wedge you. `.stride/.stop-gate-blocks` records at
+most **2** refusals per unfollowed completion; ending the session again past
+that budget simply permits. `STRIDE_ALLOW_STOP=1` skips the gate outright, and
+`STRIDE_STOP_GATE_MAX_BLOCKS` (digits only) changes the bound. The counter is
+written *before* the block is emitted, so a block that happened is always a
+block that was counted.
+
+The API token reaches only curl's `Authorization` header — never stdout,
+stderr, or the block reason — and the call is bounded by
+`--connect-timeout 3 --max-time 5`.
+
+`.stride/` must be gitignored — see step 1 of the installer's next steps; it
+holds the block counter as well as the loop-state record.
+
+### Where Codex sits in the stop-hook capability matrix
+
+<!-- canon:stop-hook-capability v1 -->
+
+Blocking a session end is a **per-runtime capability**, not one surface with one
+spelling across the fleet. Three things differ between runtimes, and a port must
+settle all three before wiring a gate: whether a session-end event exists that
+can refuse at all, what value expresses the refusal, and what stops a refused
+stop from looping. Codex CLI's answers:
+
+| | Codex CLI |
+|---|---|
+| State | **Blocks** — the event exists and its value is honoured |
+| Session-end event | `Stop` |
+| How a refusal is expressed | `{"decision":"block","reason":...}` on stdout at exit 0, or exit 2 with the prompt on stderr |
+| Loop guard | **None supplied by the runtime — the handler must bound itself** |
+
+**Exit 2 is not portable, which is why this port does not use it.** It blocks on
+Codex and Claude Code, is a retry on Gemini (whose `deny` reason returns as the
+agent's next prompt), and on Copilot's `agentStop` it is a *warning only* — the
+session ends anyway, with no error and nothing to distinguish it from a gate
+that correctly found no work. So `stride-stop-gate.sh` expresses its refusal as
+a JSON decision on stdout and no code path in it exits 2.
+
+**Codex adds three conditions of its own, each of which fails quietly rather
+than loudly:**
+
+- the handler must be declared **`async: false`** — an async handler runs and
+  then has its control effect discarded, so the gate would silently do nothing;
+- hook definitions are **trust-hash pinned**, so every edit to one needs
+  re-approval before it takes effect again;
+- a `block` whose `reason` is **blank degrades to a FAILURE** rather than a
+  block, and the session ends.
+
+**The portable shape, which this port implements:** emit the runtime's own JSON
+decision on stdout at exit 0, never rely on exit 2 to carry the refusal, give
+the decision a non-empty reason, and **self-limit** — bound the consecutive
+refusals in the gate's own state rather than trusting the runtime to. Codex
+supplies `stop_hook_active` on a re-firing stop and the gate honours it, but as
+a bonus only; the guarantee is its own persisted counter.
+
+### Registering the hook
+
+There are two install shapes, and they differ here:
+
+- **Plugin-bundled install.** `hooks/hooks.json` sits at the plugin's default
+  bundled path and Codex loads it alongside `~/.codex/hooks.json`,
+  `<repo>/.codex/hooks.json` and the `config.toml` `[hooks]` tables. Nothing to
+  do; `${PLUGIN_ROOT}` is set for you.
+- **`.agents/` install (both installers, and the manual instructions above).**
+  This is a loose tree rather than a plugin bundle, so `.agents/hooks/` is
+  **not** scanned and `${PLUGIN_ROOT}` is not set. Register the handler once,
+  by hand, with an absolute path — in `~/.codex/hooks.json` for a global
+  install or `<repo>/.codex/hooks.json` for a project-local one:
+
+  ```json
+  {
+    "hooks": {
+      "PostToolUse": [
+        {
+          "matcher": "Bash",
+          "hooks": [
+            {
+              "type": "command",
+              "command": "/absolute/path/to/.agents/hooks/stride-hook.sh post",
+              "async": false,
+              "timeout": 60
+            }
+          ]
+        }
+      ],
+      "Stop": [
+        {
+          "hooks": [
+            {
+              "type": "command",
+              "command": "/absolute/path/to/.agents/hooks/stride-stop-gate.sh",
+              "async": false,
+              "timeout": 10
+            }
+          ]
+        }
+      ]
+    }
+  }
+  ```
+
+  `Stop` takes no `matcher` — it is not tool-scoped. Register it under the
+  `Stop` spelling only: a loader honouring a second spelling would fire the
+  gate twice and double-spend its block budget.
+
+  Both installers print this snippet with your actual install path filled in.
+
+Two operational notes:
+
+- **Trust-hash pinning.** Codex pins hook definitions by hash, so Codex
+  prompts for approval on first use and again after any update that changes
+  `hooks/stride-hook.sh` or `hooks/hooks.json`.
+- **Windows.** This port ships no `.ps1` twin for either hook, so on native
+  Windows without a bash on `PATH` no loop state is recorded and the Stop gate
+  never runs. Git Bash and WSL run the `.sh` files directly and are unaffected.
+
+If the hook never appears to fire, check these in order:
+
+1. **Is it registered at all?** This is the likeliest cause by far on a
+   `.agents/` install, because that destination is not a scanned location —
+   see "Registering the hook" above. A plugin-bundled install does not need
+   this step; a loose one always does.
+2. **Did you approve it?** Codex pins hook definitions by trust hash and will
+   not run an unapproved or changed definition.
+3. **Only if you registered with `${PLUGIN_ROOT}`:** that variable is set for
+   plugin hooks only, and its expansion depends on the command being run
+   through a shell. Substitute the absolute installed path instead.
 
 ### How Hooks Work in Codex
 
