@@ -1707,10 +1707,10 @@ else:
   }
 
   G4_CLEAN='{"issues":[],"issue_counts":{"critical":0,"important":0,"minor":0}}'
-  G4_CRIT='{"issues":[{"severity":"critical","category":"correctness"}],"issue_counts":{"critical":1,"important":0,"minor":0}}'
+  G4_CRIT='{"issues":[{"severity":"critical","category":"code_quality"}],"issue_counts":{"critical":1,"important":0,"minor":0}}'
   G4_SECIMP='{"issues":[{"severity":"important","category":"security"}],"issue_counts":{"critical":0,"important":1,"minor":0}}'
   G4_SECMIN='{"issues":[{"severity":"minor","category":"security"}],"issue_counts":{"critical":0,"important":0,"minor":1}}'
-  G4_IMP='{"issues":[{"severity":"important","category":"correctness"}],"issue_counts":{"critical":0,"important":1,"minor":0}}'
+  G4_IMP='{"issues":[{"severity":"important","category":"code_quality"}],"issue_counts":{"critical":0,"important":1,"minor":0}}'
 
   assert_eq "4t: round 1 passes"  "pass"    "$(g4_cap 1 0 false "$G4_CLEAN")"
   assert_eq "4u: round 2 passes"  "pass"    "$(g4_cap 2 0 false "$G4_CLEAN")"
@@ -1763,8 +1763,183 @@ else:
   # filter: a security finding present in the COUNTS but absent from issues[].
   assert_eq "4ap: a starved issues[] cannot silence the carve-out" "refused" \
     "$(g4_cap 2 0 false '{"issues":[],"issue_counts":{"important":1}}')"
+  # Fail-closed on the co-ordinate: an unrecognized or absent category cannot
+  # buy recording by malforming the field the carve-out reads.
+  assert_eq "4aq: an unrecognized category is treated as uncoverable" "refused" \
+    "$(g4_cap 2 0 false '{"issues":[{"severity":"minor","category":"Security"}],"issue_counts":{"critical":0,"important":0,"minor":1}}')"
 else
   echo "  SKIP: 4r-4aj: python3 not installed or contract file not found"
+fi
+
+# ============================================================
+# Test Group 5: the cosmetic finding class (W2162)
+# ============================================================
+# Like Group 4 this tests a CONTRACT rather than a script. The literal half
+# greps the three contract files; the executed half EXTRACTS the cosmetic shape
+# pin from the markdown at run time and runs it, rather than restating what it
+# should do.
+#
+# Two assertions are anti-regression pins against defects stride shipped in this
+# same work and later fixed, so this port does not re-introduce them:
+#   * 5h  -- the prohibition must not say "two categories" while omitting
+#            `important`; the pin refuses critical AND important alike.
+#   * 5r  -- the all-cosmetic rule must not be an unguarded universal: over an
+#            absent or empty issues[] "every entry is cosmetic" is VACUOUSLY
+#            true, which would skip a re-review while prose reports real findings.
+#
+# 5w-5z pin the schema_version 1.6 -> 1.7 bump in lockstep across the tree. That
+# drift has regressed twice in this port's history; these fail if it regresses.
+#
+# WHAT REMAINS, deliberately: the pin reaches the flag's TYPE and CO-ORDINATES
+# only, never its TRUTH. A substantive minor relabelled cosmetic passes every
+# assert here, because no signal in the block is independent of the reviewer's
+# judgement. Nothing in this group can test that; the contract states the limit.
+
+echo ""
+echo "=== Test Group 5: W2162 cosmetic finding class ==="
+
+G5_REV="$PORT_ROOT/agents/task-reviewer.md"
+G5_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G5_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+G5_SA="$PORT_ROOT/skills/stride-subagent-workflow/SKILL.md"
+
+g5_has() { grep -qF "$1" "$2" && echo yes || echo no; }
+
+if [ -f "$G5_REV" ] && [ -f "$G5_WF" ] && [ -f "$G5_CT" ]; then
+  assert_eq "5a: the cosmetic key is declared OPTIONAL in this port's convention" "yes" \
+    "$(g5_has '`cosmetic` (boolean, **OPTIONAL**' "$G5_REV")"
+  assert_eq "5b: absent means false is stated" "yes" \
+    "$(g5_has 'absent means false' "$G5_REV")"
+  assert_eq "5c: the canon anchor sits beside the definition, exactly once" "1" \
+    "$(grep -cF '<!-- canon:cosmetic-finding-class v1 -->' "$G5_REV" || true)"
+  assert_eq "5d: and NOT beside the orchestrator mirror" "0" \
+    "$(grep -cF '<!-- canon:cosmetic-finding-class' "$G5_WF" || true)"
+  assert_eq "5e: the TWO-gate test, not the weak single gate" "yes" \
+    "$(g5_has 'asserts nothing that is itself false' "$G5_REV")"
+  assert_eq "5f: a false statement of fact is never cosmetic" "yes" \
+    "$(g5_has 'A false statement of fact is never cosmetic' "$G5_REV")"
+  assert_eq "5g: the three mechanically-refused conditions are named as three" "yes" \
+    "$(g5_has 'Three conditions are refused mechanically' "$G5_REV")"
+  # Anti-regression: stride's own paragraph said "Two categories" and omitted
+  # `important`, while its pin refused it -- the largest classification drift.
+  assert_eq "5h: no 'two categories' wording survives anywhere" "0" \
+    "$(cat "$G5_REV" "$G5_WF" "$G5_CT" | grep -ciE 'two categories' || true)"
+  assert_eq "5i: important is named in the prohibition, not just critical/security" "yes" \
+    "$(g5_has '`critical` and `important` alike' "$G5_REV")"
+  assert_eq "5j: cosmetic does not change severity" "yes" \
+    "$(g5_has "does **not** change the finding's \`severity\`" "$G5_REV")"
+  assert_eq "5k: nor category" "yes" \
+    "$(g5_has 'does **not** change its `category`' "$G5_REV")"
+  assert_eq "5l: nor the review status" "yes" \
+    "$(g5_has 'does **not** change the review `status`' "$G5_REV")"
+  assert_eq "5m: and never removes the finding from issues[]" "yes" \
+    "$(g5_has 'does **not** remove the finding from `issues[]`' "$G5_REV")"
+  assert_eq "5n: cosmetic and minor are orthogonal, not synonyms" "yes" \
+    "$(g5_has 'orthogonal, not synonyms' "$G5_REV")"
+  assert_eq "5o: a re-wrap inside executable content is substantive" "yes" \
+    "$(g5_has 'changes what runs, and is **substantive**' "$G5_REV")"
+  assert_eq "5p: Step 6 carries the all-cosmetic mirror" "yes" \
+    "$(g5_has 'buys no further review round' "$G5_WF")"
+  assert_eq "5q: scoped to a payload whose block actually parsed" "yes" \
+    "$(g5_has 'a payload whose structured block actually parsed' "$G5_WF")"
+  # Anti-regression: the vacuous-truth trap over an empty issues[].
+  assert_eq "5r: an absent or empty issues[] is never an all-cosmetic round" "yes" \
+    "$(g5_has 'An absent or empty `issues[]` is never an all-cosmetic round' "$G5_WF")"
+  assert_eq "5s: changes_requested still forces a re-dispatch" "yes" \
+    "$(g5_has 'honour that and re-dispatch regardless' "$G5_WF")"
+  assert_eq "5t: the mirror defers ownership to the reviewer contract" "yes" \
+    "$(g5_has 'Its definition is owned by `agents/task-reviewer.md`' "$G5_WF")"
+  assert_eq "5u: the completion hard gate carries the cosmetic checkbox" "yes" \
+    "$(g5_has 'findings are reported, never suppressed' "$G5_CT")"
+  assert_eq "5v: the truth limit is stated in the contract" "yes" \
+    "$(g5_has 'self-certified, not result-verified' "$G5_REV")"
+  assert_eq "5v2: and in the orchestrator mirror" "yes" \
+    "$(g5_has 'self-certified, not result-verified' "$G5_WF")"
+  # Lockstep: this port has regressed schema_version drift twice before.
+  assert_eq "5w: no stale schema_version 1.6 claim survives" "0" \
+    "$(cat "$G5_REV" "$G5_WF" "$G5_CT" "$G5_SA" | grep -cF '"schema_version": "1.6"' || true)"
+  assert_eq "5x: the reviewer contract declares 1.7" "yes" \
+    "$(g5_has 'Always `"1.7"` for this prompt version' "$G5_REV")"
+  assert_eq "5y: AGENTS.md moved in lockstep" "yes" \
+    "$(g5_has '`schema_version` 1.7' "$PORT_ROOT/AGENTS.md")"
+  assert_eq "5z: the README current claim moved in lockstep" "yes" \
+    "$(g5_has '`reviewer_result` (schema 1.7' "$PORT_ROOT/README.md")"
+  # This port assigns "self-reported skip" to a DIFFERENT Shape number than
+  # stride does. Derive it from the file that defines it, so a cross-reference
+  # imported from stride fails here instead of shipping as a false statement.
+  G5_SKIP_SHAPE=$(grep -oE '^### Shape [0-9]+ . self-reported skip' "$G5_CT" | grep -oE '[0-9]+' | head -1)
+  assert_eq "5z2: the skip shape number is derivable from the contract" "yes" \
+    "$([ -n "$G5_SKIP_SHAPE" ] && echo yes || echo no)"
+  assert_eq "5z3: the workflow cites the shape number this port actually assigns" "yes" \
+    "$(g5_has "a Shape $G5_SKIP_SHAPE self-reported skip" "$G5_WF")"
+  assert_eq "5z4: and so does the completion gate" "yes" \
+    "$(g5_has "a Shape $G5_SKIP_SHAPE self-reported review skip" "$G5_CT")"
+else
+  echo "  SKIP: 5a-5z: contract files not found"
+fi
+
+if [ -f "$G5_WF" ] && command -v python3 > /dev/null 2>&1; then
+  # Extract the pin from the contract. Never restate it here.
+  G5_PIN=$(awk '/^# --- Cosmetic shape pin/{f=1} f&&/^```$/{exit} f' "$G5_WF")
+
+  assert_eq "5aa: the cosmetic shape pin is extractable from the contract" "yes" \
+    "$(printf '%s' "$G5_PIN" | grep -qF 'cosmetic must be a boolean' && echo yes || echo no)"
+  assert_eq "5ab: the pin sits below the parse of the reviewer block" "ok" \
+    "$(awk '/^structured = json\.loads/{d=NR} /^# --- Cosmetic shape pin/{c=NR} END{print (d&&c&&c>d)?"ok":"pin-above-parse"}' "$G5_WF")"
+  # It must derive its own list, so it runs from a single input and carries no
+  # hidden ordering dependency on the round-cap pin's _open.
+  assert_eq "5ac: the pin derives its own issues list" "yes" \
+    "$(printf '%s' "$G5_PIN" | grep -qF '_cos = structured.get("issues")' && echo yes || echo no)"
+
+  # $1 structured -- JSON. "refused" = AssertionError; "error" = anything else.
+  g5_cos() {
+    printf '%s\n' "$G5_PIN" | python3 -c '
+import json, sys
+structured = json.loads(sys.argv[1])
+try:
+    exec(sys.stdin.read(), globals())
+except AssertionError:
+    print("refused")
+else:
+    print("pass")
+' "$1" 2>/dev/null || echo error
+  }
+
+  G5_OK_COS='{"issues":[{"severity":"minor","category":"code_quality","cosmetic":true}]}'
+  G5_OK_ABS='{"issues":[{"severity":"minor","category":"code_quality"}]}'
+  G5_CRIT_F='{"issues":[{"severity":"critical","category":"pitfall","cosmetic":false}]}'
+  G5_CRIT_C='{"issues":[{"severity":"critical","category":"pitfall","cosmetic":true}]}'
+  G5_IMP_C='{"issues":[{"severity":"important","category":"code_quality","cosmetic":true}]}'
+  G5_SEC_C='{"issues":[{"severity":"minor","category":"security","cosmetic":true}]}'
+  G5_MIXED='{"issues":[{"severity":"minor","category":"code_quality","cosmetic":true},{"severity":"critical","category":"pitfall"}]}'
+
+  assert_eq "5ad: a minor non-security cosmetic finding is valid" "pass" "$(g5_cos "$G5_OK_COS")"
+  assert_eq "5ae: an absent cosmetic key is valid (absent means false)" "pass" "$(g5_cos "$G5_OK_ABS")"
+  assert_eq "5af: the pin refuses the FLAG, never the finding" "pass" "$(g5_cos "$G5_CRIT_F")"
+  assert_eq "5ag: cosmetic on a critical is refused" "refused" "$(g5_cos "$G5_CRIT_C")"
+  # The severity stride's own prohibition paragraph omitted.
+  assert_eq "5ah: cosmetic on an IMPORTANT is refused" "refused" "$(g5_cos "$G5_IMP_C")"
+  assert_eq "5ai: cosmetic on a security-category finding is refused" "refused" "$(g5_cos "$G5_SEC_C")"
+  # No coercion: the flag is refused, never interpreted.
+  assert_eq "5aj: a string \"true\" is refused, not coerced" "refused" \
+    "$(g5_cos '{"issues":[{"severity":"minor","category":"code_quality","cosmetic":"true"}]}')"
+  assert_eq "5ak: an integer 1 is refused (bool is an int subclass)" "refused" \
+    "$(g5_cos '{"issues":[{"severity":"minor","category":"code_quality","cosmetic":1}]}')"
+  assert_eq "5al: a string \"yes\" is refused" "refused" \
+    "$(g5_cos '{"issues":[{"severity":"minor","category":"code_quality","cosmetic":"yes"}]}')"
+  assert_eq "5am: a null issues list does not crash the pin" "pass" "$(g5_cos '{"issues":null}')"
+  # An empty list passes the SHAPE pin; the vacuous-truth guard is the prose
+  # half, pinned by 5r -- these are different controls and 5an says so.
+  assert_eq "5an: an empty issues list passes the shape pin" "pass" "$(g5_cos '{"issues":[]}')"
+  assert_eq "5ao: the pin checks shape, never disposition" "pass" "$(g5_cos "$G5_MIXED")"
+  # Fail-closed on the co-ordinate: the security exclusion must not be
+  # sidesteppable by malforming `category` rather than by setting the flag.
+  assert_eq "5ap: a cosmetic entry with a variant-spelled category is refused" "refused" \
+    "$(g5_cos '{"issues":[{"severity":"minor","category":"Security","cosmetic":true}]}')"
+  assert_eq "5aq: a cosmetic entry with NO category is refused" "refused" \
+    "$(g5_cos '{"issues":[{"severity":"minor","cosmetic":true}]}')"
+else
+  echo "  SKIP: 5aa-5ao: python3 not installed or contract file not found"
 fi
 
 echo ""

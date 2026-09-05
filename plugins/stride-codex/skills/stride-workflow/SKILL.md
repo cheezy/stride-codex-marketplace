@@ -358,6 +358,7 @@ The reviewer returns a human-readable prose summary followed by a fenced ```json
 - **Fix all Critical issues** before proceeding — **the round cap never applies to a Critical**; it blocks for however many rounds it takes.
 - **Fix all Important issues** before proceeding — **through round two; after round two, record them per the cap above, never a `category: "security"` one.**
 - Minor issues are optional but recommended — **except a `category: "security"` one, which is never optional at any severity**; it has the same two exits a Critical has: fix it, or stop with `review_blocked`.
+- **A round whose findings are ALL cosmetic buys no further review round.** A `cosmetic: true` issue is presentational only — its claim is correct and the artifact it points at asserts nothing false — so it is reported and recorded like any other finding but **never spends a round**. If every entry in `issues[]` is cosmetic, fix them or not as you choose and **proceed to completion without re-invoking the reviewer**; a single substantive finding alongside them means the round is not all-cosmetic and the normal path applies. **Scoped, like the round-cap pin below, to a payload whose structured block actually parsed** — the `structured` dict of "Extracting the structured review block". This port's two no-structured-block states (a review the Step 3 matrix skipped; a review that ran but whose JSON would not parse) carry no `issues[]` by construction, and a Shape 1 self-reported skip ran zero rounds; there "every entry is cosmetic" would be **vacuously true** over an empty array while prose reports real findings, so the rule is *inapplicable*, not satisfied. **An absent or empty `issues[]` is never an all-cosmetic round.** The predicate reads `issues[]` **only**, while `status` has three inputs — issues, `not_met` acceptance criteria and `not_met` project checks — so **if `status` is `changes_requested`, honour that and re-dispatch regardless.** **Cosmetic is orthogonal to severity, not a fourth level of it**: it only ever sits on a `minor`, and a `minor` can be perfectly substantive. Never on a `critical`, an `important`, or a `category: "security"` finding — the cosmetic shape pin in the self-check below refuses all three **mechanically**. **It cannot reach the cheaper abuse**: relabelling an ordinary substantive `minor` passes every boolean, so that half is **self-certified, not result-verified**. This rule can only ever *reduce* rounds, never buy one, so it never relaxes the two-round cap above. Its definition is owned by `agents/task-reviewer.md`; **this bullet is the mirror, and the canon anchor sits beside the definition there, not here.**
 - **Save the reviewer's full response (prose + JSON block)** -- you'll include it verbatim as `review_report` in Step 8
 
 #### Extracting the structured review block
@@ -428,6 +429,15 @@ assert round_cap_ok, \
 # "regardless of round number", so the assert is unconditional too: gating it on
 # `_round >= 2` would let a malformed round (-1) silence the carve-out, and would
 # also let an open critical through on round one, which no rule permits.
+# The seven-value category enum is owned by agents/task-reviewer.md. Naming the
+# NON-security six and testing MEMBERSHIP makes the two asserts below fail
+# CLOSED: an entry that omits `category`, or spells it "Security", is refused
+# exactly as `security` is, instead of slipping past an exact-match test by
+# malforming the co-ordinate rather than by setting the flag. An unrecognized
+# category is a reviewer defect the completion API rejects anyway, so refusing
+# it here matches the server rather than adding a new rule.
+_SAFE_CATS = {"acceptance_criteria", "pitfall", "pattern", "testing",
+              "code_quality", "project_check"}
 _open = structured.get("issues", []) or []
 # Tie issues[] to issue_counts before filtering. The reviewer contract requires
 # sum(issue_counts.values()) == len(issues); nothing else here checks it, so a
@@ -439,9 +449,35 @@ assert len(_open) == sum(structured.get("issue_counts", {}).values()), \
 # Escalations appended to `reviewer_result` AFTER the whole-object copy are out
 # of its reach; those are governed by the critical-exemption text above, not here.
 _uncoverable = [i for i in _open
-                if i.get("severity") == "critical" or i.get("category") == "security"]
+                if i.get("severity") == "critical" or i.get("category") not in _SAFE_CATS]
 assert not _uncoverable, \
     "a critical finding, or a category:'security' finding at ANY severity, is never merely recorded — fix it and dispatch a further round scoped to it, or stop with review_blocked"
+
+# --- Cosmetic shape pin (W2162) ---
+# A `cosmetic` flag may only ever sit on a minor, non-security finding, and must
+# be a real boolean. Anything else is a reviewer defect, and the remedy is to
+# re-run the reviewer — this REFUSES rather than coerces. It derives its own list
+# from `structured` rather than reusing `_open` above, so the pin stays
+# independently extractable and executable from a single input.
+# NOTE: the round-cap pin's extraction runs to this fence's close, so it carries
+# these asserts too. Keep round-cap fixtures free of a `cosmetic` key, or they
+# will be refused here for the wrong reason.
+# STATED LIMIT: this reaches the flag's TYPE and its CO-ORDINATES (severity,
+# category) only, NEVER its TRUTH. A substantive `minor` relabelled cosmetic
+# passes both asserts — the classification is self-certified, not result-verified.
+# Redefined here, not borrowed from the round-cap pin above: each pin must be
+# independently extractable and runnable from a single input, so neither may
+# depend on a name the other binds. Same six values, same reason.
+_SAFE_CATS = {"acceptance_criteria", "pitfall", "pattern", "testing",
+              "code_quality", "project_check"}
+_cos = structured.get("issues") or []
+assert not [i for i in _cos
+            if "cosmetic" in i and not isinstance(i.get("cosmetic"), bool)], \
+    "cosmetic must be a boolean when present — re-run the reviewer, do not coerce it"
+assert not [i for i in _cos
+            if i.get("cosmetic") is True
+            and (i.get("severity") != "minor" or i.get("category") not in _SAFE_CATS)], \
+    "cosmetic is only ever valid on a minor, non-security finding (critical and important alike are refused) — do not submit"
 ```
 
 The reviewer's response is already in your context, so no file read is needed; if the reviewer instead wrote its response to a file, use the `read` tool to load it first, then scan for the same fence.
@@ -465,7 +501,7 @@ Approved
 
 ```json
 {
-  "schema_version": "1.6",
+  "schema_version": "1.7",
   "summary": "Reviewed 3 acceptance criteria and 4 pitfalls against the diff; no issues found and all criteria met.",
   "status": "approved",
   "issue_counts": {"critical": 0, "important": 0, "minor": 0},
@@ -493,7 +529,7 @@ Approved
   "summary": "Reviewed 3 acceptance criteria and 4 pitfalls against the diff; no issues found and all criteria met.",
   "issues_found": 0,
   "acceptance_criteria_checked": 3,
-  "schema_version": "1.6",
+  "schema_version": "1.7",
   "status": "approved",
   "issue_counts": {"critical": 0, "important": 0, "minor": 0},
   "issues": [],

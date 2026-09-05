@@ -4,6 +4,133 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.35.0] - 2026-09-05
+
+### Added — the cosmetic finding class
+
+`issues[]` entries may now carry an optional `cosmetic` boolean. It marks a
+finding as **presentational only** — wrapping, column width, a count, an
+ordering, a phrasing — and it exists to take the cheapest findings out of the
+most expensive loop: in the observed stride session a line-wrap fix and a
+word-count observation each contributed to a full re-review round costing over a
+hundred thousand subagent tokens.
+
+**It changes exactly one thing: the re-review disposition in Step 6.** A round
+whose findings are *all* cosmetic buys no further round. It does not change the
+finding's `severity`, its `category`, the review `status`, or whether the
+finding is reported — a cosmetic finding still reaches `issues[]`, the report
+and `completion_notes` like any other.
+
+**Two gates, and both must hold.** Your own claim is correct, AND the artifact
+you point at asserts nothing that is itself false. The second gate is the one
+that is easy to miss: a finding ABOUT a false statement is itself a correct
+finding, so a doc claiming it "prints six values" where seven print is not
+cosmetic. **A false statement of fact is never cosmetic, however small.**
+Location qualifies it too — a re-wrap inside executable content (a Python
+self-check block, a shell heredoc, a fence something `awk`-extracts) changes
+what runs, and is substantive.
+
+### Enforced, or stated? Both — and the contract says which
+
+Stride assumes ports carry this as prose. That is no longer true here: 1.34.0
+landed a live Python self-check, so this ships a real **cosmetic shape pin**
+beside the round-cap pin, refusing three conditions — a `cosmetic: true` on any
+severity other than `minor` (**`critical` and `important` alike**), on
+`category: "security"`, or on a non-boolean (no coercion: `1`, `"yes"` and
+`"true"` are all refused).
+
+**Stated, not verified:** the flag's *truth*. The pin reaches its type and its
+co-ordinates only. A substantive `minor` relabelled cosmetic passes every
+assert, because no signal in the block is independent of the reviewer's
+judgement — the same limit that made a pin impossible for `critical_cleared`.
+The remedy there is a human reading `issues[]`, and that is written down rather
+than implied.
+
+### What this deliberately did NOT re-introduce
+
+Stride shipped two defects in this same work and later fixed them. Both are
+guarded here by assertion, so a regression fails the suite rather than being
+caught by luck:
+
+- **The all-cosmetic rule as an unguarded universal.** Over an absent or empty
+  `issues[]`, "every entry is cosmetic" is **vacuously true** — which would skip
+  a re-review while prose reports real findings. The rule is scoped to a payload
+  whose structured block actually parsed, and states flatly that an absent or
+  empty `issues[]` is never an all-cosmetic round. This port's equivalents of
+  stride's Source-C trap are its own two no-structured-block states plus a
+  Shape 2 self-reported skip. `status: changes_requested` still forces a
+  re-dispatch regardless, because that status has three inputs while the
+  predicate reads `issues[]` alone. Pinned by 5r.
+- **A prohibition naming "two categories"** — security and critical — while
+  omitting `important`, which the pin actually refuses. Stride records this as
+  its single largest source of classification drift. The wording names three
+  conditions and says "critical and important alike"; assertion 5ah pins the
+  omitted severity, and 5h fails if the old wording reappears anywhere.
+
+### `schema_version` 1.6 → 1.7
+
+`cosmetic` is an **emitted** key, so unlike 1.34.0's `review_round` — dispatch
+*input*, which correctly held at 1.6 — this is an output-schema change and the
+version moves. Ten current-version claims across six files moved in one commit:
+`agents/task-reviewer.md` (×3), `skills/stride-workflow/SKILL.md` (×2),
+`skills/stride-completing-tasks/SKILL.md`, `skills/stride-subagent-workflow/SKILL.md`
+(×2), `AGENTS.md` and `README.md`. Historical "added in schema 1.5/1.6" markers
+are deliberately untouched. This drift has regressed twice in this port before,
+so assertions 5w–5z now pin the lockstep.
+
+### Stated limits and out of scope
+
+- **Excluding the security *category* still leaves a security-relevant finding
+  filed under `code_quality` reachable.** Stride judged that acceptable because
+  it reuses a boundary this port already relies on — the round-cap carve-out
+  draws the same line. Recorded here rather than left unstated.
+- `skills/stride-subagent-workflow/SKILL.md`'s summary of the disposition
+  bullets is left unqualified: it defers mechanics to `stride-workflow`, and
+  1.34.0 left it alone on the same reasoning.
+- **`dispatch-count-telemetry`** remains MISSING for this port in the canon
+  drift check. `cosmetic-finding-class` now reports ok.
+
+### Testing
+
+Test Group 5 adds **47 assertions**, and Group 4 gains one (48), so the suite
+runs **640 passed / 0 failed**, up from 592. Its executed half extracts the shape
+pin from the shipped markdown with `awk` and runs it, rather than restating what
+it should do. Verified non-vacuous: under the defective predicate stride
+originally shipped, the `important` case passes; under the shipped one it is
+refused.
+
+### Fixed during review
+
+- **The security exclusion was sidesteppable by malforming its co-ordinate.**
+  Both pins tested `category == "security"` exactly, so an entry that omitted
+  `category`, or spelled it `"Security"`, passed. Both now test **membership in
+  the six non-security categories**, which refuses `security`, an absent key and
+  any spelling variant alike — an unrecognized category is a reviewer defect the
+  completion API rejects anyway, so failing closed here matches the server. The
+  round-cap pin from 1.34.0 got the same treatment: the residual was inherited
+  rather than introduced, but it is the same defect class. Each pin defines the
+  set itself rather than sharing one binding, because each must stay
+  independently extractable and runnable from a single input.
+- **A false cross-reference, twice — caught by this release's own gate two.**
+  The all-cosmetic bullet cited "a Shape 2 self-reported skip", importing
+  stride's numbering. **This port inverts it**: Shape 1 is the self-reported
+  skip, Shape 2 is the dispatched agent. 1.34.0 shipped the identical mislabel
+  in the completion gate; both are corrected. Assertions 5z2-5z4 now **derive**
+  the number from the file that defines it and check both citing texts against
+  it, so an imported cross-reference fails the suite rather than shipping.
+- **Group 4's fixtures used `category: "correctness"`**, which is not one of this
+  port's seven categories — latent since 1.34.0 and only load-bearing once the
+  membership test landed. Corrected to `code_quality`.
+
+### Release
+
+Bump `.codex-plugin/plugin.json` to `1.35.0`, tag `v1.35.0`, cut the GitHub
+release, then re-vendor and release `stride-codex-marketplace`.
+
+### Source
+
+Stride task W2162, porting stride's W2129.
+
 ## [1.34.0] - 2026-09-05
 
 ### Added — a two-round review cap
