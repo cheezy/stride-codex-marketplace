@@ -1942,6 +1942,100 @@ else
   echo "  SKIP: 5aa-5ao: python3 not installed or contract file not found"
 fi
 
+# ============================================================
+# Test Group 6: dispatch_count review-cost telemetry (W2163)
+# ============================================================
+# The key is the easy half; the LIMITS are the half that matters, because a
+# figure trusted past its accuracy is worse than no figure. 6h-6l and 6s/6t pin
+# them -- all six of stride's, not a subset with local inventions in the gaps.
+#
+# 6q/6r are the extract-at-run-time half. There is no executable pin to run
+# here -- this contract is prose -- so the check derives the number of limits
+# the section CLAIMS from its own heading text and compares it against the
+# number it actually lists. That is the defect class the cosmetic gate names by
+# example: a paragraph announcing "Two limits" that goes on to list three.
+#
+# WHAT REMAINS, deliberately: nothing validates dispatch_count on the way in.
+# The server's workflow_steps validator reads name/dispatched/duration_ms/reason
+# and never this key, so no test here can catch a wrong VALUE -- only a wrong
+# contract. Limit 6 assigns that guard to the first consumer, and 6k/6l pin it.
+
+echo ""
+echo "=== Test Group 6: W2163 dispatch_count telemetry ==="
+
+G6_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G6_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+
+g6_has() { grep -qF "$1" "$2" && echo yes || echo no; }
+
+if [ -f "$G6_WF" ] && [ -f "$G6_CT" ]; then
+  assert_eq "6a: the schema table carries dispatch_count as optional" "yes" \
+    "$(g6_has '| `dispatch_count` | integer | Optional, when `dispatched=true` |' "$G6_WF")"
+  assert_eq "6b: it counts dispatches, not rounds" "yes" \
+    "$(g6_has 'Counts dispatches, NOT rounds' "$G6_WF")"
+  assert_eq "6c: omitting it stays valid" "yes" \
+    "$(g6_has 'Omitting it is always valid' "$G6_WF")"
+  assert_eq "6d: and a known 1 is still stated rather than omitted" "yes" \
+    "$(g6_has 'state a `1` you know' "$G6_WF")"
+  assert_eq "6e: the full-dispatch example carries the key" "yes" \
+    "$(g6_has '"dispatch_count": 2' "$G6_WF")"
+  assert_eq "6f: the canon anchor is present exactly once" "1" \
+    "$(grep -cF '<!-- canon:dispatch-count-telemetry v1 -->' "$G6_WF" || true)"
+  # The six-name vocabulary must be untouched -- this is an attribute of an
+  # existing entry, never a seventh step.
+  assert_eq "6g: the six-name vocabulary rule is unchanged" "yes" \
+    "$(g6_has 'Always include **all six** step names' "$G6_WF")"
+  # The limits, which the task says are the more important half.
+  assert_eq "6h: duration divided by count is NOT a per-round figure" "yes" \
+    "$(g6_has 'There is no per-round figure in this record' "$G6_WF")"
+  assert_eq "6i: wall-clock is not token cost, with the measured variance" "yes" \
+    "$(g6_has 'Wall-clock is NOT token cost' "$G6_WF")"
+  assert_eq "6j: the worked inversion is quoted, not just alluded to" "yes" \
+    "$(g6_has '1.4% cheaper' "$G6_WF")"
+  assert_eq "6k: nothing validates the value on the way in" "yes" \
+    "$(g6_has 'Nothing validates the value on the way in' "$G6_WF")"
+  assert_eq "6l: so the guard obligation is assigned to the first consumer" "yes" \
+    "$(g6_has 'The first consumer to read it' "$G6_WF")"
+  # Both fold-in sites must say fold the DURATION but not the COUNT -- that
+  # asymmetry is the whole reason limit 2 exists.
+  assert_eq "6m: the deep security sub-step folds duration, not the count" "yes" \
+    "$(g6_has 'Fold the duration; do NOT increment `dispatch_count`' "$G6_WF")"
+  assert_eq "6n: and so does the hardening sub-step" "yes" \
+    "$(g6_has 'do **not** increment `dispatch_count` for this sub-step' "$G6_WF")"
+  assert_eq "6o: the completion contract documents the optional key" "yes" \
+    "$(g6_has '**`dispatch_count` (optional).**' "$G6_CT")"
+  assert_eq "6p: and repeats the not-a-per-round-figure warning there" "yes" \
+    "$(g6_has 'is not a per-round figure' "$G6_CT")"
+  # The two limits an earlier draft dropped while still claiming "Six limits" --
+  # local inventions had taken their slots. Pin them by substance.
+  assert_eq "6s: an omitted count must not be imputed when aggregating" "yes" \
+    "$(g6_has 'report the covered subset' "$G6_WF")"
+  assert_eq "6t: a compliant 3 is not a two-round-cap breach" "yes" \
+    "$(g6_has 'reads like a breach of the two-round cap' "$G6_WF")"
+  # The measurability question the manual test asked, answered in the contract.
+  assert_eq "6u: whether the count is measurable here is recorded" "yes" \
+    "$(g6_has 'Is the count actually measurable in Codex CLI?' "$G6_WF")"
+
+  # --- extract-at-run-time: internal consistency of the limits section ---
+  # Derive the count the section CLAIMS from its own text, rather than hard-
+  # coding it here, then count what it actually lists.
+  G6_WORD=$(grep -oE '\*\*[A-Za-z]+ limits, and they ship' "$G6_WF" | head -1 | sed 's/^\*\*//' | awk '{print $1}')
+  case "$G6_WORD" in
+    Two) G6_CLAIMED=2 ;; Three) G6_CLAIMED=3 ;; Four) G6_CLAIMED=4 ;;
+    Five) G6_CLAIMED=5 ;; Six) G6_CLAIMED=6 ;; Seven) G6_CLAIMED=7 ;;
+    *) G6_CLAIMED=0 ;;
+  esac
+  G6_ACTUAL=$(awk '/^### How far `dispatch_count` may be trusted/{f=1; next}
+                   f && /^<!-- canon:dispatch-count-telemetry/{exit}
+                   f && /^[0-9]+\. \*\*/{n++}
+                   END{print n+0}' "$G6_WF")
+  assert_eq "6q: the limits section's claimed count is extractable" "yes" \
+    "$([ "$G6_CLAIMED" -gt 0 ] && echo yes || echo no)"
+  assert_eq "6r: it lists exactly as many limits as it claims" "$G6_CLAIMED" "$G6_ACTUAL"
+else
+  echo "  SKIP: 6a-6r: contract files not found"
+fi
+
 echo ""
 echo "============================================================"
 echo "  Passed: $PASS"

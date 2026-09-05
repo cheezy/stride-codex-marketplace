@@ -795,6 +795,8 @@ Until the server flips `:strict_completion_validation` to true, missing or inval
 
 **Schema reference:** The `workflow_steps` array must match the schema documented in the `stride-workflow` skill — key-for-key. Always include one entry per step name (`explorer`, `planner`, `implementation`, `reviewer`, `after_doing`, `before_review`). Skipped steps use `{"name": "<step>", "dispatched": false, "reason": "<why>"}`.
 
+**`dispatch_count` (optional).** The `reviewer` entry MAY also carry `dispatch_count` — how many times that subagent was **dispatched**, counting one re-dispatched after a crash, since a crashed dispatch still spent its tokens. It counts **dispatches, not rounds**, adds no seventh step name, and **omitting it stays valid**, so an older version of this port completes exactly as before. **Read it only alongside the limits it ships with** (`stride-workflow`, "How far `dispatch_count` may be trusted"): the reviewer entry's `duration_ms` aggregates the folded-in deep security review, exploratory session and hardening dispatches while the count covers only the reviewer's own, so **`duration_ms / dispatch_count` is not a per-round figure**; and wall-clock is not token cost. Nothing validates the value on the way in — the server's `workflow_steps` validator never reads this key — so the guard obligation belongs to the first consumer that reads it.
+
 **Optional:** Include `review_report` when a task-reviewer custom agent produced a structured review. Omit it when no review was performed (e.g., small tasks with 0-1 key_files).
 
 ## Recording Manual & Exploratory Testing Findings

@@ -4,6 +4,119 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.36.0] - 2026-09-05
+
+### Added — `dispatch_count`, and the limits that make it readable
+
+The `reviewer` entry of `workflow_steps` may now carry an optional
+`dispatch_count`: how many times that subagent was **dispatched**, counting one
+re-dispatched after a crash, because a crashed dispatch still spent its tokens.
+A cost nobody can see is a cost nobody manages — in the observed stride session
+the review phase ran to roughly 2.13 million subagent tokens across four tasks
+and no completion record showed it, so the next person had to reconstruct it
+from transcripts.
+
+**It counts dispatches, not rounds.** Those are deliberately different
+quantities: the round cap excludes a crashed dispatch, this key includes it.
+Never fill one from the other. The key is **optional** — omitting it stays valid,
+so an older version of this port completes exactly as before — and it adds **no
+seventh step name**: a new key is not a new name, and the vocabulary stays at six.
+
+### The limits ship with the key, not after it
+
+The task's instruction was to port the limits or not port the key, and that is
+the right ordering: a figure trusted past its accuracy is worse than no figure,
+because the pair can rank two tasks in the **wrong order**. Stride keeps these in
+a `telemetry-cost.md` sibling; this port's skills are single-file, so all six are
+inline in the Workflow Telemetry section under **"How far `dispatch_count` may be
+trusted"**. That changes where they live and nothing about what they say.
+
+The two that matter most:
+
+- **Wall-clock is not token cost.** Measured tokens-per-second varied by about
+  **2.1×** across dispatch kinds. On real records the pair ranked one task
+  **20.3% more expensive** when its token cost was in fact **1.4% cheaper** —
+  the order inverted, the gap exaggerated roughly fifteenfold.
+- **`duration_ms / dispatch_count` is not a per-round figure.** The reviewer
+  entry's duration aggregates the deep security review, the exploratory session
+  and hardening — all of which fold their wall-clock in rather than adding a
+  step name — while the count covers only the reviewer's **own** dispatches. On
+  real records that division overstated by **40%** and **52%**. Both fold-in
+  sites now say explicitly: fold the duration, do **not** increment the count.
+  That asymmetry is the whole reason the limit exists.
+
+### Nothing validates it, and that is stated rather than implied
+
+The server's `workflow_steps` validator reads `name`, `dispatched`,
+`duration_ms` and `reason`, and **never reads `dispatch_count`** — verified in
+`lib/kanban/tasks/workflow_steps.ex`, not assumed. So a wrong value is stored as
+readily as a right one. This port has no server code to add a guard to, so the
+contract **assigns the guard obligation to the first consumer**: whatever
+renderer, dashboard or aggregation reads the key must sanity-check it rather
+than trusting the writer. That is limit 6, and assertion 6k/6l pins it.
+
+### Testing
+
+Test Group 6 adds 21 assertions; the suite runs **661 passed / 0 failed**, up
+from 640. There is no executable pin to extract here — this contract is prose —
+so the extract-at-run-time half does the next most useful thing: **6q/6r derive
+the number of limits the section CLAIMS from its own heading text and compare it
+against the number it actually lists**. That is precisely the defect class 1.35.0
+named by example ("a paragraph announcing 'Two limits' that goes on to list
+three"), and it is checked rather than trusted.
+
+### Fixed during review
+
+- **The inlined section claimed "Six limits" but was not carrying stride's
+  six.** Two slots had been taken by local inventions — a restatement of limit
+  1's closing clause, and the "why not a token count" rule, which is a separate
+  section in stride rather than a limit — while **two of stride's were missing
+  entirely**: (4) an omitted count is ambiguous and readers must not impute, so
+  aggregation reports the covered subset rather than imputing a value; and (5)
+  the count cannot separate a crashed re-dispatch from a genuine extra round, so
+  **a fully compliant `3` is not a two-round-cap breach**. Both restored in
+  substance and adapted to this port — limit 5 now points at this port's own
+  `.stride/.review-rounds-<IDENTIFIER>.json` and its claim-time clear, and notes
+  that `review_round` is dispatch input rather than emitted schema. That matters
+  beyond fidelity: the canon anchor sits directly beside this section and
+  attests that these are the limits the canon entry registers, so a subset would
+  have made the anchor a false attestation to whatever drift check reads it.
+  Assertions 6s/6t now pin the two by substance.
+- **The Group 6 comment header miscited its own assertion ids** three times
+  (`6g-6j`, `6o/6p`, `6j` for ranges that are actually `6h-6l`, `6q/6r` and
+  `6k/6l`). The assertions were correct; only the map to them was wrong, which
+  is exactly the stale pointer that misdirects the next editor.
+- The validator list omitted `reason_code`, which `valid_reason_code?/1` does
+  read. Corrected — the omission understated rather than overstated the
+  guarantee, but limit 6 is a factual claim about another file.
+
+### Is the count measurable here, or only aspirational?
+
+The task's manual test asked this, so it is recorded rather than left for the
+next reader to re-derive: **fillable, not aspirational.** A Codex CLI
+orchestrator issues each reviewer dispatch itself, so the tally is directly
+observable to it and needs no runtime API or token accounting. The one thing it
+must do deliberately is count a dispatch that produced **no parsable block** — a
+crashed reviewer still spent its tokens, and that fact is knowable only while the
+task is in flight. That is limit 5's in-flight-only property seen from the
+writing side.
+
+### Canon
+
+`dispatch-count-telemetry v1` now reports ok, which closes the last outstanding
+entry for this port: `bash stride/scripts/check-port-canon.sh` reports **no
+MISSING entries for `stride-codex`**.
+
+### Release
+
+Bump `.codex-plugin/plugin.json` to `1.36.0`, tag `v1.36.0`, cut the GitHub
+release, then re-vendor and release `stride-codex-marketplace`.
+
+### Source
+
+Stride task W2163, porting stride's W2130. Completes goal G-6531 with W2161
+(the two-round review cap) and W2162 (the cosmetic finding class).
+
 ## [1.35.0] - 2026-09-05
 
 ### Added — the cosmetic finding class
