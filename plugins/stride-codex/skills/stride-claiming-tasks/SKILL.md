@@ -215,6 +215,18 @@ git rev-parse HEAD > .stride/task-base-ref
 # `git add`ed before the claim would be missed entirely.
 { git diff --name-only HEAD; git ls-files --others --exclude-standard; } \
   | sort -u > .stride/task-dirty-baseline
+
+# Clear the previous attempt's review-round counter (the Step 6 round cap in
+# `stride-workflow`). The count is scoped to ONE attempt: it is deleted only
+# after a successful completion, so any other ending — a failed after_doing
+# gate, an interrupt, an expired claim — would leave it behind and make the
+# retry's FIRST round count as the third, which the pin then refuses. Same
+# identifier derivation as the counter write; the unrooted rm is safe only
+# because the name is allow-listed to [A-Za-z0-9_-] before it is used.
+RC_IDENT="$TASK_IDENTIFIER"
+case "$RC_IDENT" in *[!A-Za-z0-9_-]*|"") RC_IDENT="$TASK_ID" ;; esac
+case "$RC_IDENT" in *[!A-Za-z0-9_-]*|"") RC_IDENT="unknown" ;; esac
+rm -f "${CLAUDE_PROJECT_DIR:-.}/.stride/.review-rounds-$RC_IDENT.json"
 ```
 
 ## When Hooks Fail

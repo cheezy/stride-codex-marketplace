@@ -1589,6 +1589,184 @@ fi
 #   * the live Codex registration is still UNVERIFIED — this suite invokes the
 #     scripts directly, which proves the script and never the registration.
 
+# ============================================================
+# Test Group 4: the two-round review cap (W2161)
+# ============================================================
+# Groups 1-3 test executable hook scripts. Group 4 tests a CONTRACT: the cap
+# lives in three markdown files, and its mechanical half is a Python pin
+# embedded in the orchestrator's extraction self-check.
+#
+# The literal half (4a-4q) greps the contracts. The executed half (4r-4aj)
+# EXTRACTS the pin from the contract at run time and runs it, rather than
+# restating what it should do -- a restated check goes green over a live defect
+# in the text it was supposed to be guarding.
+#
+# 4d and 4q are anti-regression pins rather than feature pins: 4d fails if
+# stride's `$MERGED` file language is ever pasted into this port (which has no
+# such file), and 4q fails if a second, contradicting ceiling appears anywhere.
+#
+# WHAT REMAINS, deliberately: the round number the pin consumes is self-asserted.
+# This port persists no per-round reviewer artifact, so there is no recount to
+# test against, and nothing here can catch an orchestrator that never increments.
+# That limit is stated in the contract itself (Step 6, "Enforced, or stated?").
+
+echo ""
+echo "=== Test Group 4: W2161 two-round review cap ==="
+
+G4_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G4_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+G4_REV="$PORT_ROOT/agents/task-reviewer.md"
+
+g4_has() { grep -qF "$1" "$2" && echo yes || echo no; }
+
+if [ -f "$G4_WF" ] && [ -f "$G4_CT" ] && [ -f "$G4_REV" ]; then
+  assert_eq "4a: the review step states the two-round ceiling" "yes" \
+    "$(g4_has 'Two review rounds is the ceiling' "$G4_WF")"
+  assert_eq "4b: the canon anchor sits beside it, exactly once" "1" \
+    "$(grep -cF '<!-- canon:review-round-cap v1 -->' "$G4_WF" || true)"
+  assert_eq "4c: a round is defined in terms this port has (a parsed block)" "yes" \
+    "$(g4_has 'parsed into a JSON **object**' "$G4_WF")"
+  assert_eq "4d: and NOT in terms of a file this port does not carry" "0" \
+    "$(grep -cF '$MERGED' "$G4_WF" || true)"
+  assert_eq "4e: a crashed or unparsable invocation consumes no round" "yes" \
+    "$(g4_has 'consumes no round' "$G4_WF")"
+  assert_eq "4f: round two's mission is scoped, its evidence is not" "yes" \
+    "$(g4_has 'never its *evidence*' "$G4_WF")"
+  assert_eq "4g: residual non-critical findings are recorded, not fixed" "yes" \
+    "$(g4_has 'RECORDED, not fixed' "$G4_WF")"
+  assert_eq "4h: a critical is exempt from the cap" "yes" \
+    "$(g4_has 'exempt from the cap' "$G4_WF")"
+  assert_eq "4i: a security finding is never merely recorded" "yes" \
+    "$(g4_has 'never merely recorded' "$G4_WF")"
+  assert_eq "4j: enforced-vs-stated is stated explicitly, not implied" "yes" \
+    "$(g4_has 'self-asserted, not result-verified' "$G4_WF")"
+  assert_eq "4k: the round counter file is named" "yes" \
+    "$(g4_has '.review-rounds-<IDENTIFIER>.json' "$G4_WF")"
+  assert_eq "4l: the reviewer contract documents review_round" "yes" \
+    "$(g4_has 'review_round' "$G4_REV")"
+  assert_eq "4m: an absent review_round means round 1" "yes" \
+    "$(g4_has 'Absent means round 1' "$G4_REV")"
+  assert_eq "4n: scoping changes the mission, never the emitted shape" "yes" \
+    "$(g4_has 'Scoping changes what you look for, never what you emit' "$G4_REV")"
+  assert_eq "4o: the completion hard gate carries the cap check" "yes" \
+    "$(g4_has 'Review rounds are within the cap' "$G4_CT")"
+  assert_eq "4p: and the gate carries the security carve-out" "yes" \
+    "$(g4_has 'nor for a `category: "security"` issue' "$G4_CT")"
+  assert_eq "4q: no second, contradicting ceiling survives anywhere" "0" \
+    "$(cat "$G4_WF" "$G4_CT" "$G4_REV" | grep -cE 'three rounds|Three reviewer dispatches' || true)"
+  # The "parsed to an object" guard must be mechanical, not prose-only --
+  # it is the round definition's load-bearing half.
+  assert_eq "4q2: the parsed-to-an-object guard has a real assert" "yes" \
+    "$(g4_has 'assert isinstance(structured, dict)' "$G4_WF")"
+  # The counter must be project-root anchored: a cwd-relative one reads 0 from a
+  # nested repo, every round counts as round 1, and the cap never fires.
+  assert_eq "4q3: the round counter is anchored to the project root" "yes" \
+    "$(g4_has 'COUNTER="$ROOT/.stride/.review-rounds-$IDENT.json"' "$G4_WF")"
+  # The TASK_ID fallback is allow-listed too -- an unchecked one would sidestep
+  # the guard by using the field it skips.
+  assert_eq "4q4: the identifier fallback is allow-listed, not trusted" "2" \
+    "$(grep -cF 'case "$IDENT" in *[!A-Za-z0-9_-]*|"")' "$G4_WF" || true)"
+  # "A successful claim clears this counter" must be WIRED, not merely asserted:
+  # a counter left behind makes a retry's first round count as the third.
+  assert_eq "4q5: the claim step actually clears the counter" "yes" \
+    "$(g4_has 'rm -f "${CLAUDE_PROJECT_DIR:-.}/.stride/.review-rounds-$RC_IDENT.json"' "$G4_WF")"
+  assert_eq "4q6: and the mirrored claiming-tasks block clears it too" "yes" \
+    "$(g4_has 'rm -f "${CLAUDE_PROJECT_DIR:-.}/.stride/.review-rounds-$RC_IDENT.json"' "$PORT_ROOT/skills/stride-claiming-tasks/SKILL.md")"
+else
+  echo "  SKIP: 4a-4q: contract files not found"
+fi
+
+if [ -f "$G4_WF" ] && command -v python3 > /dev/null 2>&1; then
+  # Extract the pin from the contract. Never restate it here.
+  G4_PIN=$(awk '/^# --- Round-cap pin/{f=1} f&&/^```$/{exit} f' "$G4_WF")
+
+  assert_eq "4r: the round-cap pin is extractable from the contract" "yes" \
+    "$(printf '%s' "$G4_PIN" | grep -qF 'round_cap_ok' && echo yes || echo no)"
+  # The pin must sit BELOW the parse, or it could be evaluated on an unparsed
+  # block -- awk running the body standalone cannot see its own position.
+  assert_eq "4s: the pin sits below the parse of the reviewer block" "ok" \
+    "$(awk '/^structured = json\.loads/{d=NR} /^# --- Round-cap pin/{p=NR} END{print (d&&p&&p>d)?"ok":"pin-above-parse"}' "$G4_WF")"
+
+  # $1 review_round  $2 prior_critical  $3 critical_cleared  $4 structured -- all JSON.
+  # "error" (rather than "refused") means the pin raised something other than
+  # AssertionError; 4ac/4ad exist to prove coercion happens before comparison.
+  g4_cap() {
+    printf '%s\n' "$G4_PIN" | python3 -c '
+import json, sys
+review_round     = json.loads(sys.argv[1])
+prior_critical   = json.loads(sys.argv[2])
+critical_cleared = json.loads(sys.argv[3])
+structured       = json.loads(sys.argv[4])
+try:
+    exec(sys.stdin.read(), globals())
+except AssertionError:
+    print("refused")
+else:
+    print("pass")
+' "$1" "$2" "$3" "$4" 2>/dev/null || echo error
+  }
+
+  G4_CLEAN='{"issues":[],"issue_counts":{"critical":0,"important":0,"minor":0}}'
+  G4_CRIT='{"issues":[{"severity":"critical","category":"correctness"}],"issue_counts":{"critical":1,"important":0,"minor":0}}'
+  G4_SECIMP='{"issues":[{"severity":"important","category":"security"}],"issue_counts":{"critical":0,"important":1,"minor":0}}'
+  G4_SECMIN='{"issues":[{"severity":"minor","category":"security"}],"issue_counts":{"critical":0,"important":0,"minor":1}}'
+  G4_IMP='{"issues":[{"severity":"important","category":"correctness"}],"issue_counts":{"critical":0,"important":1,"minor":0}}'
+
+  assert_eq "4t: round 1 passes"  "pass"    "$(g4_cap 1 0 false "$G4_CLEAN")"
+  assert_eq "4u: round 2 passes"  "pass"    "$(g4_cap 2 0 false "$G4_CLEAN")"
+  assert_eq "4v: round 3 is refused" "refused" "$(g4_cap 3 0 false "$G4_CLEAN")"
+  assert_eq "4w: round 3 passes when the prior round held a critical" "pass" \
+    "$(g4_cap 3 1 false "$G4_CLEAN")"
+  assert_eq "4x: a critical blocks for however many rounds it takes" "pass" \
+    "$(g4_cap 9 1 false "$G4_CLEAN")"
+  assert_eq "4y: a self-certified critical_cleared also exempts" "pass" \
+    "$(g4_cap 3 0 true "$G4_CLEAN")"
+  # Python's type traps, the analogue of stride's jq total-ordering defects:
+  # "0" and ["x"] are truthy, and bool is a subclass of int.
+  assert_eq "4z: a truthy STRING prior_critical does not buy a round" "refused" \
+    "$(g4_cap 3 '"0"' false "$G4_CLEAN")"
+  assert_eq "4aa: a bool prior_critical does not buy a round" "refused" \
+    "$(g4_cap 3 true false "$G4_CLEAN")"
+  assert_eq "4ab: a list prior_critical does not buy a round" "refused" \
+    "$(g4_cap 3 '["x"]' false "$G4_CLEAN")"
+  assert_eq "4ac: an unset round is refused, not a crash" "refused" \
+    "$(g4_cap null 0 false "$G4_CLEAN")"
+  assert_eq "4ad: a string round is refused, not a crash" "refused" \
+    "$(g4_cap '"2"' 0 false "$G4_CLEAN")"
+  assert_eq "4ae: an open critical is never merely recorded at the cap" "refused" \
+    "$(g4_cap 2 0 false "$G4_CRIT")"
+  assert_eq "4af: nor an important category:security finding" "refused" \
+    "$(g4_cap 2 0 false "$G4_SECIMP")"
+  assert_eq "4ag: nor a MINOR one -- never recordable at any severity" "refused" \
+    "$(g4_cap 2 0 false "$G4_SECMIN")"
+  assert_eq "4ah: an important non-security finding IS recordable" "pass" \
+    "$(g4_cap 2 0 false "$G4_IMP")"
+  assert_eq "4ai: a null issues list does not crash the pin" "pass" \
+    "$(g4_cap 2 0 false '{"issues":null}')"
+  assert_eq "4aj: a null prior_critical is refused, not a crash" "refused" \
+    "$(g4_cap 3 null false "$G4_CLEAN")"
+  # Cross-axis: a MALFORMED round must not be excused by an exemption that was
+  # meant to excuse a KNOWN third round. Without the _round > 0 floor these pass.
+  assert_eq "4ak: a malformed round is not excused by prior_critical" "refused" \
+    "$(g4_cap null 1 false "$G4_CLEAN")"
+  assert_eq "4al: nor by critical_cleared" "refused" \
+    "$(g4_cap null 0 true "$G4_CLEAN")"
+  assert_eq "4am: nor does a malformed round silence the security carve-out" "refused" \
+    "$(g4_cap null 1 false "$G4_SECIMP")"
+  # The uncoverable-findings assert is NOT gated on the round: an open critical
+  # or security finding is refused on round one exactly as at the cap.
+  assert_eq "4an: an open critical is refused on round one too" "refused" \
+    "$(g4_cap 1 0 false "$G4_CRIT")"
+  assert_eq "4ao: so is a minor security finding on round one" "refused" \
+    "$(g4_cap 1 0 false "$G4_SECMIN")"
+  # A block whose counts disagree with its issues[] would starve the carve-out
+  # filter: a security finding present in the COUNTS but absent from issues[].
+  assert_eq "4ap: a starved issues[] cannot silence the carve-out" "refused" \
+    "$(g4_cap 2 0 false '{"issues":[],"issue_counts":{"important":1}}')"
+else
+  echo "  SKIP: 4r-4aj: python3 not installed or contract file not found"
+fi
+
 echo ""
 echo "============================================================"
 echo "  Passed: $PASS"

@@ -4,6 +4,126 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.34.0] - 2026-09-05
+
+### Added — a two-round review cap
+
+Review is now bounded. An uncapped loop does not converge, because a reviewer
+asked to review always finds something: stride measured every task taking two
+rounds and one taking a third fix cycle, at over a hundred thousand subagent
+tokens per round. Two rounds is now the whole budget, and the second **verifies
+round one's fixes** rather than re-reviewing from scratch — scoping its mission,
+never its evidence, so it still receives the full diff and still emits the full
+`acceptance_criteria` array, every section verdict and `project_checks`. A round
+two that re-enumerates everything buys nothing.
+
+After round two, residual `important`/`minor` findings are **recorded** by
+severity, category and `file:line` rather than fixed. A `critical` is **exempt
+and blocks for however many rounds it takes**, and a `category: "security"`
+finding is **never merely recorded at any severity** — `important` being the
+reviewer's own default for one, that carve-out is the whole thing standing
+between the relaxation and a shipped weakness.
+
+`stride-workflow` Step 6 gains the cap and a round counter; `task-reviewer`
+gains the `review_round` dispatch field (`{round, fixes[]}`, absent = round 1);
+`stride-completing-tasks` gains a **Review rounds are within the cap** item in
+its pre-submission hard gate; and `hooks/test-stride-hook.sh` gains **Test Group
+4** (47 assertions, suite 545 → 592).
+
+### What a "round" means here, and why
+
+Stride keys its count on a merged result file, because that file is the *product*
+of a dispatch rather than the dispatch itself — the indirection is the whole
+load-bearing property, so a crashed reviewer burns a filename but not a round.
+**This port has no such file**: its reviewer returns the structured block inline.
+So a round is redefined as **a reviewer invocation whose response yielded a
+fenced JSON block that parsed into a JSON object** — the parsed block is the only
+artifact an invocation here produces, and it carries the same property on a
+surface this port actually has. An invocation that crashed, returned no fence, or
+returned one that would not parse is re-invoked and consumes no round. "Parsed"
+means an **object**, not merely valid JSON (`json.loads` succeeds on `null`, `0`,
+`""` and `[]` — the Python analogue of the `jq empty` zero-byte defect stride
+recorded in its 1.74.0 entry), and that guard now has a real `isinstance` assert
+rather than only prose.
+
+### Enforced, or stated? Both — and the contract says which is which
+
+The task allowed either a runnable check or prose with the absence recorded as a
+stated limit. This ships **both halves, labelled**:
+
+- **Mechanically enforced:** the cap's *arithmetic*, as a `round_cap_ok` pin
+  appended to the existing Python self-check in `stride-workflow` — this port's
+  own self-check style, rather than stride's jq, which has no home here.
+- **Stated, not verified:** the pin's *inputs*. The round number comes from a
+  counter the orchestrator writes itself, and this port persists no per-round
+  reviewer artifact to recount it against, so an orchestrator that never
+  increments makes the cap read green. That limit is disclosed in the contract
+  rather than implied — the same footing stride puts `CRITICAL_CLEARED` on.
+
+**Rejected, and recorded rather than left implicit:** persisting each parsed
+block as `.stride/.reviewer-result-<IDENT>-r<N>.json` so a recount *would* be
+possible. That invents a whole artifact regime this port does not have, with no
+deletion step to match; it is the change that would upgrade the pin later.
+
+### Fixed during review — the pin's own fail-open
+
+The first draft gated the uncoverable-findings assert on `_round >= 2`. Since
+`_int()` maps an unset or malformed round to the sentinel `-1`, and `-1 >= 2` is
+false, the security carve-out **never evaluated on the very degraded path the
+pin's own comment prescribes** (`review_round = None`) whenever the first assert
+was satisfied by `prior_critical > 0`. The prose claimed an unconditional rule
+and the mechanism implemented a conditional one. Two changes close it, and five
+test cases pin them — all five pass under the old predicate and refuse under the
+new one:
+
+- The round is **floored first** (`_round > 0 and (...)`), so an exemption meant
+  to excuse a *known* third round no longer excuses an *unknown* one.
+- The uncoverable assert is **not gated on the round at all**. An open `critical`
+  or `category: "security"` finding is refused on round one exactly as at the
+  cap, because no rule ever permitted shipping one.
+- A re-verification pass then found the filter could still be **starved**: a
+  schema-violating block reporting a security finding in `issue_counts` while
+  emitting an empty `issues[]` passed the carve-out with nothing to filter. The
+  pin now asserts `len(issues) == sum(issue_counts.values())` before filtering,
+  and states as a limit that escalations appended to `reviewer_result` *after*
+  the whole-object copy are outside its reach.
+
+Also fixed from the same review: the counter was cwd-relative (a nested repo or
+non-root cwd read it as 0, so every round counted as round 1 and the cap silently
+never fired) and is now anchored to `${CLAUDE_PROJECT_DIR:-.}` like every other
+`.stride/` read site here; the `TASK_ID` fallback is now allow-listed too, since
+an unchecked one sidestepped the identifier guard by using the field it skips;
+"a successful claim clears this counter" is now **wired** into the claim step and
+its `stride-claiming-tasks` mirror rather than merely asserted, which had left a
+retry's first round counting as the third; `prior_critical` is now read back
+rather than written and never read; and the `Minor` disposition bullet carries
+the security carve-out that the `Critical` and `Important` bullets already had.
+
+### Deliberately out of scope
+
+- **`cosmetic-finding-class`** and **`dispatch-count-telemetry`** remain MISSING
+  for this port in the canon drift check. Both are separate canon entries; this
+  task ported `review-round-cap` only, and the gaps are recorded here so a later
+  audit reads them as a decision rather than an oversight.
+- **`schema_version` stays `"1.6"`.** `review_round` is dispatch *input*, not an
+  emitted field, so the reviewer's output schema is unchanged.
+- The cap lives as **inline prose in Step 6**, not in a new sibling file: this
+  port's skills are single-file, and stride's `review-block-extraction.md` has no
+  equivalent here. (Note the task text says "Step 5" — this port's Step 5 has
+  been intentionally blank since v1.8.0, and review is Step 6.)
+
+### Release
+
+Bump `.codex-plugin/plugin.json` to `1.34.0`, tag `v1.34.0`, cut the GitHub
+release, then re-vendor and release `stride-codex-marketplace`. This port IS
+distributed through a per-runtime catalog — the "no marketplace pin to update"
+note some older entries carry is wrong, and the catalog copy is what the port
+canon drift check reads for the vendored plugin.
+
+### Source
+
+Stride task W2161, porting stride's W2128 (its 1.74.0 entry).
+
 ## [1.33.1] - 2026-09-02
 
 ### Documentation — state where Codex sits in the stop-hook capability matrix

@@ -163,6 +163,19 @@ git rev-parse HEAD > .stride/task-base-ref
 # `git add`ed before the claim would be missed entirely.
 { git diff --name-only HEAD; git ls-files --others --exclude-standard; } \
   | sort -u > .stride/task-dirty-baseline
+
+# Clear the previous attempt's review-round counter (Step 6's round cap). The
+# count is scoped to ONE attempt: Step 8 deletes it only after a successful
+# completion, so any other ending — a failed after_doing gate, an interrupt, an
+# expired claim — would leave it behind and make the retry's FIRST round count
+# as the third, which the pin then refuses with prior_critical 0. Fails closed,
+# so it strands rather than leaks, and it strands without naming the cause.
+# Same identifier derivation as the counter write; the unrooted rm is safe only
+# because the name is allow-listed to [A-Za-z0-9_-] before it is used.
+RC_IDENT="$TASK_IDENTIFIER"
+case "$RC_IDENT" in *[!A-Za-z0-9_-]*|"") RC_IDENT="$TASK_ID" ;; esac
+case "$RC_IDENT" in *[!A-Za-z0-9_-]*|"") RC_IDENT="unknown" ;; esac
+rm -f "${CLAUDE_PROJECT_DIR:-.}/.stride/.review-rounds-$RC_IDENT.json"
 ```
 
    `.stride/task-base-ref` is read back by the changed_files snapshot in `stride-completing-tasks` (the env var does not survive Codex shell turns).
@@ -280,14 +293,71 @@ Follow:
 **If the `task-reviewer` custom agent is available**, invoke it with:
 - The git diff of all your changes
 - **Every review field the task supplies — NO EXCEPTIONS:** the task's `acceptance_criteria`, `pitfalls`, `patterns_to_follow`, `testing_strategy`, `security_considerations`, `behaviour_test_matrix`, `description`, `what`, and `why`. This list MUST match the reviewer's documented input contract (the "You will receive" line in `agents/task-reviewer.md`) — pass every field the task carries, never a subset, never with a small-task or brevity discount. Omitting a supplied field (most often `security_considerations`) is the exact defect this prevents: a section the reviewer is never handed comes back `not_assessed` even though the task specified it.
+- **`review_round` — orchestrator-asserted, and NOT part of the task-supplied bullet above.** Send `{ "round": <n>, "fixes": [ … ] }` on every round after the first; absent means round 1. Build each `ref` from severity, category and `file:line` **only** — never paste the previous round's descriptions, its prose, or diff text. Its semantics are owned by `agents/task-reviewer.md`.
 
 **Re-review and follow-up rounds — preserve the canonical criteria list.** When you re-invoke the reviewer (or continue it) to re-verify after fixing issues from a `changes_requested` round, the follow-up prompt MUST pass the task's `acceptance_criteria` field **unchanged** and instruct the reviewer to keep its `acceptance_criteria` array **identical to the task's canonical list** — one entry per criterion line, verbatim and in the task's order, never split, merged, reworded, added, or dropped (the same 1:1 hard rule the reviewer schema enforces in `agents/task-reviewer.md`). Never hand the re-review only the issues you fixed and let it re-derive the criteria: a re-review that re-enumerates the criteria in its own words corrupts the persisted count — this is exactly how a re-review round on task W1099 turned a 5-criterion task into a `6/5` review display.
 
+
+<!-- canon:review-round-cap v1 -->
+**Two review rounds is the ceiling, and the second verifies rather than re-reviews.** Two rounds is the whole budget for a task. The round cap exists because an uncapped review loop does not converge: a reviewer asked to review always finds something, and every additional round costs a full reviewer invocation to buy progressively less.
+
+**What counts as a round in this port.** A **round** is a reviewer invocation whose returned response yielded a fenced ```json block that parsed into a JSON **object** — the `structured` value in "Extracting the structured review block" below. An invocation that returned nothing, crashed, returned no fence, returned a truncated fence, or returned one that would not parse is simply re-invoked and **consumes no round**. Two guards keep that definition honest:
+
+- **"Parsed" means an object, not merely valid JSON.** `json.loads` succeeds on `null`, `0`, `""` and `[]`; require a `dict` carrying `status` and `issue_counts` before you count the round. (This is the Python analogue of the `jq empty` defect stride recorded in its 1.74.0 entry, where a zero-byte file parsed clean.)
+- **Increment after the parse, never at invocation time.** A crashed reviewer must burn an invocation and not a round; incrementing early is precisely what would spend one.
+
+**Why the definition is shaped that way.** Stride keys its count on a merged result file, because that file is the *product* of a dispatch rather than the dispatch itself — and that indirection is the whole load-bearing property. This port writes no such file: its reviewer returns the structured block inline, so **the parsed block is the only artifact an invocation here produces**, and it carries the same property on a surface this port actually has.
+
+**Round two receives the full diff.** Scope its *mission* — verify round one's fixes, and re-check what those fixes could plausibly have broken — but never its *evidence*. It still emits the full `acceptance_criteria` array, every section verdict, `project_checks` and `issue_counts`. A round two that re-enumerates everything buys nothing.
+
+**After round two, remaining `important` and `minor` findings are RECORDED, not fixed.** Name each by severity, category and `file:line` in `completion_notes` **and** in one line of `completion_summary` — **including any round-one finding that round two did not re-enumerate**. Severity, category and `file:line` only: never paste the reviewer's block, its prose, or diff text, and redact on the same terms as any other session text. `completion_notes` is persisted only by Stride servers from D188 onward and you cannot tell which version you are talking to, which is why the `completion_summary` line is not optional — it is the carrier that is always persisted and rendered on the Review queue.
+
+**`critical` is exempt from the cap and always blocks.** Fix it and invoke a further round scoped to that finding; where you cannot, stop without completing (`review_blocked`, `failure.kind: "review_escalation"`) rather than recording it. The cap governs rounds, never correctness.
+
+**A `category: "security"` finding is never merely recorded, at any severity.** `important` is this reviewer's documented default severity for a security finding, so a naive reading of the record-don't-fix rule above would quietly ship an unfixed weakness to Done. A security finding has the same two exits a `critical` has: fix it, or stop with `review_blocked`.
+
+**Enforced, or stated? Both — and here is which is which.** The cap's *arithmetic* is **mechanically enforced**: the round-cap pin at the end of the self-check below is a real assert this port runs on every completion, and it refuses a third round, honours the `critical` exemption, and refuses a `critical` or `category: "security"` finding at the cap. The cap's *inputs* are **self-asserted, not result-verified**: the round number comes from a counter this orchestrator writes itself, and this port persists no per-round reviewer artifact to recount it against — so an orchestrator that never increments makes the cap read green and nothing here catches it. That is the same footing the pin's `critical_cleared` input sits on (stride spells the same self-certified limit `CRITICAL_CLEARED`), and it is stated here rather than left implied. **Read the pin as a guarantee that a round you counted past the cap is refused — not as a guarantee that a further round is impossible.**
+
+**The counter.** Keep it in this port's existing `.stride/` persistence idiom, at `.stride/.review-rounds-<IDENTIFIER>.json` — an identifier and integers, **never review content**. Write it *after* the parse, per the second guard above:
+
+```bash
+# Anchor to the project root. Every other .stride/ read site in this port does
+# (`${CLAUDE_PROJECT_DIR:-.}`), and shell state does not survive this port's
+# separate turns — a cwd-relative counter read as 0 from a nested repo or a
+# non-root cwd would make every round count as round 1 and the cap never fire.
+ROOT="${CLAUDE_PROJECT_DIR:-.}"
+mkdir -p "$ROOT/.stride"
+IDENT="$TASK_IDENTIFIER"
+case "$IDENT" in *[!A-Za-z0-9_-]*|"") IDENT="$TASK_ID" ;; esac   # never build a
+case "$IDENT" in *[!A-Za-z0-9_-]*|"") IDENT="unknown" ;; esac    # path component
+COUNTER="$ROOT/.stride/.review-rounds-$IDENT.json"               # from free text
+# TASK_ID is allow-listed too: it reaches us from the same claim response as
+# TASK_IDENTIFIER, so whatever could poison one could poison the other, and an
+# unchecked fallback would sidestep the guard by using the field it skips.
+
+# Read BEFORE writing: these two are the pin's `review_round` and
+# `prior_critical` inputs for THIS round.
+PRIOR=$(jq -r '.round // 0' "$COUNTER" 2>/dev/null || echo 0)
+PRIOR_CRIT=$(jq -r '.prior_critical // 0' "$COUNTER" 2>/dev/null || echo 0)
+case "$PRIOR" in ''|*[!0-9]*) PRIOR=0 ;; esac
+case "$PRIOR_CRIT" in ''|*[!0-9]*) PRIOR_CRIT=0 ;; esac
+# Write THIS round's critical count, which becomes the next round's prior.
+THIS_CRIT="${THIS_ROUND_CRITICAL:-0}"
+case "$THIS_CRIT" in ''|*[!0-9]*) THIS_CRIT=0 ;; esac
+printf '{"identifier":"%s","round":%d,"prior_critical":%d}\n' \
+  "$IDENT" "$((PRIOR + 1))" "$THIS_CRIT" > "$COUNTER"
+```
+
+`$((PRIOR + 1))` is the pin's `review_round`, and `$PRIOR_CRIT` is its `prior_critical` — this file is the only durable carrier either has, because this port persists no per-round reviewer artifact and its shell state does not survive turns. `THIS_ROUND_CRITICAL` is the `issue_counts.critical` of the block you just parsed.
+
+A successful claim clears this counter: it is scoped to one attempt, so an attempt that ended any other way must not leave its count behind to make the next attempt's first round read as the third.
+
+**Canon-governed — entry `review-round-cap` in `stride/docs/port-canon.md`.** That entry registers the two-round ceiling, the `critical` exemption and the record-don't-fix disposition as rules every port must carry. A change to their substance owes a version bump in **two** places before the next release: that entry in the canon, and this file's own `<!-- canon:review-round-cap ... -->` anchor above.
 The reviewer returns a human-readable prose summary followed by a fenced ```json block. The schema of that block is owned by `agents/task-reviewer.md` — do not duplicate field definitions here.
 
-- **Fix all Critical issues** before proceeding
-- **Fix all Important issues** before proceeding
-- Minor issues are optional but recommended
+- **Fix all Critical issues** before proceeding — **the round cap never applies to a Critical**; it blocks for however many rounds it takes.
+- **Fix all Important issues** before proceeding — **through round two; after round two, record them per the cap above, never a `category: "security"` one.**
+- Minor issues are optional but recommended — **except a `category: "security"` one, which is never optional at any severity**; it has the same two exits a Critical has: fix it, or stop with `review_blocked`.
 - **Save the reviewer's full response (prose + JSON block)** -- you'll include it verbatim as `review_report` in Step 8
 
 #### Extracting the structured review block
@@ -300,6 +370,8 @@ After the reviewer returns, extract the first fenced ```json block from its resp
 import re, json
 m = re.search(r'```json\n(.*?)\n```', reviewer_response, re.DOTALL)
 structured = json.loads(m.group(1))  # the WHOLE parsed schema
+assert isinstance(structured, dict) and {"status", "issue_counts"} <= structured.keys(), \
+    "reviewer block did not parse to an object — re-invoke the reviewer; this consumes no round"
 
 # Whole-object copy — carry EVERY section through, then overlay the legacy
 # fields. NEVER re-type or hand-pick keys; selecting a subset is exactly how
@@ -328,6 +400,48 @@ assert len(reviewer_result.get("project_checks", [])) == len(structured.get("pro
 task_criterion_lines = [c for c in (task["acceptance_criteria"] or "").split("\n") if c.strip()]
 assert len(structured["acceptance_criteria"]) == len(task_criterion_lines), \
     "acceptance_criteria count must equal the task's criterion-line count — re-run the reviewer, do not truncate or pad"
+
+# --- Round-cap pin (W2161) ---
+# Two rounds is the whole budget. The arithmetic below is REAL and runs on every
+# completion; its INPUTS are self-asserted (see Step 6's "Enforced or stated?").
+# Bind these three before the pin runs. Where you have no value, bind the
+# fail-closed default shown — never a guess:
+#   review_round     = <the round number you just counted>   # no counter -> None
+#   prior_critical   = <previous round's issue_counts["critical"]>  # unknown -> 0
+#   critical_cleared = False   # True only when YOU cleared a critical this round
+def _int(v, default=-1):
+    # bool is an int subclass, and "2" / ["x"] / None are not integers at all.
+    return v if isinstance(v, int) and not isinstance(v, bool) else default
+_round = _int(review_round)          # unset or malformed -> -1
+_prior = _int(prior_critical, 0)
+_cleared = critical_cleared is True  # exact True, never a truthy string
+# FLOOR THE ROUND FIRST. The exemptions excuse a KNOWN third round; without the
+# floor they also excuse an UNKNOWN one, so `review_round = None` plus an honest
+# `prior_critical = 1` would pass. That is the fail-open direction.
+round_cap_ok = _round > 0 and ((_round <= 2) or _prior > 0 or _cleared)
+assert round_cap_ok, \
+    "review round cap exceeded, or the round number is unset/malformed: after round two, RECORD residual important/minor findings in completion_notes and completion_summary, or stop with review_blocked — do not dispatch another round"
+
+# The cap relaxes to recording. It never relaxes to shipping a critical or a
+# security finding, so those are excluded from what recording can cover.
+# DELIBERATELY NOT GATED ON THE ROUND. The prose says "at ANY severity" and
+# "regardless of round number", so the assert is unconditional too: gating it on
+# `_round >= 2` would let a malformed round (-1) silence the carve-out, and would
+# also let an open critical through on round one, which no rule permits.
+_open = structured.get("issues", []) or []
+# Tie issues[] to issue_counts before filtering. The reviewer contract requires
+# sum(issue_counts.values()) == len(issues); nothing else here checks it, so a
+# schema-violating block that reports a security finding in the COUNTS while
+# emitting an empty issues[] would starve the filter and slip past the carve-out.
+assert len(_open) == sum(structured.get("issue_counts", {}).values()), \
+    "issues[] does not match issue_counts — re-invoke the reviewer; a starved issues[] would silence the carve-out below"
+# STATED LIMIT: this reads `structured`, the block as the reviewer emitted it.
+# Escalations appended to `reviewer_result` AFTER the whole-object copy are out
+# of its reach; those are governed by the critical-exemption text above, not here.
+_uncoverable = [i for i in _open
+                if i.get("severity") == "critical" or i.get("category") == "security"]
+assert not _uncoverable, \
+    "a critical finding, or a category:'security' finding at ANY severity, is never merely recorded — fix it and dispatch a further round scoped to it, or stop with review_blocked"
 ```
 
 The reviewer's response is already in your context, so no file read is needed; if the reviewer instead wrote its response to a file, use the `read` tool to load it first, then scan for the same fence.
