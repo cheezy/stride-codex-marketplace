@@ -237,6 +237,8 @@ DURATION=$((END_TIME - START_TIME))
 
 Run any task through those five and a single row is left standing, which is the premise the per-column instructions already rely on. The position of item 2 carries weight: hoist `Defect type` above it and every one-file defect would suddenly draw an explorer and a reviewer, which Branch B says it should not. A rule written to remove an ambiguity ought to leave routing untouched, and this ordering does.
 
+**Canon-governed — two entries, and the split matters when you edit.** The single sentence under the matrix is entry `decision-matrix-authority` in `stride/docs/port-canon.md`; the five-step ordering above is entry `row-precedence` in the same file. A change to the substance of either owes a version bump in **two** places before the next release: that entry in the canon, and its own anchor above.
+
 ### Branch A: Goal / Large Undecomposed Task
 
 If the task is a **goal**, has **large complexity without child tasks**, or has a **25+ hour estimate**:
@@ -1169,6 +1171,8 @@ An entry marked `dispatched: false` MAY also carry a `reason_code`. It accompani
 **Only `matrix_deviation` admits a departure from the matrix**, which is the whole point of having it. If the matrix asked for a step and it did not happen, that is the code to file — `decision_matrix_skip` would misreport the departure as something the matrix sanctioned, and the aggregate would read clean. Use `reason` to explain what drove it.
 
 Send anything outside these six and the completion API answers `422`. Leaving `reason_code` off altogether remains fine: a prose `reason` on its own is still a complete skip record (D239).
+
+**Canon-governed — entry `reason-code-vocabulary` in `stride/docs/port-canon.md`.** A change to the substance above owes a version bump in **two** places before the next release: that entry in the canon, and the anchor line above.
 
 ### End-of-Workflow Example (full dispatch)
 

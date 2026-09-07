@@ -333,6 +333,8 @@ refusals in the gate's own state rather than trusting the runtime to. Codex
 supplies `stop_hook_active` on a re-firing stop and the gate honours it, but as
 a bonus only; the guarantee is its own persisted counter.
 
+**Canon-governed — entry `stop-hook-capability` in `stride/docs/port-canon.md`.** A change to the substance above owes a version bump in **two** places before the next release: that entry in the canon, and this file's own `<!-- canon:stop-hook-capability ... -->` anchor above.
+
 ### Registering the hook
 
 There are two install shapes, and they differ here:

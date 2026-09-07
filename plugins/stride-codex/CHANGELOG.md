@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.37.0] - 2026-09-07
+
+### Added — a back-reference beside every anchored rule (W2137)
+
+The fleet canon now carries entry `edit-site-back-reference`, which requires prose beside every governed-rule statement naming the canon by path and the entry id, and the drift check implements it as a property — so an anchor standing alone is reported rather than passing. Four paragraphs close this port's five anchored statements: the stop-hook capability matrix in `README.md`, the verdict-note pair in `agents/task-reviewer.md`, and the decision matrix, its precedence ordering and the `reason_code` vocabulary in `skills/stride-workflow/SKILL.md`. The matrix pair shares one paragraph, since both anchors sit three lines apart over the same table.
+
+Each names the owning entry and states that a substance change owes a version bump in two places, then stops; none restates the rule. Most refer to the anchor in words rather than quoting the comment literal — a fleet-wide consistency choice rather than a constraint here — while `README.md`, whose back-reference sits 39 lines from its anchor, keeps an elided `<!-- canon:stop-hook-capability ... -->` as a greppable target. The elided form carries no version and so is not itself an anchor.
+
 ## [1.36.0] - 2026-09-05
 
 ### Added — `dispatch_count`, and the limits that make it readable
