@@ -4,6 +4,191 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.38.0] - 2026-09-10
+
+### Added — the response never leaves stdout unguarded (W2181)
+
+The `PostToolUse` recorder reads a completion's response body off **stdout** and
+nothing else in this port ever sees it. So a completion call that took the
+response somewhere else — a file, a transformer — left no
+`.stride/.loop-state.json`, the Stop gate then had nothing to read, and the
+session ended with the task still in Doing. No error was raised at any point
+along that path. That silence was the bug, and it is the whole reason this ships
+as a hook rather than as advice.
+
+A new `PreToolUse` entry refuses the shapes that cause it, on the three
+endpoints the recorder actually routes — `/api/tasks/claim`, `/complete` and
+`/mark_reviewed`. Refused: `-o`, `-sSo`, `--output`, `--output=`, `-O`,
+`--remote-name`, a pipe into `jq`/`head`/`awk`/`grep`/`sed`, and a stdout
+redirect (`>`, `>>`, `1>`, `&>`, `>|`, `>&2`). Permitted, deliberately and with
+cases pinning each: the blessed `tee`, every stderr-only redirect (`2>`, `2>>`,
+`2>&1`), a `>` or `-o` sitting inside a quoted JSON payload, and a redirect
+belonging to a later segment of the same command line.
+
+**Stride-ness is judged on the raw command text, never on the quote-blanked
+copy.** Blanking is what stops a `>` inside a JSON payload reading as a
+redirect, but this port's documented call quotes its URL —
+`curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete"` — so asking the
+blanked text whether a command is a Stride call answers no for every call the
+skills document, and the guard would permit precisely what it exists to refuse.
+The two views are cut at the same offsets and travel in pairs: raw decides
+whether a segment is ours, blanked decides what it does. Every shape is
+asserted in both the quoted and bare forms, because a suite that only wrote
+bare URLs is what let this through the first time.
+
+**The scope is narrower than stride's, and that is a decision rather than an
+omission.** stride guards every `/api/tasks/` call; this port cannot, because
+its own documented shell hides stdout on two further endpoints on purpose — the
+`changed_files` upload and the `after_goal` status probe. Those feed no recorder
+here, so hiding them costs nothing, and refusing them would have been a false
+positive against instructions this repository itself ships. In Claude Code those
+two calls are made by the hook rather than by the agent, so its `PreToolUse`
+never sees them and the question never arises.
+
+### The Codex platform constraint recorded in 1.6.0 no longer holds
+
+That entry stated Codex offered "no documented mechanism for an extension to
+intercept and deny a tool call before it runs". Re-verified against the live
+documentation on 2026-09-10, that is no longer true: `PreToolUse` intercepts
+Bash, `apply_patch` edits and MCP calls, and is the only event that prevents
+execution. The 1.6.0 paragraph is left standing — it is released, and it was
+accurate when written — and is superseded here and in `hooks/hooks.json`.
+
+Denial has three documented and explicitly equivalent forms. The guard emits the
+current one, `hookSpecificOutput.permissionDecision: "deny"`, and also exits 2
+with the same text on stderr. It deliberately does **not** emit the legacy
+`decision: "block"` shape alongside it: one document is the rule, and a foreign
+key invites a strict-parser rejection whose failure mode is silently permitting
+the call. This differs from the Stop gate, which emits `decision`/`reason` —
+same rule ("emit the document the event in hand documents"), different event.
+
+### Added — the gate refuses a stop while a claim is open
+
+The gate previously blocked in one case: a recorded completion that was never
+followed up. A turn that ended **mid-task** produced no completion, so no loop
+state, so a silent permit — structurally invisible to the only condition it had.
+
+It now blocks in two cases, and they are the two sides of one file test, so they
+are mutually exclusive by construction and the gate still costs at most one API
+call. The new condition reads `.stride/.claim-state.json`, written by the
+recorder's claim arm, and confirms with a single projected request that the task
+is still `in_progress`, uncompleted, and inside its claim window. The re-block
+budget is keyed `held:<IDENT>` so the two conditions cannot spend each other's.
+
+Measured while building this: the server does **not** flip a task's status when
+its claim expires. A task 12 minutes past `claim_expires_at` still answered
+`in_progress` with `completed_by_id` null. Reaping is lazy, which is exactly why
+expiry is checked as its own condition rather than inferred from status.
+
+### Fixed — an absent completion body is announced
+
+The recorder announced an unparsable response but returned in **silence** on an
+absent or empty one, which is the more consequential case: the completion may
+have landed server-side and the evidence is simply gone. It now says so, and
+names the consequence — the Stop gate cannot tell the task was completed. A
+well-formed 422 still stays silent, because there the task genuinely was not
+completed and there is nothing for the gate to miss.
+
+### Changed — `skills/stride-completing-tasks/SKILL.md`
+
+The `tee`-less fallback recommended `curl --output …`, describing it as sending
+the response "to the file only, not stdout" — the exact failure above, advised
+in our own instructions. It now says to skip the capture instead, and explains
+which loss is the cheap one.
+
+### Tests
+
+134 new assertions across three groups: the guard's refusals and permits with
+its near-misses and its refusal document (including that no message interpolates
+the command, which carries a Bearer token), the held-claim block with each
+condition that releases it, and the claim pointer plus the announcement. Case 1h
+was tightened rather than relaxed: "the recorder never invokes curl" was
+asserted as "the word never appears", which the guard must now break in order to
+recognise a curl command at all, so it asserts non-invocation directly and pins
+the two occurrences. 795 assertions pass.
+
+Group 7 runs every shape bare, quoted, multi-line and with multi-byte prose,
+because review caught **three** separate under-refusals and every one of them
+had the same shape: the guard decided whether a command was ours from text that
+had already been transformed, and each went green against a suite that only
+tested the form the transformation did not affect.
+
+1. Stride-ness was judged on the quote-blanked copy. Every documented call
+   quotes its URL, so blanking erased the endpoint and the call was permitted
+   however it hid stdout. Green at 753.
+2. Quote blanking reset per line, so a newline inside a multi-line payload still
+   split the command and a hiding flag in the trailing segment escaped scoping.
+   Green at 769 — and structurally untestable, because the harness fed fixtures
+   through `jq -Rn … input`, which reads exactly one line. It now slurps with
+   `-Rs`.
+3. awk counts BYTES and bash counts CHARACTERS, so multi-byte prose in a
+   completion note desynchronised the two views. Ten em dashes sufficed. Both
+   languages are now pinned to bytes with `LC_ALL=C`, and a residual mismatch
+   fails closed instead of being "repaired" — padding or truncating shifts the
+   very offsets the pairing depends on, which is why the repair that shipped in
+   the second round was itself the third bug.
+
+A fourth was an over-refusal in the other direction: the scan ceiling was 4,000
+bytes, and an ordinary completion call is larger than that, so the prose in its
+own payload was read as live shell syntax and the correct command was refused.
+The ceiling is now 100,000.
+
+Raising it was not sufficient, and the two follow-on defects are worth recording
+because both were in the fix rather than the original. Above the ceiling the
+text is unblanked, and it was still being SEGMENTED — so every `;` inside the
+payload became a separator, the endpoint landed in one fragment and the `-o` in
+another, and the call was permitted (measured at 110 KB). Judging the whole
+command as one segment fixed that and introduced the next: the whole-text path
+derived its command word from the FIRST stage, so an ordinary `cd "$X" && curl`
+or `mkdir -p .stride; curl` had `cd` as its first word, no curl stage was found,
+and all four rules were skipped. Above the ceiling the guard now takes curl
+appearing anywhere as sufficient and scans every stage — deliberately blunter
+than the normal path, which is the right trade on a branch that only pathological
+input reaches.
+
+The paired cases exist so none of these can pass again.
+
+### Fixed — cross-port reconciliation (W2184)
+
+W2184 drove the three hardened guards over ONE corpus, which is the thing three
+green per-port suites structurally cannot do: it found **18 shapes where the
+ports disagreed**, twelve of them real defects. Every one of the twelve involved
+this port — the list below is all of them — and three were a shape stride-copilot
+got wrong as well. Ten were shapes this port PERMITTED while a sibling refused
+them:
+
+- **`--remote-name-all`** — writes bodies to local files exactly as `-O` does,
+  but the generic `--*` arm skipped it wholesale before the cluster arm could
+  see it.
+- **`| python3 -m json.tool`, `| xargs echo`, `| cat`** — the transformer rule
+  was a five-name denylist, so every consumer nobody thought to name was
+  permitted. It is now an **allowlist**: only `tee` passes, because only `tee`
+  leaves the response on stdout.
+- **Shell wrappers** — `RESP=$(curl … -o x)`, a backtick substitution,
+  `( curl … > f )`, `{ curl … -o f; }`, and `if`/`while`-guarded calls. Each put
+  something other than `curl` in command position, so the whole segment was
+  skipped including the redirect rule. The grouping characters are now
+  neutralised length-preservingly and the compound keywords are skipped.
+
+And the other two of the twelve went the other way — shapes it wrongly REFUSED.
+First, **an endpoint appearing only inside a redirect target**
+(`curl https://example.test/x > /tmp/api/tasks/9/complete`). The scope test now
+runs on raw text with redirect targets blanked, so the endpoint has to appear
+where a request could actually go — below the scan ceiling, which is the only
+place a blanked operator view exists to walk. Above it all three ports judge
+scope on the raw text whole and all three refuse the shape; that is agreement
+with a ceiling-dependent verdict, not a divergence, and the guard header says
+so.
+
+Second, **`2>&2`** was refused, though a stderr-to-stderr redirect leaves the
+body on stdout. The stderr-only exemption is now tested before the `>&2` rule.
+
+After reconciliation the three ports agree on every shape in the corpus except
+six, which share a single deliberate cause now recorded in the guard header: a
+file-first sibling reads a canonical response file and may therefore deliver to
+it, while this port reads stdout alone and is built to refuse reading that cache
+at all.
+
 ## [1.37.0] - 2026-09-07
 
 ### Added — a back-reference beside every anchored rule (W2137)

@@ -352,10 +352,19 @@ the `/mark_reviewed` curl in the `needs_review=true` path — when you invoke
 after_goal detection works the same way after a review approval.
 
 **Portability — `tee`-less shells.** `tee` is the one blessed pipe here (it
-preserves stdout while writing the file). Where `tee` is unavailable, use
-`curl --output "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"`
-instead — the response then goes to the file only, not stdout — or skip
-capture entirely and re-fetch the task's after_goal status if you need it.
+preserves stdout while writing the file). Where `tee` is unavailable, **skip
+the capture** and re-fetch the task's after_goal status if you need it.
+
+**Do NOT substitute `curl --output` (W2181).** Earlier releases offered it here
+as the `tee`-less fallback, and that advice was wrong on its own terms — it
+said the response "goes to the file only, not stdout", which is precisely the
+failure. The `PreToolUse` guard in `hooks/stride-hook.sh` now refuses it on
+`/claim`, `/complete` and `/mark_reviewed`, because the `PostToolUse` recorder
+reads the completion body off **stdout** to write `.stride/.loop-state.json`.
+Hide stdout and that record is never written, the Stop gate cannot tell the
+task was completed, and the session ends with the work still showing in Doing —
+with no error anywhere. Losing the convenience capture is the cheap failure;
+losing the loop-state record is the expensive one.
 
 **Gitignore `.stride/`.** The `.stride/` directory holds ephemeral,
 agent-local state (`.last-api-response.json`); it **must** be listed in the
