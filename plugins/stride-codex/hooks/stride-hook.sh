@@ -352,6 +352,52 @@ codex_guard_scope_text() {
   ' 2>/dev/null || printf '%s' "$1"
 }
 
+# A `>` the shell never reads as an operator, neutralised so no rule reads it as
+# one either. `--data-urlencode n=a\>` carries a BACKSLASH-ESCAPED `>`: the shell
+# passes it to curl as a literal character and redirects nothing. Both walks over
+# the operator view used to take it for syntax, and the two failures point in
+# opposite directions:
+#
+#   * the scope pass blanks the word AFTER a redirect operator, so an escaped `>`
+#     standing just before the URL blanked the URL out of the scope view. With
+#     the only endpoint gone the segment fell out of scope and the call was
+#     PERMITTED -- measured as a real false permit on this port
+#   * the redirect rule read the same character as a stdout redirect and REFUSED
+#     a command that redirects nothing at all, which is the false positive that
+#     teaches an agent to route around the guard.
+#
+# Both are fixed here rather than in either walk, because one neutralisation
+# upstream cannot disagree with itself the way two independent escape tests can.
+# ODD/EVEN MATTERS: `\>` is a literal `>`, but `\\>` is an escaped BACKSLASH
+# followed by a real operator, so only an odd run of backslashes escapes the `>`.
+# Counting the run is the whole difference between this and a `tr`.
+#
+# Length-preserving like every other pass over this view: the escaping backslash
+# and the `>` become two spaces, so the raw/blanked pairing offsets still line up.
+# Quote state is untouched -- a backslash is only ever blanked when a `>` follows
+# it, never when a quote does.
+#
+# Fails OPEN to the unchanged text if awk is unavailable, matching the scope
+# helper beside it: that restores the previous behaviour rather than inventing a
+# new failure mode on a host the guard already could not fully serve.
+codex_guard_blank_escaped_gt() {
+  CODEX_EGT="$1" LC_ALL=C awk '
+    BEGIN {
+      s = ENVIRON["CODEX_EGT"]; n = length(s); out = s; i = 1
+      while (i <= n) {
+        if (substr(s, i, 1) != "\\") { i++; continue }
+        k = 0
+        while (i + k <= n && substr(s, i + k, 1) == "\\") k++
+        if ((k % 2) == 1 && i + k <= n && substr(s, i + k, 1) == ">") {
+          out = substr(out, 1, i + k - 2) "  " substr(out, i + k + 1)
+        }
+        i = i + k
+      }
+      printf "%s", out
+    }
+  ' 2>/dev/null || printf '%s' "$1"
+}
+
 # Does this text name one of the three endpoints the recorder routes?
 codex_guard_routed_endpoint() {
   case "$1" in
@@ -662,6 +708,13 @@ if [ "$PHASE" = "pre" ]; then
   # scan and the whole segment is skipped. Quoted spans are already blanked, so
   # a `(` surviving here is real syntax rather than payload.
   CG_BL=$(printf '%s' "$CG_BL" | LC_ALL=C tr '()`{}' '     ')
+
+  # Same idea, one character further: an escaped `>` is not an operator either.
+  # A `tr` cannot do this one -- it has to count the backslash run to tell `\>`
+  # from `\\>` -- so it is its own pass. Placed here so the scope walk and the
+  # redirect rule both inherit it, and before the length check below, which it
+  # cannot disturb: two characters in, two spaces out.
+  CG_BL=$(codex_guard_blank_escaped_gt "$CG_BL")
 
   # Blanking is length-preserving by construction, which is what lets the two
   # views be cut at the SAME offsets below. If that ever stops holding, FAIL

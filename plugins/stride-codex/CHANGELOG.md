@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed — an escaped `>` is no longer read as an operator
+
+`--data-urlencode n=a\>` passes curl a literal `>` and redirects nothing, but
+both walks over the operator view took it for syntax — and they erred in
+**opposite** directions. The scope pass blanked the word after it, which can be
+the URL itself; the redirect rule called the same character a redirect. The two
+cancelled, which is exactly why neither showed up in a verdict.
+
+**No verdict in this port changed.** Every shape measured before and after this
+change returns what it returned before, and the new Group 7z21-adjacent cases pin
+that rather than a behaviour change. It is still worth having: a cancellation
+between two bugs is not a property to rely on, and the sibling `stride` port had
+the same pair **not** cancel, where it was a measured false permit of a real
+`> r.json` on a completion call.
+
+One neutralisation upstream of both walks replaces two independent escape tests
+that could drift apart. Odd/even is the distinction — `\>` is a literal `>`,
+`\\>` is an escaped backslash followed by a real operator — so it counts the
+backslash run rather than blanking pairs, and it is length-preserving like every
+other pass over this view.
+
 ## [1.38.0] - 2026-09-10
 
 ### Added — the response never leaves stdout unguarded (W2181)

@@ -2267,6 +2267,29 @@ else
   # That is a uniform limitation, not a divergence, and it is recorded rather
   # than pinned here -- pinning the permit would cement a hole as a contract.
 
+  # --- 7z22: AN ESCAPED `>` IS NOT AN OPERATOR ----------------------------
+  # `--data-urlencode n=a\>` hands curl a literal `>` and redirects nothing, but
+  # both walks over the operator view read it as syntax: the scope pass blanked
+  # the word after it, and the redirect rule called it a redirect. The two
+  # disagreed in opposite directions, which is how they cancelled -- the scope
+  # loss suppressed the very refusal the redirect rule was wrongly producing.
+  #
+  # NO VERDICT BELOW CHANGED when the neutralisation landed in this port: every
+  # case here returns what it returned before, and they are pinned because the
+  # cancellation is not a property to rely on. The sibling `stride` port had the
+  # same pair of bugs NOT cancelling, where it was a measured false permit.
+  g7_case "7z22a: an escaped > cannot hide a real redirect" \
+    "curl --data-urlencode n=a\\> $G7_URL/claim > r.json" deny
+  g7_case "7z22a: nor an appending one" \
+    "curl --data-urlencode n=a\\> $G7_URL/claim >> r.json" deny
+  g7_case "7z22b: an escaped > alone is not a redirect" \
+    "curl --data-urlencode n=a\\> $G7_URL/claim | tee r.json" permit
+  g7_case "7z22b: and does not cost the call its scope" \
+    "curl --data-urlencode n=a\\> $G7_URL/claim -o r.json" deny
+  # Odd/even: `\\>` is an escaped BACKSLASH, so the `>` is still an operator.
+  g7_case "7z22c: an escaped BACKSLASH leaves the > an operator" \
+    "curl $G7_URL/claim --data-urlencode n=a\\\\> r.json" deny
+
   # --- 7z14: THE QUOTED URL. Every case above interpolates $G7_URL bare, and
   # that is not the shape this port documents -- skills/stride-completing-tasks
   # /SKILL.md and the README both write

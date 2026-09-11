@@ -355,6 +355,8 @@ after_goal detection works the same way after a review approval.
 preserves stdout while writing the file). Where `tee` is unavailable, **skip
 the capture** and re-fetch the task's after_goal status if you need it.
 
+<!-- canon:stdout-preservation-guard v1 -->
+
 **Do NOT substitute `curl --output` (W2181).** Earlier releases offered it here
 as the `tee`-less fallback, and that advice was wrong on its own terms — it
 said the response "goes to the file only, not stdout", which is precisely the
@@ -365,6 +367,11 @@ Hide stdout and that record is never written, the Stop gate cannot tell the
 task was completed, and the session ends with the work still showing in Doing —
 with no error anywhere. Losing the convenience capture is the cheap failure;
 losing the loop-state record is the expensive one.
+
+**Canon-governed — entry `stdout-preservation-guard` in `stride/docs/port-canon.md`.**
+A change to the substance above owes a version bump in **two** places before the
+next release: that entry in the canon, and this file's own
+`<!-- canon:stdout-preservation-guard ... -->` anchor above.
 
 **Gitignore `.stride/`.** The `.stride/` directory holds ephemeral,
 agent-local state (`.last-api-response.json`); it **must** be listed in the
