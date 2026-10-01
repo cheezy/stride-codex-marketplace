@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.39.0] - 2026-10-01
 
 ### Fixed — an escaped `>` is no longer read as an operator
 
@@ -26,6 +26,14 @@ that could drift apart. Odd/even is the distinction — `\>` is a literal `>`,
 `\\>` is an escaped backslash followed by a real operator — so it counts the
 backslash run rather than blanking pairs, and it is length-preserving like every
 other pass over this view.
+
+### Added — the stdout-preservation-guard rule carries its canon anchor (W2187)
+
+The paragraph that tells an agent which invocation shapes hide the API reply, and what is lost when one is used, now sits beside its canon anchor with the back-reference the edit-site rule requires. The statement itself is unchanged; the fleet drift check can now see it.
+
+### Added — a release runbook for this repository (W2173)
+
+`RELEASE.md` records how this repository is released, as its own history shows it: which file holds the version, how the changelog is shaped (with any ambiguity in that history stated rather than resolved), whether a catalog must be synced afterwards, and the one-line check for whether the changelog's top heading is already tagged — the check that would have caught entries appended under a released heading. Documentation only; no behaviour changes.
 
 ## [1.38.0] - 2026-09-10
 
