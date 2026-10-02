@@ -479,6 +479,33 @@ else
     "$ORDERING_EXIT" "$ORDERING_STDERR"
 fi
 
+# --- (b)/(d) task-level fields and a stray root 'tasks' key (D341) -----------
+
+printf '%s\n' '{"goals":[{"title":"G","type":"goal","tasks":[{"title":"Ok","type":"work"},{"type":"work"}]}]}' > "$TMP/d341_0.json"
+assert_fails_with "(d) task missing title fails with its path" "$TMP/d341_0.json" \
+  "goals[0].tasks[1] is missing required field 'title'"
+printf '%s\n' '{"goals":[{"title":"G","type":"goal","tasks":[{"title":"   ","type":"work"}]}]}' > "$TMP/d341_1.json"
+assert_fails_with "(d) task with a whitespace-only title fails with its path" "$TMP/d341_1.json" \
+  "goals[0].tasks[0].title must be a non-empty string"
+printf '%s\n' '{"goals":[{"title":"G","type":"goal","tasks":[{"title":42,"type":"work"}]}]}' > "$TMP/d341_2.json"
+assert_fails_with "(d) task with a non-string title fails with its path" "$TMP/d341_2.json" \
+  "goals[0].tasks[0].title must be a non-empty string"
+printf '%s\n' '{"goals":[{"title":"G","type":"goal","tasks":[{"title":"T"}]}]}' > "$TMP/d341_3.json"
+assert_fails_with "(d) task missing type fails with its path" "$TMP/d341_3.json" \
+  "goals[0].tasks[0] is missing required field 'type'"
+printf '%s\n' '{"goals":[{"title":"G","type":"goal","tasks":[{"title":"T","type":"goal"}]}]}' > "$TMP/d341_4.json"
+assert_fails_with "(d) task type 'goal' fails with its path" "$TMP/d341_4.json" \
+  "goals[0].tasks[0].type must be 'work' or 'defect', got 'goal'"
+printf '%s\n' '{"goals":[{"title":"G","type":"goal","tasks":["just a title"]}]}' > "$TMP/d341_5.json"
+assert_fails_with "(d) task that is a string instead of an object fails with its path" "$TMP/d341_5.json" \
+  "goals[0].tasks[0] must be an object, got str"
+printf '%s\n' '{"goals":[{"title":"G","type":"goal","tasks":[{"title":"T","type":"work"}]}],"tasks":[{"title":"Stray","type":"work"}]}' > "$TMP/d341_6.json"
+assert_fails_with "(b) root with both goals and tasks fails" "$TMP/d341_6.json" \
+  "root has both 'goals' and 'tasks'"
+printf '%s\n' '{"goals":[{"title":"G","type":"goal","tasks":[{"title":"Fix it","type":"defect","dependencies":[],"acceptance_criteria":"It works","testing_strategy":{"unit_tests":["one"]},"security_considerations":["None - test fixture"],"pitfalls":["none"],"patterns_to_follow":"existing"}]}]}' > "$TMP/d341_defect.json"
+assert_silent "(d) a defect task with every scored field passes silently" "$TMP/d341_defect.json"
+
+
 # Real repo fixtures: every batch must be structurally valid and within the
 # varchar(255) length bounds (exit 0). Advisory scored-field warnings are
 # tolerated — the notifications/replace-test-suite fixtures intentionally

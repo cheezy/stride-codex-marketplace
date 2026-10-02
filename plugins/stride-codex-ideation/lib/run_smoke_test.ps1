@@ -10,7 +10,7 @@
 #       Dry-run mode. Uses fixtures/2026-05-12T120000-dark-mode-toggle-stride-batch.json.
 #
 #   pwsh -File lib\run_smoke_test.ps1 -Live <stride-batch.json>
-#       LIVE mode. Reads auth from $CLAUDE_PROJECT_DIR/.stride_auth.md
+#       LIVE mode. Reads auth from .stride_auth.md at the project root
 #       and POSTs the supplied batch to the Stride API. Use a dev
 #       Stride instance — this creates real tasks.
 #
@@ -244,52 +244,21 @@ if (Test-Path -LiteralPath $gateFixture) {
 }
 
 # --- Stage 7: LIVE POST (only if -Live) ------------------------------------
+#
+# Ships through lib/ship.py, the same single process the stridify skill's
+# Step 9 runs: it reads .stride_auth.md ($env:STRIDE_AUTH_FILE, else
+# the project root's .stride_auth.md, else the current directory's), strips, validates, POSTs
+# with the token on curl's stdin (never argv) and renders the created
+# identifiers. The token never enters this PowerShell session.
 
 if ($Mode -eq 'live') {
     Write-Host ''
     Write-Host 'Stage 7: LIVE POST to the Stride API (NOTE: creates real tasks)'
-    $projectDir = if ($env:CLAUDE_PROJECT_DIR) { $env:CLAUDE_PROJECT_DIR } else { (Get-Location).Path }
-    $authFile = Join-Path $projectDir '.stride_auth.md'
-    if (-not (Test-Path -LiteralPath $authFile)) {
-        Fail "-Live requires .stride_auth.md at $authFile"
+    & python3 (Join-Path $ScriptDir 'ship.py') $BatchPath
+    if ($LASTEXITCODE -eq 0) {
+        Pass 'live POST shipped through lib/ship.py'
     } else {
-        $liveAuthErr = New-TemporaryFile
-        $liveAuthOut = & python3 (Join-Path $ScriptDir 'read_auth.py') $authFile 2>$liveAuthErr.FullName
-        if ($LASTEXITCODE -eq 0) {
-            $apiUrl = $null
-            $apiToken = $null
-            foreach ($line in $liveAuthOut) {
-                if ($line -match '^STRIDE_API_URL=(.+)$') { $apiUrl = $matches[1] }
-                if ($line -match '^STRIDE_API_TOKEN=(.+)$') { $apiToken = $matches[1] }
-            }
-            if (-not $apiUrl -or -not $apiToken) {
-                Fail "live: read_auth.py output missing URL or TOKEN"
-            } else {
-                $payload = & python3 (Join-Path $ScriptDir 'strip_audit_fields.py') $BatchPath
-                $headers = @{ Authorization = "Bearer $apiToken"; 'Content-Type' = 'application/json' }
-                try {
-                    $resp = Invoke-RestMethod -Method Post -Uri "$apiUrl/api/tasks/batch" -Headers $headers -Body $payload -ErrorAction Stop
-                    Pass "live POST returned 2xx"
-                    Write-Host "`nCreated identifiers:"
-                    $container = if ($resp.data) { $resp.data } else { $resp }
-                    foreach ($g in $container.goals) {
-                        Write-Host ("  {0,6}  {1}" -f $g.identifier, $g.title)
-                        foreach ($t in $g.tasks) {
-                            Write-Host ("  {0,6}    {1}" -f $t.identifier, $t.title)
-                        }
-                    }
-                } catch {
-                    Fail "live POST failed: $($_.Exception.Message)"
-                }
-            }
-            # Paranoia: drop the token from the shell as soon as we're done.
-            $apiToken = $null
-            Remove-Variable -Name apiToken -ErrorAction SilentlyContinue
-        } else {
-            $errText = Get-Content -Raw -LiteralPath $liveAuthErr.FullName -ErrorAction SilentlyContinue
-            Fail "live: read_auth.py failed" $errText
-        }
-        Remove-Item -Force $liveAuthErr.FullName -ErrorAction SilentlyContinue
+        Fail 'live POST through lib/ship.py failed (its message is above)'
     }
 }
 

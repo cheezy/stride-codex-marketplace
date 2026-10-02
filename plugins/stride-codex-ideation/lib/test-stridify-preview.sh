@@ -63,38 +63,53 @@ parse_yes_flag() {
   printf '%s\n%s\n' "$yes" "$out"
 }
 
-# --- reference preview render ----------------------------------------------
+# --- reference --batch parser ------------------------------------------------
 #
-# Mirrors skills/stride-ideation-stridify/SKILL.md Step 8.5a. Reads ONLY the on-disk batch JSON (no auth
+# Mirrors SKILL.md Step 1's --batch rules. Prints one line:
+#   batch=<path>|yes=<true|false>|err=<usage|goal|doc|>|rest=<remainder>
+# err=usage: --batch with no value (bare, `--batch=`, or followed by a flag),
+#            or neither --batch nor a doc path; err=goal: --batch with --goal;
+# err=doc: --batch with a requirements-doc path left over.
+
+parse_batch_args() {
+  # shellcheck disable=SC2206
+  local toks=( $1 )
+  local batch="" have_batch=false goal="" yes=false rest="" err="" i=0 t
+  while [ "$i" -lt "${#toks[@]}" ]; do
+    t="${toks[$i]}"
+    case "$t" in
+      --batch)
+        have_batch=true
+        if [ $(( i + 1 )) -lt "${#toks[@]}" ] && [ "${toks[$(( i + 1 ))]#--}" = "${toks[$(( i + 1 ))]}" ]; then
+          batch="${toks[$(( i + 1 ))]}"; i=$(( i + 1 ))
+        else
+          err=usage
+        fi ;;
+      --batch=*) have_batch=true; batch="${t#--batch=}"; [ -n "$batch" ] || err=usage ;;
+      --goal) goal="${toks[$(( i + 1 ))]:-}"; i=$(( i + 1 )) ;;
+      --goal=*) goal="${t#--goal=}" ;;
+      --yes|--auto-approve) yes=true ;;
+      *) rest="${rest:+$rest }$t" ;;
+    esac
+    i=$(( i + 1 ))
+  done
+  if [ -z "$err" ]; then
+    if [ "$have_batch" = true ] && [ -n "$goal" ]; then err=goal
+    elif [ "$have_batch" = true ] && [ -n "$rest" ]; then err=doc
+    elif [ "$have_batch" = false ] && [ -z "$rest" ]; then err=usage
+    fi
+  fi
+  printf 'batch=%s|yes=%s|err=%s|rest=%s\n' "$batch" "$yes" "$err" "$rest"
+}
+
+# --- preview render (the real one) ------------------------------------------
+#
+# Runs lib/ship.py --preview, which skills/stride-ideation-stridify/SKILL.md Step 8.5a calls. Reads ONLY the on-disk batch JSON (no auth
 # material) and prints the goal/task tree + cross-goal claim order.
 
 render_preview() {
-  python3 - "$1" <<'PY'
-import json
-import sys
-
-with open(sys.argv[1], "r", encoding="utf-8") as fp:
-    data = json.load(fp)
-
-goals = data.get("goals", [])
-notes = data.get("decomposition_notes", "")
-
-print()
-print("Goals and tasks to be created:")
-print()
-for goal in goals:
-    title = goal.get("title", "(no title)")
-    tasks = goal.get("tasks", []) or []
-    n = len(tasks)
-    print(f"  Goal: {title}  ({n} task{'s' if n != 1 else ''})")
-    for task in tasks:
-        print(f"    - {task.get('title', '(no title)')}")
-print()
-if notes:
-    print("Cross-goal claim order:")
-    print(f"  {notes}")
-    print()
-PY
+  # The real Step 8.5a renderer: SKILL.md now calls `ship.py --preview`.
+  python3 "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ship.py" --preview "$1"
 }
 
 # --- POST stub + sentinel: confirm whether POST is reached ------------------
@@ -128,8 +143,8 @@ render_and_gate() {
       ;;
     *)
       # 8.5c decline: clean stop, no POST, JSON untouched. Real impl exit 0.
-      echo "stride-ideation: declined. The batch JSON is on disk at $batch"
-      echo "(committed in git) for a later manual ship. No POST was attempted."
+      echo "stride-ideation: declined. No POST was attempted. The batch JSON is on disk at $batch"
+      echo "Ship it later, unchanged, by activating stride-ideation-stridify with: --batch \"$batch\""
       return 10
       ;;
   esac
@@ -303,6 +318,24 @@ if grep -qE 'stride_(dev|prod)_|Bearer |Authorization:' \
 else
   pass "case 8: no Bearer/token/Authorization strings in preview or gate output (pitfall avoided)"
 fi
+
+# === cases 9-14: --batch parse ==============================================
+
+expect_parse() {
+  local label="$1" args="$2" want="$3" got
+  got="$(parse_batch_args "$args")"
+  if [ "$got" = "$want" ]; then pass "$label"; else fail "$label" "got: $got"; fi
+}
+expect_parse "case 9: --batch <path> selects batch mode" "--batch docs/x-stride-batch.json" "batch=docs/x-stride-batch.json|yes=false|err=|rest="
+expect_parse "case 10: --batch=<path> splits on the first = only" "--batch=docs/a=b.json" "batch=docs/a=b.json|yes=false|err=|rest="
+expect_parse "case 11a: a bare trailing --batch is a usage error" "--batch" "batch=|yes=false|err=usage|rest="
+expect_parse "case 11b: --batch= with no value is a usage error" "--batch=" "batch=|yes=false|err=usage|rest="
+expect_parse "case 11c: --batch followed by a flag never takes the flag as its path" "--batch --yes" "batch=|yes=true|err=usage|rest="
+expect_parse "case 12: --batch together with --goal is rejected" "--batch b.json --goal 2" "batch=b.json|yes=false|err=goal|rest="
+expect_parse "case 12b: --goal=<v> before --batch=<v> is rejected too" "--goal=2 --batch=b.json" "batch=b.json|yes=false|err=goal|rest="
+expect_parse "case 13: --batch with a requirements-doc path left over is rejected" "--batch b.json docs/x-requirements.md" "batch=b.json|yes=false|err=doc|rest=docs/x-requirements.md"
+expect_parse "case 14a: --batch --yes keeps the path and sets the bypass" "--batch b.json --yes" "batch=b.json|yes=true|err=|rest="
+expect_parse "case 14b: no --batch and no doc path is a usage error" "--yes" "batch=|yes=true|err=usage|rest="
 
 # === summary ==============================================================
 

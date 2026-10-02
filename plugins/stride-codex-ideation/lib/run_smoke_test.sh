@@ -16,7 +16,7 @@
 #       response-rendering code is also exercised.
 #
 #   ./lib/run_smoke_test.sh --live <stride-batch.json>
-#       LIVE mode. Reads auth from $CLAUDE_PROJECT_DIR/.stride_auth.md
+#       LIVE mode. Reads auth from .stride_auth.md at the project root
 #       and POSTs the supplied batch to the Stride API. Use a dev
 #       Stride instance — this creates real tasks.
 #
@@ -244,53 +244,20 @@ else
 fi
 
 # --- Stage 7: LIVE POST (only if --live) -----------------------------------
+#
+# Ships through lib/ship.py, the same single process the stridify skill's
+# Step 9 runs: it reads .stride_auth.md ($STRIDE_AUTH_FILE, else
+# the project root's .stride_auth.md, else ./.stride_auth.md), strips, validates, POSTs with
+# the token on curl's stdin (never argv) and renders the created identifiers.
+# The token never enters this shell.
 
 if [ "$MODE" = "live" ]; then
   printf '\nStage 7: LIVE POST to the Stride API (NOTE: creates real tasks)\n'
 
-  AUTH_FILE="${CLAUDE_PROJECT_DIR:-$PWD}/.stride_auth.md"
-  if [ ! -f "$AUTH_FILE" ]; then
-    nope "--live requires .stride_auth.md at $AUTH_FILE" ""
+  if python3 "${SCRIPT_DIR}/ship.py" "$BATCH_PATH"; then
+    ok "live POST shipped through lib/ship.py"
   else
-    if AUTH_OUT_LIVE="$(python3 "${SCRIPT_DIR}/read_auth.py" "$AUTH_FILE" 2>/tmp/sm-live-auth.err)"; then
-      eval "$AUTH_OUT_LIVE"
-      unset AUTH_OUT_LIVE
-      LIVE_PAYLOAD="$(python3 "${SCRIPT_DIR}/strip_audit_fields.py" "$BATCH_PATH")"
-
-      LIVE_RESP="$(mktemp -t sm_live_resp.XXXXXX.json)"
-      LIVE_CODE="$(curl -sS -X POST \
-        -H "Authorization: Bearer $STRIDE_API_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d "$LIVE_PAYLOAD" \
-        "$STRIDE_API_URL/api/tasks/batch" \
-        -o "$LIVE_RESP" \
-        -w '%{http_code}')"
-      unset STRIDE_API_TOKEN
-
-      case "$LIVE_CODE" in
-        2*)
-          ok "live POST returned HTTP $LIVE_CODE"
-          printf '\nCreated identifiers:\n'
-          python3 - "$LIVE_RESP" <<'PY'
-import json, sys
-with open(sys.argv[1]) as fp:
-    data = json.load(fp)
-container = data.get("data", data)
-for goal in container.get("goals", []):
-    print(f"  {goal.get('identifier', '?'):>6}  {goal.get('title', '')}")
-    for task in goal.get("tasks", []) or []:
-        print(f"  {task.get('identifier', '?'):>6}    {task.get('title', '')}")
-PY
-          ;;
-        *)
-          nope "live POST returned HTTP $LIVE_CODE" "$(cat "$LIVE_RESP")"
-          ;;
-      esac
-      rm -f "$LIVE_RESP"
-    else
-      nope "live: read_auth.py failed" "$(cat /tmp/sm-live-auth.err)"
-    fi
-    rm -f /tmp/sm-live-auth.err
+    nope "live POST through lib/ship.py failed (its message is above)" ""
   fi
 fi
 

@@ -1,6 +1,6 @@
 # fixtures/
 
-Smoke-test and regression fixtures for the `stride-codex-ideation` plugin (Codex CLI port of `cheezy/stride-ideation`). Each fixture pair (`*-requirements.md` + `*-stride-batch.json`) shares a timestamp prefix and demonstrates a different shape of decomposition output. The fixtures are copied verbatim from upstream so a Codex CLI run against the `stride-ideation-stridify` skill should produce comparable shapes when the decomposer agent is invoked against the same requirements doc.
+Smoke-test and regression fixtures for the `stride-codex-ideation` plugin (Codex CLI port of `cheezy/stride-ideation`). Each fixture pair (`*-requirements.md` + `*-stride-batch.json`) shares a timestamp prefix and demonstrates a different shape of decomposition output. The requirements docs are copied from upstream and the batch fixtures started from upstream's (they have since gained this port's scored-field backfill), so a Codex CLI run against the `stride-ideation-stridify` skill should produce comparable shapes when the decomposer agent is invoked against the same requirements doc.
 
 The fixtures serve two purposes:
 

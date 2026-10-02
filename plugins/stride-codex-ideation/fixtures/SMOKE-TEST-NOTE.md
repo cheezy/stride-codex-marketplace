@@ -1,6 +1,6 @@
 # Smoke-test note
 
-Captured at `2026-05-12T19:42:00Z` against the upstream `stride-ideation` plugin checkout and ported verbatim. The end-to-end pipeline composition was verified upstream via `lib/run_smoke_test.sh` in dry mode (no network call, no real tasks created). Live mode is available via `--live <batch.json>` (bash) or `-Live <batch.json>` (PowerShell mirror) but was not exercised during this capture per the W422 pitfall "Do not test against prod Stride." For Codex CLI users on Windows, run the smoke test via `pwsh -File lib\run_smoke_test.ps1`.
+First captured at `2026-05-12T19:42:00Z` against the upstream `stride-ideation` plugin checkout; this port's script and batch fixtures have since diverged from upstream, and the stage list below describes this port's `lib/run_smoke_test.sh`. The end-to-end pipeline composition was first verified upstream via `lib/run_smoke_test.sh` in dry mode (no network call, no real tasks created). Live mode is available via `--live <batch.json>` (bash) or `-Live <batch.json>` (PowerShell mirror) but was not exercised during this capture per the W422 pitfall "Do not test against prod Stride." For Codex CLI users on Windows, run the smoke test via `pwsh -File lib\run_smoke_test.ps1`.
 
 ## What was verified (dry mode, `lib/run_smoke_test.sh`)
 
@@ -10,16 +10,16 @@ Captured at `2026-05-12T19:42:00Z` against the upstream `stride-ideation` plugin
 | 2 | `lib/drift_check.py` against the same fixture | no drift (stamped `source_spec_sha256` matches the recomputed SHA of `fixtures/2026-05-12T120000-dark-mode-toggle-requirements.md`) |
 | 3 | `lib/read_auth.py` against a fixture `.stride_auth.md` | extracts `STRIDE_API_URL` and the `API Token` line (NOT the `Local API Token` line — the negative-lookbehind in `read_auth.py` does the right thing) |
 | 4 | `lib/strip_audit_fields.py` against the same batch | `source_spec`, `source_spec_sha256`, `decomposition_notes` removed from the in-memory payload; `goals` preserved; on-disk file byte-for-byte unchanged |
-| 5 | Response-rendering Python from `skills/stride-ideation-stridify/SKILL.md` against a canned 2xx body | renders a two-column `G/W` identifier table |
+| 5 | The inline response renderer in `lib/run_smoke_test.sh` against a canned 2xx body (`lib/ship.py` renders the real response; Stage 7 exercises it) | renders a two-column `G/W` identifier table |
 | 6 | `fixtures/2026-05-12T120300-saved-filters-challenge-gate-requirements.md` challenge-gate fixture shape | has a `## Design challenge` section, names ≥2 alternatives, the trade-off comparison covers cost/risk/complexity/timeline, and the Assumptions section shows per-assumption confidence ratings |
 
 Result: **14 ✓, 0 ✗**, `14 passed, 0 failed`.
 
 ## What was NOT verified in this capture
 
-- **Stage 7: live HTTP POST to a Stride instance.** `lib/run_smoke_test.sh --live <batch.json>` exercises this stage end-to-end (read auth → strip → POST → render real response). It was not run during this capture because the available Stride instance (`https://www.stridelikeaboss.com`) is the human's production workspace, not a dedicated dev environment. The W422 pitfall explicitly warned against testing against prod.
+- **Stage 7: live HTTP POST to a Stride instance.** `lib/run_smoke_test.sh --live <batch.json>` exercises this stage end-to-end through `lib/ship.py` (read auth → strip → validate → POST → render real response, in one process). It was not run during this capture because the available Stride instance (`https://www.stridelikeaboss.com`) is the human's production workspace, not a dedicated dev environment. The W422 pitfall explicitly warned against testing against prod.
 
-- **Interactive `stride-ideation-ideate` Q&A loop.** The ideation skill drives a multi-turn question-and-answer conversation via the platform's question UI that cannot be exercised from a non-interactive smoke-test runner. Coverage of that flow lives in the human-driven end-to-end procedure documented in the README's *Re-running the interactive end-to-end test* section.
+- **Interactive `stride-ideation-ideate` Q&A loop.** The ideation skill drives a multi-turn question-and-answer conversation in chat (numbered-option questions) that cannot be exercised from a non-interactive smoke-test runner. Coverage of that flow lives in the human-driven end-to-end procedure documented in the README's *Re-running the interactive end-to-end test* section.
 
 ## How to re-run
 
@@ -27,7 +27,7 @@ Result: **14 ✓, 0 ✗**, `14 passed, 0 failed`.
 # Dry mode (safe — no network call):
 ./lib/run_smoke_test.sh
 
-# Live mode — POSTs to the Stride API in $CLAUDE_PROJECT_DIR/.stride_auth.md.
+# Live mode — POSTs to the Stride API named in the project root's .stride_auth.md.
 # Use a dev Stride instance. Created tasks are NOT auto-cleaned.
 ./lib/run_smoke_test.sh --live fixtures/2026-05-12T120000-dark-mode-toggle-stride-batch.json
 ```

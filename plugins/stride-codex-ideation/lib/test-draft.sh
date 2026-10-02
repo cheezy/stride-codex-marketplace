@@ -198,6 +198,139 @@ else
   no "draft_find: leaked output for an absent dir: $ABS"
 fi
 
+# --- exact-slug discovery (D339) ---------------------------------------------
+
+XDIR="$TMP/exact"
+sti_draft_save "$(sti_draft_path "$XDIR" 2026-05-12T120000 dark-mode-toggle)" "dark mode"
+X="$(sti_draft_find "$XDIR" toggle 2>/dev/null || true)"
+if [ -z "$X" ]; then
+  ok "draft_find: slug 'toggle' does not match a 'dark-mode-toggle' draft"
+else
+  no "draft_find: slug 'toggle' matched another topic's draft: $X"
+fi
+assert_eq "draft_find: 'dark-mode-toggle' still finds its own draft" \
+  "$(sti_draft_find "$XDIR" dark-mode-toggle)" \
+  "$XDIR/2026-05-12T120000-dark-mode-toggle-draft.md"
+sti_draft_save "$(sti_draft_path "$XDIR" 2026-05-12T110000 toggle)" "toggle"
+assert_eq "draft_find: 'toggle' finds its own draft even when a longer slug's draft is newer" \
+  "$(sti_draft_find "$XDIR" toggle)" \
+  "$XDIR/2026-05-12T110000-toggle-draft.md"
+printf 'x' > "$XDIR/notes-toggle-draft.md"
+printf 'x' > "$XDIR/2026-05-12-toggle-draft.md"
+assert_eq "draft_find: a name without the YYYY-MM-DDTHHMMSS timestamp shape is never a candidate" \
+  "$(sti_draft_find "$XDIR" toggle)" \
+  "$XDIR/2026-05-12T110000-toggle-draft.md"
+
+# --- content on stdin (D339) --------------------------------------------------
+
+SDIR="$TMP/stdin/.stride"
+SP="$(sti_draft_path "$SDIR" 2026-05-12T103000 tricky)"
+TRICKY="$(printf 'He said "it'"'"'s $HOME, `whoami` and $(id)" \\ done\n\nline 3\n')"
+printf '%s\n' "$TRICKY" | sti_draft_save "$SP"
+if [ "$(cat "$SP")" = "$TRICKY" ] && [ "$(tail -c1 "$SP" | od -An -c | tr -d ' ')" = '\n' ]; then
+  ok "draft_save: content on stdin (quotes, \$, backticks, \$(…)) round-trips verbatim"
+else
+  no "draft_save: stdin content was altered"
+fi
+printf 'stdin wins?' | sti_draft_save "$SP" "argv content"
+assert_eq "draft_save: the argv form still works (and takes precedence over stdin)" "$(cat "$SP")" "argv content"
+sti_draft_save "$SP" < /dev/null
+if [ -f "$SP" ] && [ ! -s "$SP" ] && [ -z "$(sti_draft_find "$SDIR" tricky 2>/dev/null || true)" ]; then
+  ok "draft_save: empty stdin writes an empty draft, which is never offered for resume"
+else
+  no "draft_save: empty stdin mishandled"
+fi
+# Needs a real terminal; on a host without one (CI, an agent harness) the
+# case is reported as skipped rather than counted as passed.
+if (exec < /dev/tty) 2>/dev/null; then
+  if (sti_draft_save "$SP" 2>/dev/null < /dev/tty); then
+    no "draft_save: no content and a terminal on stdin did not fail"
+  else
+    ok "draft_save: no content and a terminal on stdin is a usage error, never a hang"
+  fi
+else
+  printf 'SKIP  draft_save: terminal-on-stdin usage error (no terminal on this host)\n'
+fi
+
+# --- the scratch dir ignores itself (D339) -------------------------------------
+
+assert_eq "draft_dir: creating the scratch dir writes .stride/.gitignore holding '*'" "$(cat "$SDIR/.gitignore")" "*"
+printf '# mine\nkeep-this\n' > "$SDIR/.gitignore"
+sti_draft_save "$SP" "again"
+assert_eq "draft_dir: an existing .gitignore is never overwritten" "$(cat "$SDIR/.gitignore")" "$(printf '# mine\nkeep-this')"
+mkdir -p "$TMP/existing-notes"
+sti_draft_save "$TMP/existing-notes/2026-05-12T103000-x-draft.md" "x"
+if [ ! -e "$TMP/existing-notes/.gitignore" ]; then
+  ok "draft_dir: no .gitignore is dropped into some other pre-existing directory"
+else
+  no "draft_dir: wrote a .gitignore into a pre-existing non-scratch directory"
+fi
+mkdir -p "$TMP/pre/.stride"
+sti_draft_dir "$TMP/pre/.stride"
+assert_eq "draft_dir: a pre-existing .stride dir without one gets the .gitignore" "$(cat "$TMP/pre/.stride/.gitignore" 2>/dev/null)" "*"
+
+REPO="$TMP/repo"
+mkdir -p "$REPO"
+git -C "$REPO" init -q
+(cd "$REPO" && sti_draft_save "$(sti_draft_path .stride 2026-05-12T103000 secret-plan)" "half-finished, possibly sensitive")
+if [ -z "$(git -C "$REPO" status --porcelain)" ]; then
+  ok "draft_save: in a fresh git repo, git status shows nothing under .stride/ after a save"
+else
+  no "draft_save: the draft is visible to git" "$(git -C "$REPO" status --porcelain)"
+fi
+(cd "$REPO" && git add -A)
+if [ -z "$(git -C "$REPO" diff --cached --name-only)" ]; then
+  ok "draft_save: a later git add -A stages nothing from .stride/"
+else
+  no "draft_save: git add -A staged the draft"
+fi
+
+# --- links and an existing .gitignore that does not cover drafts (D339) -------
+
+LDIR="$TMP/links/.stride"
+mkdir -p "$LDIR"
+printf 'credentials\n' > "$TMP/links/secret"
+ln -s "$TMP/links/secret" "$LDIR/2026-05-12T120000-auth-draft.md"
+L="$(sti_draft_find "$LDIR" auth 2>/dev/null || true)"
+if [ -z "$L" ]; then ok "draft_find: a symbolic link is never offered as a draft"; else no "draft_find: offered a symlink for resume: $L"; fi
+if sti_draft_save "$LDIR/2026-05-12T120000-auth-draft.md" "overwrite" 2>/dev/null; then
+  no "draft_save: wrote through a symbolic link"
+else
+  assert_eq "draft_save: refuses a symlinked draft path and leaves its target alone" "$(cat "$TMP/links/secret")" "credentials"
+fi
+mkdir -p "$TMP/links/docs"
+ln -s "$TMP/links/docs" "$TMP/links/linked-stride"
+if sti_draft_dir "$TMP/links/linked-stride" 2>/dev/null; then
+  no "draft_dir: accepted a symlinked scratch dir"
+else
+  if [ ! -e "$TMP/links/docs/.gitignore" ]; then ok "draft_dir: a symlinked scratch dir is refused and nothing is written at its target"; else no "draft_dir: wrote a .gitignore through a symlinked dir"; fi
+fi
+
+GREPO="$TMP/gitrepo"
+mkdir -p "$GREPO/.stride"
+git -C "$GREPO" init -q
+printf '*.json\n' > "$GREPO/.stride/.gitignore"
+(cd "$GREPO" && sti_draft_dir .stride 2>/dev/null)
+rc=$?
+if [ "$rc" -eq 2 ] && [ "$(cat "$GREPO/.stride/.gitignore")" = '*.json' ]; then
+  ok "draft_dir: an existing .gitignore that does not cover drafts returns 2 and is left untouched"
+else
+  no "draft_dir: uncovered drafts not reported (rc=$rc)"
+fi
+printf '*\n' > "$GREPO/.stride/.gitignore"
+if (cd "$GREPO" && sti_draft_dir .stride); then ok "draft_dir: once the .gitignore covers drafts it succeeds"; else no "draft_dir: failed although drafts are ignored"; fi
+git -C "$GREPO" config user.email t@example.com; git -C "$GREPO" config user.name t
+printf 'committed prose\n' > "$GREPO/.stride/2026-05-12T120000-plan-draft.md"
+git -C "$GREPO" add -f .stride/2026-05-12T120000-plan-draft.md && git -C "$GREPO" commit -q -m tracked
+T="$(cd "$GREPO" && sti_draft_find .stride plan 2>/dev/null || true)"
+if [ -z "$T" ]; then ok "draft_find: a draft git already tracks is never offered for resume"; else no "draft_find: offered a tracked draft: $T"; fi
+mkdir -p "$GREPO/sub"
+if (cd "$GREPO/sub" && sti_draft_save 2026-05-12T120000-bare-draft.md "x" 2>/dev/null); then
+  no "draft_save: a bare file name in an un-ignored repo directory was written"
+else
+  if [ ! -e "$GREPO/sub/2026-05-12T120000-bare-draft.md" ]; then ok "draft_save: a bare file name in an un-ignored repo directory is refused, not written"; else no "draft_save: wrote the bare-name draft"; fi
+fi
+
 # --- summary ----------------------------------------------------------------
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"

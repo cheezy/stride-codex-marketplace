@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Tests for the /stride-ideation:stridify Step 7 retry classification documented
-# in commands/stridify.md. The Agent tool is only available inside a live
-# Claude Code session, so this test embeds a reference shell implementation of
-# the documented retry loop and exercises it against a mock subagent script.
+# Tests for the stride-ideation-stridify Step 7 retry classification documented
+# in skills/stride-ideation-stridify/SKILL.md. The agent run is only available
+# inside a live Codex session, so this test embeds a reference shell
+# implementation of the documented retry loop and exercises it against a mock
+# agent script.
 #
 # The reference implementation below MUST stay consistent with the pseudo-code
-# in stridify.md Step 7 (7a classification table, 7b backoff, 7c code-flow).
-# If you edit one, edit both — the test exists to prevent the doc and the
-# real implementation from drifting apart.
+# in SKILL.md Step 7 (7a classification table, 7b backoff, 7c code-flow).
+# If you edit one, edit both — and keep lib/test-stridify-retry.ps1 in
+# lockstep. The test exists to prevent the doc and the real implementation
+# from drifting apart.
 #
 # Run:
 #   ./lib/test-stridify-retry.sh
@@ -61,7 +63,7 @@ if [ "$remaining" -gt 0 ]; then
   printf '%s' "$remaining" > "$COUNTER_FILE"
   case "$mode" in
     transient)
-      printf 'Error: HTTP 529 Overloaded — Anthropic API capacity\n' >&2
+      printf 'Error: HTTP 529 Overloaded — Anthropic API capacity (remaining=%s)\n' "$remaining" >&2
       exit 2
       ;;
     terminal)
@@ -93,20 +95,33 @@ BACKOFF_2="${BACKOFF_2:-0}"
 
 classify_dispatch_error() {
   # Args: <err_text>. Echoes "transient" or "terminal".
+  # Mirrors the SKILL.md 7a table: HTTP 429, any 5xx, an "overloaded" /
+  # "rate limit" / "capacity" body, or a network error (DNS resolution,
+  # connection refused, timeout, TLS handshake) is transient; everything else
+  # (agent file missing, contract violation, any other 4xx) is terminal.
+  # Text matches are case-insensitive (bash 3.2 has no ${var,,}, so use tr).
   local err_text="$1"
-  case "$err_text" in
-    *529*|*Overloaded*|*overloaded*) echo "transient"; return ;;
-    *"Could not resolve"*|*"Connection refused"*|*"timeout"*|*"TLS handshake"*) echo "transient"; return ;;
+  local lower
+  lower="$(printf '%s' "$err_text" | tr '[:upper:]' '[:lower:]')"
+  if printf '%s' "$err_text" | grep -Eq '(^|[^0-9])(429|5[0-9][0-9])([^0-9]|$)'; then
+    echo "transient"; return
+  fi
+  case "$lower" in
+    *overloaded*|*"rate limit"*|*capacity*) echo "transient"; return ;;
+    *"could not resolve"*|*"connection refused"*|*timeout*|*"tls handshake"*) echo "transient"; return ;;
     *) echo "terminal" ;;
   esac
 }
 
 dispatch_with_retry() {
-  # Args: <counter_file> <mode_file>
+  # Args: <counter_file> <mode_file> [prompt]
+  # The prompt is handed to the mock on every attempt (as the real dispatch
+  # hands it to the agent) and must never be echoed to the log.
   # Stdout on success: the mock's stdout (fenced JSON).
   # Stderr always: one-line attempt headers + final error on failure.
   local counter_file="$1"
   local mode_file="$2"
+  local prompt="${3:-}"
   local attempt=1
   local last_error=""
   local result_file="$TMP/result.$$"
@@ -114,7 +129,7 @@ dispatch_with_retry() {
   while [ "$attempt" -le "$MAX_ATTEMPTS" ]; do
     printf 'dispatching attempt %d/%d\n' "$attempt" "$MAX_ATTEMPTS" >&2
     err_file="$TMP/err.$$.$attempt"
-    if "$TMP/mock_agent.sh" "$counter_file" "$mode_file" >"$result_file" 2>"$err_file"; then
+    if "$TMP/mock_agent.sh" "$counter_file" "$mode_file" "$prompt" >"$result_file" 2>"$err_file"; then
       cat "$result_file"
       rm -f "$result_file" "$err_file"
       return 0
@@ -196,7 +211,10 @@ else
   else
     fail "case 3: failed but did not log EXHAUSTED" "$(cat "$TMP/log3")"
   fi
-  if grep -q 'HTTP 529 Overloaded' "$TMP/log3"; then
+  # Each transient error carries the mock's remaining count, so the LAST
+  # attempt's error is the one with remaining=0 — match that line exactly.
+  if grep -qxF 'EXHAUSTED: Error: HTTP 529 Overloaded — Anthropic API capacity (remaining=0)' "$TMP/log3" \
+     && ! grep -qF 'remaining=2' "$TMP/log3"; then
     pass "case 3: surfaces LAST attempt's error verbatim"
   else
     fail "case 3: terminal output did not include last error verbatim" "$(cat "$TMP/log3")"
@@ -264,16 +282,43 @@ fi
 
 echo 2 > "$TMP/counter8"
 echo transient > "$TMP/mode8"
-dispatch_with_retry "$TMP/counter8" "$TMP/mode8" >/dev/null 2>"$TMP/log8" || true
+PROMPT8='Requirements document:
+
+```
+# PROMPT_MARKER_W2198 full requirements doc text
+```'
+dispatch_with_retry "$TMP/counter8" "$TMP/mode8" "$PROMPT8" >/dev/null 2>"$TMP/log8" || true
 # Each attempt's log lines should be at most: one header line + one error line.
 # Reject any attempt block that exceeds ~4 lines (header + classification + a
 # bit of slack), which would indicate the prompt is being echoed.
 log_lines="$(wc -l < "$TMP/log8" | tr -d ' ')"
-if [ "$log_lines" -le 8 ]; then
+if [ "$log_lines" -le 8 ] && ! grep -qF 'PROMPT_MARKER_W2198' "$TMP/log8"; then
   pass "case 8: retry log is concise — no prompt echoed (${log_lines} lines)"
 else
   fail "case 8: retry log too long (${log_lines} lines) — prompt may be leaking" "$(cat "$TMP/log8")"
 fi
+
+# --- case 9: SKILL 7a transient rows the original classifier missed --------
+#
+# HTTP 429, any 5xx, and "rate limit" / "capacity" bodies are transient per
+# the SKILL.md 7a table; any other 4xx stays terminal.
+
+assert_class() {
+  # Args: <label> <err_text> <expected>
+  local got
+  got="$(classify_dispatch_error "$2")"
+  if [ "$got" = "$3" ]; then
+    pass "$1"
+  else
+    fail "$1" "'$2' classified as $got (expected $3)"
+  fi
+}
+assert_class "case 9: HTTP 429 classifies as transient" 'HTTP 429: Too Many Requests' transient
+assert_class "case 9: HTTP 500 classifies as transient" 'HTTP 500: Internal Server Error' transient
+assert_class "case 9: HTTP 503 classifies as transient" 'HTTP 503: Service Unavailable' transient
+assert_class "case 9: 'rate limit' body classifies as transient" 'Error: rate limit exceeded, retry later' transient
+assert_class "case 9: 'capacity' body classifies as transient" 'Error: model at capacity' transient
+assert_class "case 9: HTTP 404 (other 4xx) classifies as terminal" 'HTTP 404: Not Found' terminal
 
 # --- summary ---------------------------------------------------------------
 

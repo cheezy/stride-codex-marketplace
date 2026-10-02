@@ -39,34 +39,47 @@ function Parse-YesFlag([string]$ArgString) {
     return @{ AutoApprove = $yes; Remainder = ($rest -join ' ') }
 }
 
-# --- reference preview render ----------------------------------------------
-# Mirrors skills/stride-ideation-stridify/SKILL.md Step 8.5a. Reads ONLY the on-disk batch JSON (no auth
-# material) and returns the goal/task tree + cross-goal claim order as text.
-function Render-Preview([string]$BatchPath) {
-    $data = Get-Content -LiteralPath $BatchPath -Raw | ConvertFrom-Json
-    $lines = New-Object System.Collections.Generic.List[string]
-    $lines.Add('') | Out-Null
-    $lines.Add('Goals and tasks to be created:') | Out-Null
-    $lines.Add('') | Out-Null
-    foreach ($goal in @($data.goals)) {
-        $title = if ($goal.PSObject.Properties['title'] -and $goal.title) { $goal.title } else { '(no title)' }
-        $tasks = if ($goal.PSObject.Properties['tasks'] -and $goal.tasks) { @($goal.tasks) } else { @() }
-        $n = $tasks.Count
-        $plural = if ($n -ne 1) { 's' } else { '' }
-        $lines.Add("  Goal: $title  ($n task$plural)") | Out-Null
-        foreach ($task in $tasks) {
-            $tt = if ($task.PSObject.Properties['title'] -and $task.title) { $task.title } else { '(no title)' }
-            $lines.Add("    - $tt") | Out-Null
+# --- reference --batch parser ------------------------------------------------
+# Mirrors SKILL.md Step 1's --batch rules. Returns
+#   batch=<path>|yes=<true|false>|err=<usage|goal|doc|>|rest=<remainder>
+function Parse-BatchArgs([string]$ArgString) {
+    $toks = @($ArgString -split '\s+' | Where-Object { $_ -ne '' })
+    $batch = ''; $haveBatch = $false; $goal = ''; $yes = $false; $rest = @(); $err = ''
+    for ($i = 0; $i -lt $toks.Count; $i++) {
+        $t = $toks[$i]
+        if ($t -ceq '--batch') {
+            $haveBatch = $true
+            if ($i + 1 -lt $toks.Count -and -not $toks[$i + 1].StartsWith('--')) { $batch = $toks[$i + 1]; $i++ } else { $err = 'usage' }
+        } elseif ($t.StartsWith('--batch=')) {
+            $haveBatch = $true; $batch = $t.Substring(8); if (-not $batch) { $err = 'usage' }
+        } elseif ($t -ceq '--goal') {
+            if ($i + 1 -lt $toks.Count) { $goal = $toks[$i + 1] }; $i++
+        } elseif ($t.StartsWith('--goal=')) {
+            $goal = $t.Substring(7)
+        } elseif ($t -ceq '--yes' -or $t -ceq '--auto-approve') {
+            $yes = $true
+        } else {
+            $rest += $t
         }
     }
-    $lines.Add('') | Out-Null
-    $notes = if ($data.PSObject.Properties['decomposition_notes']) { $data.decomposition_notes } else { '' }
-    if ($notes) {
-        $lines.Add('Cross-goal claim order:') | Out-Null
-        $lines.Add("  $notes") | Out-Null
-        $lines.Add('') | Out-Null
+    $restText = $rest -join ' '
+    if (-not $err) {
+        if ($haveBatch -and $goal) { $err = 'goal' }
+        elseif ($haveBatch -and $restText) { $err = 'doc' }
+        elseif (-not $haveBatch -and -not $restText) { $err = 'usage' }
     }
-    return ($lines -join "`n")
+    return "batch=$batch|yes=$($yes.ToString().ToLowerInvariant())|err=$err|rest=$restText"
+}
+
+# --- preview render (the real one) ------------------------------------------
+# Runs lib/ship.py --preview, which skills/stride-ideation-stridify/SKILL.md Step 8.5a calls. Reads ONLY the on-disk batch JSON (no auth
+# material) and returns the goal/task tree + cross-goal claim order as text.
+function Render-Preview([string]$BatchPath) {
+    # The real Step 8.5a renderer: SKILL.md now calls `ship.py --preview`.
+    $py = (Get-Command python3 -ErrorAction SilentlyContinue)
+    if (-not $py) { $py = Get-Command python -ErrorAction Stop }
+    $shipPy = Join-Path (Split-Path -Parent $MyInvocation.PSCommandPath) 'ship.py'
+    return ((& $py.Source $shipPy --preview $BatchPath) -join "`n")
 }
 
 # --- reference preview + gate ----------------------------------------------
@@ -87,8 +100,8 @@ function Render-AndGate([string]$BatchPath, [bool]$AutoApprove, [string]$Answer,
         Set-Content -LiteralPath $LogPath -Encoding UTF8 -Value ($out -join "`n")
         return 0
     }
-    $out.Add("stride-ideation: declined. The batch JSON is on disk at $BatchPath") | Out-Null
-    $out.Add('(committed in git) for a later manual ship. No POST was attempted.') | Out-Null
+    $out.Add("stride-ideation: declined. No POST was attempted. The batch JSON is on disk at $BatchPath") | Out-Null
+    $out.Add("Ship it later, unchanged, by activating stride-ideation-stridify with: --batch ```"$BatchPath```"") | Out-Null
     Set-Content -LiteralPath $LogPath -Encoding UTF8 -Value ($out -join "`n")
     return 10
 }
@@ -248,6 +261,24 @@ try {
     } else {
         Pass 'case 8: no Bearer/token/Authorization strings in preview or gate output (pitfall avoided)'
     }
+    # === cases 9-14: --batch parse ==========================================
+    $parseCases = @(
+        @('case 9: --batch <path> selects batch mode', '--batch docs/x-stride-batch.json', 'batch=docs/x-stride-batch.json|yes=false|err=|rest='),
+        @('case 10: --batch=<path> splits on the first = only', '--batch=docs/a=b.json', 'batch=docs/a=b.json|yes=false|err=|rest='),
+        @('case 11a: a bare trailing --batch is a usage error', '--batch', 'batch=|yes=false|err=usage|rest='),
+        @('case 11b: --batch= with no value is a usage error', '--batch=', 'batch=|yes=false|err=usage|rest='),
+        @('case 11c: --batch followed by a flag never takes the flag as its path', '--batch --yes', 'batch=|yes=true|err=usage|rest='),
+        @('case 12: --batch together with --goal is rejected', '--batch b.json --goal 2', 'batch=b.json|yes=false|err=goal|rest='),
+        @('case 12b: --goal=<v> before --batch=<v> is rejected too', '--goal=2 --batch=b.json', 'batch=b.json|yes=false|err=goal|rest='),
+        @('case 13: --batch with a requirements-doc path left over is rejected', '--batch b.json docs/x-requirements.md', 'batch=b.json|yes=false|err=doc|rest=docs/x-requirements.md'),
+        @('case 14a: --batch --yes keeps the path and sets the bypass', '--batch b.json --yes', 'batch=b.json|yes=true|err=|rest='),
+        @('case 14b: no --batch and no doc path is a usage error', '--yes', 'batch=|yes=true|err=usage|rest=')
+    )
+    foreach ($c in $parseCases) {
+        $got = Parse-BatchArgs $c[1]
+        if ($got -ceq $c[2]) { Pass $c[0] } else { Fail $c[0] "got: $got" }
+    }
+
 } finally {
     Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
 }

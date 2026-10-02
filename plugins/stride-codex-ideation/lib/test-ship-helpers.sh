@@ -227,12 +227,18 @@ cat > "$TMP/with_token.md" <<'EOF'
 EOF
 
 # This is the happy-path file but we want to deliberately tickle the
-# missing-token branch by stripping the URL line, to confirm stderr never
-# carries the token value if any other branch happened to surface text.
+# missing-URL branch by stripping the URL line, to confirm stderr never
+# carries the token value if any other branch happened to surface text. The
+# run must also fail with the missing-URL error, so a crash with empty stderr
+# cannot pass vacuously.
 sed -E 's/- \*\*API URL.*//' "$TMP/with_token.md" > "$TMP/leak_test.md"
-python3 "$READ_AUTH" "$TMP/leak_test.md" >/dev/null 2>"$TMP/leak_test.err"
-if grep -q 'stride_dev_SUPER_SECRET_TOKEN' "$TMP/leak_test.err"; then
-  fail "read_auth: token value LEAKED in stderr" "$(cat "$TMP/leak_test.err")"
+if python3 "$READ_AUTH" "$TMP/leak_test.md" >/dev/null 2>"$TMP/leak_test.err"; then
+  fail "read_auth: token value NEVER appears in stderr (security)" "exited 0 without an API URL"
+elif grep -q 'stride_dev_SUPER_SECRET_TOKEN' "$TMP/leak_test.err"; then
+  # Never echo the leaked stderr: it carries the (fake) token.
+  fail "read_auth: token value LEAKED in stderr" "(stderr withheld)"
+elif ! grep -q 'STRIDE_API_URL not found' "$TMP/leak_test.err"; then
+  fail "read_auth: token value NEVER appears in stderr (security)" "the missing-URL branch did not run"
 else
   pass "read_auth: token value NEVER appears in stderr (security)"
 fi

@@ -81,6 +81,68 @@ function Sti-SlugFromPath {
     return $match.Groups[1].Value
 }
 
+function Get-StiSeamCandidates {
+    # Internal. Return one object (Line = 1-based doc line, Name) per seam item
+    # start inside the "## Decomposition seams" section, in document order. The
+    # whole section uses ONE item shape, chosen by precedence, exactly as
+    # _sti_seam_candidates in filename.sh:
+    #
+    #   1. numbered bold items   ^ {0,3}<digits>.\s+**<Name>**...  (top level)
+    #   2. top-level bulleted    ^[-*]\s+**<Name>**...   (only if no 1.)
+    #   3. level-3 headings      ^###\s+<Name>            (only if no 1. or 2.)
+    #
+    # An indented (1-3 space) numbered item is NESTED when a column-0 bulleted
+    # bold item comes before it, or when its indent is deeper than the first
+    # top-level numbered item's, so a nested sub-list never takes over; and a
+    # numbered list's secondary cross-cutting bullets are never seams. Every
+    # test is case-sensitive (-cmatch), as grep and awk are in filename.sh.
+    param([string[]]$Lines)
+    $num = '^ {0,3}[0-9]+\.[ \t]+\*\*([^*]+)\*\*'
+    $bul = '^[-*][ \t]+\*\*([^*]+)\*\*'
+    $h3  = '^###[ \t]+(\S.*?)[ \t]*$'
+    $section = @()
+    $inSection = $false
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        if ($Lines[$i] -cmatch '^## Decomposition seams[ \t]*$') { $inSection = $true; continue }
+        if ($inSection -and $Lines[$i] -cmatch '^## ') { $inSection = $false }
+        if ($inSection) { $section += ,@(($i + 1), $Lines[$i]) }
+    }
+    $sawBul = $false
+    $k0 = -1
+    $numTop = @{}
+    foreach ($pair in $section) {
+        $text = $pair[1]
+        if ($text -cmatch $num) {
+            $k = $text.Length - $text.TrimStart(' ').Length
+            if (-not (($sawBul -and $k -gt 0) -or ($k0 -ge 0 -and $k -gt $k0))) {
+                if ($k0 -lt 0) { $k0 = $k }
+                $numTop[$pair[0]] = $true
+            }
+        }
+        elseif ($text -cmatch $bul) { $sawBul = $true }
+    }
+    $shape = $null
+    if ($numTop.Count -gt 0) { $shape = $num }
+    if (-not $shape) { foreach ($pair in $section) { if ($pair[1] -cmatch $bul) { $shape = $bul; break } } }
+    if (-not $shape) { foreach ($pair in $section) { if ($pair[1] -cmatch $h3) { $shape = $h3; break } } }
+    if (-not $shape) { return }
+    foreach ($pair in $section) {
+        if (($shape -eq $num) -and -not $numTop.ContainsKey($pair[0])) { continue }
+        $m = [regex]::Match($pair[1], $shape)
+        if ($m.Success) { [pscustomobject]@{ Line = $pair[0]; Name = $m.Groups[1].Value } }
+    }
+}
+
+function Get-StiSeamItems {
+    # Internal. The candidates above whose name slugifies, with the slug — the
+    # ADDRESSABLE seams that both Sti-ExtractSeams and Sti-ScopeDocToSeam index.
+    param([string[]]$Lines)
+    foreach ($c in @(Get-StiSeamCandidates -Lines $Lines)) {
+        $slug = Sti-Slugify -InputText $c.Name -ErrorAction SilentlyContinue
+        if ($slug) { [pscustomobject]@{ Line = $c.Line; Name = $c.Name; Slug = $slug } }
+    }
+}
+
 function Sti-ExtractSeams {
     [CmdletBinding()]
     param(
@@ -88,8 +150,10 @@ function Sti-ExtractSeams {
     )
     # Parse a requirements doc's "## Decomposition seams" section and emit
     # one line per surface in the form: <index>\t<name>\t<slug>
-    # Multi-line item bodies are ignored — only the bold-name from the
-    # item's first line yields a seam tuple.
+    # Accepted item shapes (one per section, by precedence — see
+    # Get-StiSeamCandidates): numbered `<N>. **Name**` items; else top-level
+    # bulleted `- **Name**` items; else `### Name` headings. Multi-line item
+    # bodies are ignored; names that do not slugify are skipped.
     #
     # Exit codes / behavior (PowerShell mirror returns special sentinels via
     # exit-code semantics: callers should check $LASTEXITCODE after invocation):
@@ -102,29 +166,15 @@ function Sti-ExtractSeams {
         return
     }
     $lines = @(Get-Content -LiteralPath $Path -Encoding UTF8)
-    $sectionLineRegex = '^## Decomposition seams[ \t]*$'
-    $sectionPresent = $lines | Where-Object { $_ -match $sectionLineRegex } | Select-Object -First 1
+    $sectionPresent = $lines | Where-Object { $_ -cmatch '^## Decomposition seams[ \t]*$' } | Select-Object -First 1
     if (-not $sectionPresent) {
         $global:LASTEXITCODE = 2
         return
     }
-    $body = @()
-    $inSection = $false
-    foreach ($line in $lines) {
-        if ($line -match $sectionLineRegex) { $inSection = $true; continue }
-        if ($inSection -and $line -match '^## ') { $inSection = $false }
-        if ($inSection) { $body += $line }
-    }
-    $itemPattern = '^[ \t]*[0-9]+\.[ \t]+\*\*([^*]+)\*\*'
     $idx = 0
-    foreach ($line in $body) {
-        $m = [regex]::Match($line, $itemPattern)
-        if (-not $m.Success) { continue }
-        $rawName = $m.Groups[1].Value
-        $slug = Sti-Slugify -InputText $rawName -ErrorAction SilentlyContinue
-        if (-not $slug) { continue }
+    foreach ($item in @(Get-StiSeamItems -Lines $lines)) {
         $idx++
-        Write-Output ("{0}`t{1}`t{2}" -f $idx, $rawName, $slug)
+        Write-Output ("{0}`t{1}`t{2}" -f $idx, $item.Name, $item.Slug)
     }
     $global:LASTEXITCODE = 0
 }
@@ -161,9 +211,13 @@ function Sti-ResolveGoal {
     }
     # If GoalArg is purely digits, try integer-index first.
     if ($GoalArg -match '^[0-9]+$') {
+        # Compare as a number, as filename.sh's awk does: --goal 01 is index 1.
+        # Leading zeros are stripped rather than casting, so an index with
+        # more digits than a long still compares exactly.
+        $wanted = $GoalArg.TrimStart('0')
         foreach ($tuple in $seams) {
             $parts = $tuple -split "`t"
-            if ($parts[0] -eq $GoalArg) {
+            if ($parts[0] -ceq $wanted) {
                 Write-Output $tuple
                 $global:LASTEXITCODE = 0
                 return
@@ -196,52 +250,50 @@ function Sti-ScopeDocToSeam {
     # Rewrite a requirements doc to scope its "## Decomposition seams"
     # section to one surface. Emits the doc text on stdout with the
     # section body replaced by a one-line notice followed by the matched
-    # item's verbatim lines.
+    # item's verbatim lines (start line + continuation lines until the next
+    # item start or the section's end). <Target> is the index
+    # Sti-ExtractSeams assigns: both read Get-StiSeamItems, so a resolved
+    # --goal always scopes to the surface it named, whatever the item shape.
     if ([string]::IsNullOrEmpty($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         Write-Error "Sti-ScopeDocToSeam: usage: Sti-ScopeDocToSeam <markdown-path> <seam-index>"
         $global:LASTEXITCODE = 1
         return
     }
     $lines = @(Get-Content -LiteralPath $Path -Encoding UTF8)
-    $sectionLineRegex = '^## Decomposition seams[ \t]*$'
-    $itemStartRegex = '^[ \t]*[0-9]+\.[ \t]+\*\*'
-
-    $state = 0   # 0=before, 1=inside, 2=after
-    $itemIdx = 0
-    $collecting = $false
-    foreach ($line in $lines) {
-        switch ($state) {
-            0 {
-                if ($line -match $sectionLineRegex) {
-                    Write-Output $line
-                    Write-Output ''
-                    Write-Output '**Scoped to a single surface for this dispatch.**'
-                    Write-Output ''
-                    $state = 1
-                    break
-                }
-                Write-Output $line
-                break
-            }
-            1 {
-                if ($line -match '^## ') {
-                    $state = 2
-                    Write-Output ''
-                    Write-Output $line
-                    break
-                }
-                if ($line -match $itemStartRegex) {
-                    $itemIdx++
-                    $collecting = ($itemIdx -eq $Target)
-                }
-                if ($collecting) { Write-Output $line }
-                break
-            }
-            2 {
-                Write-Output $line
-                break
-            }
+    $items = @(Get-StiSeamItems -Lines $lines)
+    $start = 0
+    $end = 0
+    if (($Target -ge 1) -and ($Target -le $items.Count)) {
+        $start = $items[$Target - 1].Line
+        foreach ($c in @(Get-StiSeamCandidates -Lines $lines)) {
+            if ($c.Line -gt $start) { $end = $c.Line; break }
         }
+    }
+    $state = 0   # 0=before, 1=inside, 2=after
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        $nr = $i + 1
+        if ($state -eq 0) {
+            Write-Output $line
+            if ($line -cmatch '^## Decomposition seams[ \t]*$') {
+                Write-Output ''
+                Write-Output '**Scoped to a single surface for this dispatch.**'
+                Write-Output ''
+                $state = 1
+            }
+            continue
+        }
+        if ($state -eq 1) {
+            if ($line -cmatch '^## ') {
+                $state = 2
+                Write-Output ''
+                Write-Output $line
+                continue
+            }
+            if (($start -gt 0) -and ($nr -ge $start) -and (($end -eq 0) -or ($nr -lt $end))) { Write-Output $line }
+            continue
+        }
+        Write-Output $line
     }
     $global:LASTEXITCODE = 0
 }

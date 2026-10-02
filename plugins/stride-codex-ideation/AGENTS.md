@@ -19,7 +19,7 @@ Two subagents are dispatched by the user-facing skills. They are not invoked dir
 - **requirements-reviewer** — Advisory pass over a draft requirements document. Reports gaps, contradictions, and ambiguous acceptance criteria; never edits the doc. Dispatched by `stride-ideation-ideate` after the seven sections have draft content and before the doc is committed.
 - **requirements-decomposer** — Reads a committed requirements document end-to-end and emits a single fenced JSON batch document matching the Stride API `POST /api/tasks/batch` shape. Dispatched by `stride-ideation-stridify` before the batch JSON is written and committed.
 
-Both agents live at `agents/<name>.md` (bare `.md`, per Codex naming convention).
+Both agents ship as `agents/<name>.md` (bare `.md`, per Codex naming convention) and are installed under the plugin's helper root — `<install-dir>/stride-codex-ideation/agents/`, or the plugin directory for a marketplace install — where the skills locate them (see **Resolving the helper root** in `skills/stride-ideation-ideate/SKILL.md`). When Codex multi-agent support is available they run as sub-agents with that file as their instructions; otherwise the skill runs the same instructions inline, as a clearly separated, read-only pass with the same input and the same single fenced JSON output. Either way, the decomposer's run follows stridify's Step 7 retry rules (transient provider errors are retried up to three attempts; a missing agent file or a contract violation is not), while the advisory reviewer is never retried. A missing agent file stops stridify; for the reviewer it only skips the review.
 
 ## Workflow Sequence
 
@@ -36,13 +36,18 @@ activate stride-ideation-stridify <path-to-requirements.md>
     transient failures), stamps audit metadata, writes and commits
     the batch JSON, POSTs to /api/tasks/batch, renders the created
     G/W identifier table
+
+activate stride-ideation-stridify --batch <path-to-stride-batch.json>
+  → validates an existing batch JSON, screens it for the API token,
+    previews it, gates on approval, and ships it — no decomposition,
+    no rewrite, no commit
 ```
 
 The stridify step is optional — the requirements doc is a deliverable on its own. Activate stridify only when the user wants the tasks created in Stride.
 
 ## API Authorization
 
-The `stride-ideation-stridify` skill reads `.stride_auth.md` from the project root for `STRIDE_API_URL` and `STRIDE_API_TOKEN`. The user authorizes Stride API calls by initiating the workflow — never prompt for permission before the POST. Never log the token, even in error paths.
+The `stride-ideation-stridify` skill reads `.stride_auth.md` from the project root (`git rev-parse --show-toplevel`, else the current directory) for `STRIDE_API_URL` and `STRIDE_API_TOKEN`. The user authorizes Stride API calls by initiating the workflow — never prompt for permission before the POST. Never log the token, even in error paths. Every read of the file and every POST goes through `lib/ship.py` (`--check-auth` for the preflight, `<batch.json>` for the POST), which keeps the token off every command line — never `eval` `lib/read_auth.py` output or hand-write an authenticated curl.
 
 `.stride_auth.md` must be listed in `.gitignore`. The bundled `.gitignore` template already excludes it.
 

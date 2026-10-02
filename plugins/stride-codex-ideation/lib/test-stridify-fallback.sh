@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Tests for the /stride-ideation:stridify Step 7.5 retry-exhaustion fallback
-# documented in commands/stridify.md (W715). The Agent tool is only available
-# inside a live Claude Code session, so this test embeds a reference shell
-# implementation of the documented retry loop + fallback and exercises it
-# against a mock subagent that always fails.
+# Tests for the stride-ideation-stridify Step 7.5 retry-exhaustion fallback
+# documented in skills/stride-ideation-stridify/SKILL.md (W715). The agent run
+# is only available inside a live Codex session, so this test embeds a
+# reference shell implementation of the documented retry loop + fallback and
+# exercises it against a mock agent that always fails.
 #
 # The reference fallback implementation below MUST stay consistent with
-# Step 7.5 in stridify.md. If you edit one, edit both — this test exists to
-# prevent the doc and the on-the-wire behavior from drifting apart.
+# Step 7.5 in SKILL.md (7.5b file layout, 7.5c terminal summary). If you edit
+# one, edit both — and keep lib/test-stridify-fallback.ps1 in lockstep. This
+# test exists to prevent the doc and the on-the-wire behavior from drifting.
 #
 # Run:
 #   ./lib/test-stridify-fallback.sh
@@ -17,6 +18,7 @@
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_MD="${SCRIPT_DIR}/../skills/stride-ideation-stridify/SKILL.md"
 # shellcheck disable=SC1091
 . "${SCRIPT_DIR}/filename.sh"
 
@@ -50,6 +52,15 @@ echo "Error: HTTP 529 Overloaded — Anthropic API capacity" >&2
 exit 2
 EOF
 chmod +x "$TMP/mock_always_fail.sh"
+
+# --- mock agent that succeeds (control for the POST sentinel, case 9) -------
+
+cat > "$TMP/mock_always_succeed.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '```json\n{"goals":[{"title":"G1","type":"goal","tasks":[]}]}\n```\n'
+exit 0
+EOF
+chmod +x "$TMP/mock_always_succeed.sh"
 
 # --- reference fallback implementation -------------------------------------
 #
@@ -90,8 +101,10 @@ step_7_5_save_prompt_and_exit() {
   fi
 
   local saved_at
-  saved_at="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "<unknown>")"
+  saved_at="$(date -u +%Y-%m-%dT%H%M%SZ 2>/dev/null || echo "<unknown>")"
 
+  # Body layout, headings and wording mirror SKILL.md Step 7.5b verbatim.
+  # <BATCH_TARGET_PATH> and <TARGET_PATH> are both the Step 5 target path.
   {
     printf '# Decomposer Prompt — Saved After Retry Exhaustion\n\n'
     printf -- '- **Saved at:** %s\n' "$saved_at"
@@ -99,18 +112,28 @@ step_7_5_save_prompt_and_exit() {
     printf -- '- **Source SHA-256:** %s\n' "$source_sha"
     printf -- '- **Per-goal scope:** %s\n' "$scope_line"
     printf -- '- **Attempts before exhaustion:** 3\n\n'
-    printf '## Last error from subagent\n\n'
+    printf '## Last error from agent\n\n'
     printf '%s\n\n' "$last_err"
-    printf '## Subagent prompt (literal — paste this into a fresh session)\n\n'
+    printf '## Agent prompt (literal — paste this into a fresh session)\n\n'
     printf '````\n%s\n````\n\n' "$prompt"
     printf '## Recovery instructions\n\n'
-    printf 'Paste the prompt block above into a fresh Claude session — any model capable\n'
-    printf 'of following the requirements-decomposer contract works. The session does\n'
-    printf 'NOT need codebase access. Save the resulting fenced JSON as %s.\n' "$target_batch_path"
-    printf 'Then run python3 <plugin-root>/lib/validate_batch.py on that path, and follow\n'
-    printf 'Step 9 of commands/stridify.md manually.\n\n'
-    printf 'This sibling file contains NO authentication material — the decomposer\n'
-    printf 'prompt has no API access by construction.\n'
+    printf 'Paste the prompt block above into a fresh session — any model capable\n'
+    printf 'of following the requirements-decomposer contract works (`agents/requirements-decomposer.md`\n'
+    printf 'documents the contract). The session does NOT need codebase access. Save the\n'
+    printf 'resulting fenced ```json block as `%s` (the target path\n' "$target_batch_path"
+    printf 'computed by Step 5; for the run that produced this file, that path was\n'
+    printf '`%s`). Then activate the stride-ideation-stridify skill with:\n\n' "$target_batch_path"
+    printf '    --batch "%s"\n\n' "$target_batch_path"
+    printf "which checks the JSON against the validator's six named fatal checks\n"
+    printf '(parse_error / wrong_root_key / empty_goals / goal_missing_field /\n'
+    printf 'bad_dependency_index / length_limit; advisory scored-field warnings on\n'
+    printf 'stderr do not block) and screens it for the API token, previews the goals\n'
+    printf 'and tasks, asks for approval, and ships it through `lib/ship.py`, which\n'
+    printf 'strips the audit fields, POSTs the result and renders the created\n'
+    printf 'identifiers in one process. Never hand-write an authenticated curl for it.\n\n'
+    printf 'This sibling file contains NO authentication material. The Stride API token\n'
+    printf 'never enters the decomposer prompt (the agent has no API access), so there\n'
+    printf 'is no token in the saved prompt or the recovery README.\n'
   } > "$prompt_path" 2>"$TMP/write.err"
   local write_rc=$?
   if [ "$write_rc" -ne 0 ]; then
@@ -124,14 +147,16 @@ step_7_5_save_prompt_and_exit() {
     return 1
   fi
 
+  # Terminal summary mirrors SKILL.md Step 7.5c verbatim.
   {
     printf 'stride-ideation: retries exhausted (3/3 transient failures).\n'
     printf 'Saved decomposer prompt to: %s\n' "$prompt_path"
     printf 'Last error from the final attempt:\n  %s\n' "$(printf '%s' "$last_err" | head -n1)"
     printf '\n'
-    printf 'To recover: paste the prompt block from that file into a fresh Claude\n'
-    printf 'session; save the JSON response as %s; then run\n' "$target_batch_path"
-    printf '`python3 lib/validate_batch.py %s` and the manual POST per Step 9.\n' "$target_batch_path"
+    printf 'To recover: paste the prompt block from that file into a fresh session;\n'
+    printf 'save the JSON response as %s; then activate\n' "$target_batch_path"
+    printf 'stride-ideation-stridify with `--batch "%s"` to validate,\n' "$target_batch_path"
+    printf 'preview and ship it.\n'
     printf '\nThe Stride API POST was NOT attempted.\n'
   } >&2
   # The real implementation calls `exit 1`; the test wants control to return.
@@ -143,13 +168,16 @@ step_7_5_save_prompt_and_exit() {
 dispatch_and_fallback() {
   # Args: <mock-script> <prompt-text> <source-path> <source-sha> <source-ts>
   #       <slug-for-path> <target-batch-path> <goal-meta>
-  # Always fails through to the fallback for these tests.
+  # Cases 1-8 always fail through to the fallback; case 9 is the success
+  # control proving the POST sentinel is live.
   local mock="$1" prompt="$2" source_path="$3" source_sha="$4" source_ts="$5"
   local slug_for_path="$6" target_batch_path="$7" goal_meta="$8"
   local attempt=1 max=3 last_err=""
   while [ "$attempt" -le "$max" ]; do
     if "$mock" >/dev/null 2>"$TMP/attempt.err.$attempt"; then
-      # Success path — not exercised in these tests.
+      # Success path (case 9 control only): the real skill would continue to
+      # Step 8 and the Step 9 POST; the stub records that a POST was reached.
+      stub_post
       return 0
     fi
     last_err="$(cat "$TMP/attempt.err.$attempt")"
@@ -165,6 +193,10 @@ dispatch_and_fallback() {
 }
 
 # --- POST sentinel: confirm POST is NOT attempted ---------------------------
+
+stub_post() {
+  echo "POST_REACHED" > "$TMP/post_was_attempted"
+}
 
 post_was_attempted() {
   [ -f "$TMP/post_was_attempted" ]
@@ -200,6 +232,7 @@ PROMPT_BODY='Requirements document:
 dispatch_and_fallback "$TMP/mock_always_fail.sh" "$PROMPT_BODY" \
   "$SOURCE_PATH" "$SOURCE_SHA" "$SOURCE_TS" \
   "review-queue-code-diffs" "$TARGET_BATCH" "(no --goal)" >/dev/null 2>"$TMP/run1.log"
+run1_rc=$?
 expected_path="$TMP/2026-05-15T210800-review-queue-code-diffs-decomposer-prompt.md"
 if [ -f "$expected_path" ]; then
   pass "case 1: fallback writes sibling file at expected path"
@@ -213,6 +246,12 @@ else
   fail "case 1: sentinel not set — fallback path not taken"
 fi
 
+if [ "$run1_rc" -ne 0 ]; then
+  pass "case 1: fallback returns non-zero (never continues to Step 8)"
+else
+  fail "case 1: fallback returned 0" "rc=$run1_rc"
+fi
+
 # === case 2: file contains all required sections ===========================
 
 if [ -f "$expected_path" ]; then
@@ -223,8 +262,8 @@ if [ -f "$expected_path" ]; then
     "Source SHA-256"
     "Per-goal scope"
     "Attempts before exhaustion"
-    "## Last error from subagent"
-    "## Subagent prompt (literal — paste this into a fresh session)"
+    "## Last error from agent"
+    "## Agent prompt (literal — paste this into a fresh session)"
     "## Recovery instructions"
   )
   missing=""
@@ -237,6 +276,19 @@ if [ -f "$expected_path" ]; then
     pass "case 2: file contains all required sections"
   else
     fail "case 2: missing sections:" "$missing"
+  fi
+
+  # Drift guard: every required literal must also appear in SKILL.md Step 7.5b.
+  skill_missing=""
+  for sec in "${required_sections[@]}"; do
+    if ! grep -qF -- "$sec" "$SKILL_MD"; then
+      skill_missing="$skill_missing\n  - $sec"
+    fi
+  done
+  if [ -z "$skill_missing" ]; then
+    pass "case 2: every required section literal matches SKILL.md Step 7.5b"
+  else
+    fail "case 2: required section literals drifted from SKILL.md:" "$skill_missing"
   fi
 
   if grep -qF "$SOURCE_SHA" "$expected_path"; then
@@ -268,10 +320,11 @@ fi
 
 # === case 4: re-invocation produces -2 sibling (no overwrite) =============
 
+# Snapshot the first file's bytes BEFORE the second invocation.
+cp "$expected_path" "$TMP/first-file.snapshot"
 dispatch_and_fallback "$TMP/mock_always_fail.sh" "$PROMPT_BODY" \
   "$SOURCE_PATH" "$SOURCE_SHA" "$SOURCE_TS" \
   "review-queue-code-diffs" "$TARGET_BATCH" "(no --goal)" >/dev/null 2>"$TMP/run2.log"
-second_path="$TMP/2026-05-15T210800-review-queue-code-diffs-decomposer-prompt-2.json"
 # sti_unique_path uses the same extension we passed; we passed `md`.
 second_path="$TMP/2026-05-15T210800-review-queue-code-diffs-decomposer-prompt-2.md"
 if [ -f "$second_path" ]; then
@@ -280,11 +333,11 @@ else
   fail "case 4: -2 sibling not created" "expected=$second_path"
 fi
 
-# Confirm the first file is byte-for-byte unchanged.
-first_size_before="$(wc -c < "$expected_path")"
-first_size_after="$first_size_before"   # we never touched it
-if [ -f "$expected_path" ] && [ "$first_size_before" = "$first_size_after" ]; then
+# Confirm the first file is byte-for-byte unchanged (snapshot vs after).
+if [ -f "$expected_path" ] && cmp -s "$TMP/first-file.snapshot" "$expected_path"; then
   pass "case 4: first file is unchanged by the second invocation"
+else
+  fail "case 4: first file was modified or removed by the second invocation"
 fi
 
 # === case 5: --goal scope reflected in saved file ==========================
@@ -326,6 +379,12 @@ if grep -qF "The Stride API POST was NOT attempted" "$TMP/run1.log"; then
 else
   fail "case 6: terminal summary missing 'POST NOT attempted' line"
 fi
+if grep -qF "Last error from the final attempt:" "$TMP/run1.log" \
+   && grep -qF "  Error: HTTP 529 Overloaded" "$TMP/run1.log"; then
+  pass "case 6: terminal summary surfaces the first line of the last error"
+else
+  fail "case 6: terminal summary missing the last-error line" "$(cat "$TMP/run1.log")"
+fi
 
 # === case 7: pitfall — no token strings in saved file =====================
 #
@@ -347,6 +406,20 @@ if find "$TMP" -name '*-stride-batch*.json' -print -quit | grep -q .; then
   fail "case 8: a stride-batch JSON file was written in the fallback branch (regression)"
 else
   pass "case 8: no partial batch JSON written in fallback branch (pitfall avoided)"
+fi
+
+# === case 9: control — the POST sentinel is live =========================
+#
+# Without this, case 3 could pass vacuously (a sentinel nothing ever writes).
+# A succeeding mock takes the success path, which reaches the POST stub.
+
+if dispatch_and_fallback "$TMP/mock_always_succeed.sh" "$PROMPT_BODY" \
+     "$SOURCE_PATH" "$SOURCE_SHA" "$SOURCE_TS" \
+     "review-queue-code-diffs" "$TARGET_BATCH" "(no --goal)" >/dev/null 2>"$TMP/run9.log" \
+   && post_was_attempted; then
+  pass "case 9: control — success path reaches the POST stub (sentinel is live)"
+else
+  fail "case 9: control — success path did not reach the POST stub" "$(cat "$TMP/run9.log")"
 fi
 
 # === summary ==============================================================
