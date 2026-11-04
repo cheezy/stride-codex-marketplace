@@ -5,7 +5,9 @@
 # Records `.stride/.loop-state.json` after a successful Stride completion and
 # clears it on any claim. That file is the evidence the Stop-hook gate (W2142)
 # reads; THE HOOK writes it, never the agent, because an agent-written marker
-# is exactly as skippable as the instruction it replaces.
+# is exactly as skippable as the instruction it replaces. A successful claim
+# also leaves the claim pointer (W2181) and the claimed task's own record,
+# `.stride/.task-<IDENTIFIER>.json` (W2589).
 #
 # Three properties a later reader must not undo:
 #
@@ -1056,6 +1058,110 @@ write_claim_state() {
   return 0
 }
 
+# W2589 (stride's W2248). The claimed task's own record,
+# .stride/.task-<IDENTIFIER>.json: the claim response's `data` object, so the
+# dispatches that follow can name a file instead of retyping the task's fields
+# into each prompt, where paraphrase creeps in.
+#
+# What proves the file names the right task here is narrower than in stride,
+# and simpler. Stride compares this call's id with a cached copy because its
+# hook can fall back to the response cache. This port never reads that cache
+# (property 2 at the top), so the only body in play is this
+# call's own stdout, and the test is that it is ONE parsable JSON document
+# with a non-empty `data` object. A truncated stdout does not parse, and a
+# command that printed something after the tee yields two documents; both
+# write nothing, because a file holding the wrong task, or half of one, is
+# worse than no file.
+#
+# Free text never picks the file's NAME. It is the identifier only when the
+# whole of it matches \A[A-Za-z0-9_-]{1,64}\z (`^...$` in jq would let a
+# trailing newline through); failing that, the numeric id; failing both, no
+# file at all. Its CONTENTS are
+# task text other people wrote: data to every reader, never instructions.
+task_file_stem() {
+  printf '%s' "${1:-}" | jq -r '
+    if (.identifier | type) == "string"
+       and (.identifier | test("\\A[A-Za-z0-9_-]{1,64}\\z")) then .identifier
+    elif (.id | type) == "number" and .id >= 0 and (.id | floor) == .id
+       then (.id | tostring)
+    elif (.id | type) == "string" and (.id | test("\\A[0-9]{1,20}\\z")) then .id
+    else empty end' 2>/dev/null
+}
+
+# Prints the compact `data` object when the body passes the test above, and
+# nothing otherwise. Slurped, so a second document is counted, not ignored.
+# An empty `data` passes here and is stopped by task_file_stem, which finds
+# neither an identifier nor an id in it.
+task_file_data() {
+  printf '%s' "${1:-}" | jq -sc '
+    if length == 1
+       and (.[0] | type) == "object"
+       and (.[0].data | type) == "object"
+    then .[0].data else empty end' 2>/dev/null
+}
+
+# Put the staged file at its name without ever following a directory there.
+# The checks in write_task_file run before the move, so a directory, or a
+# symlink to one, created at the destination in between would make a plain
+# `mv -f` drop the file INSIDE it, which may be outside .stride/. rename(2)
+# never does that: it replaces a symlink rather than writing through it, and
+# it refuses a directory. Perl reaches rename(2) directly; GNU mv gets the
+# same with -T, BSD mv with -h, and the last is checked afterwards because -h
+# still moves into a real directory. Returns non-zero when the file did not
+# land as a regular file at $2.
+task_file_rename() {
+  if command -v perl > /dev/null 2>&1; then
+    perl -e 'rename($ARGV[0], $ARGV[1]) or exit 1' -- "$1" "$2" 2>/dev/null
+    return
+  fi
+  mv -fT "$1" "$2" 2>/dev/null && return 0
+  mv -fh "$1" "$2" 2>/dev/null && [ -f "$2" ] && [ ! -L "$2" ]
+}
+
+# Same refusals, staging and never-fatal contract as write_claim_state; only
+# the destination, its name and the rename differ.
+write_task_file() {
+  local _data="$1" _stem _dest _tmp
+  [ -n "$_data" ] || return 0
+  _stem=$(task_file_stem "$_data")
+  if [ -z "$_stem" ]; then
+    printf 'stride-hook: the claim names no usable identifier or id; no task file written\n' >&2
+    return 0
+  fi
+  _dest="$PROJECT_DIR/.stride/.task-$_stem.json"
+  if [ -L "$PROJECT_DIR/.stride" ]; then
+    printf 'stride-hook: .stride is a symlink; not writing the task file\n' >&2
+    return 0
+  fi
+  if [ -L "$_dest" ]; then
+    printf 'stride-hook: task-file path is a symlink; not writing the task file\n' >&2
+    return 0
+  fi
+  if [ -e "$_dest" ] && [ ! -f "$_dest" ]; then
+    printf 'stride-hook: task-file path is not a regular file; not writing the task file\n' >&2
+    return 0
+  fi
+  mkdir -p "$PROJECT_DIR/.stride" 2>/dev/null || {
+    printf 'stride-hook: could not create .stride/ for the task file; continuing\n' >&2
+    return 0
+  }
+  _tmp=$(mktemp "$PROJECT_DIR/.stride/task-file.XXXXXX" 2>/dev/null) || {
+    printf 'stride-hook: could not stage the task file; continuing\n' >&2
+    return 0
+  }
+  if printf '%s\n' "$_data" > "$_tmp" 2>/dev/null; then
+    task_file_rename "$_tmp" "$_dest" || {
+      printf 'stride-hook: could not move the task file into place; continuing\n' >&2
+      # A BSD `mv -h` into a directory leaves the file in there; take it back.
+      rm -f "$_tmp" "$_dest/${_tmp##*/}" 2>/dev/null
+    }
+  else
+    printf 'stride-hook: could not write the task file; continuing\n' >&2
+    rm -f "$_tmp" 2>/dev/null
+  fi
+  return 0
+}
+
 # --- Claim: clear the record, and record the claim ------------------------
 if [ "$HOOK_NAME" = "before_doing" ]; then
   # The clear is UNCONDITIONAL — it runs on a failed claim, an empty-queue
@@ -1116,6 +1222,15 @@ if [ "$HOOK_NAME" = "before_doing" ]; then
       [ -n "$_claim_json" ] && write_claim_state "$_claim_json"
     fi
   fi
+
+  # W2589: the task file, from the same own-call body and nothing else. It is
+  # gated apart from the pointer on purpose: an identifier the pointer refuses
+  # (one carrying `/`, say) still has a task whose numeric id names it safely.
+  # No clear comes first. A failed claim leaves an earlier task's file where
+  # it was, and that is harmless, because a reader names the file by the task
+  # it holds. A recorded completion deletes it, below; Step 8 is the backstop.
+  _task_data=$(task_file_data "$_claim_payload")
+  [ -n "$_task_data" ] && write_task_file "$_task_data"
   exit 0
 fi
 
@@ -1132,6 +1247,23 @@ if [ "${HOOK_NAME:-}" = "before_review" ] \
    && [ ! -L "$PROJECT_DIR/.stride" ] \
    && [ -f "$LOOP_STATE_FILE" ]; then
   rm -f "$CLAIM_STATE_FILE" 2>/dev/null || true
+fi
+
+# W2589: a completion retires the task file, on a test of its own: THIS
+# call's response passes loop_state_payload_ok. That differs from the pointer
+# clear above, which reads the loop-state file, because the task file must go
+# even when the loop-state write was refused (an identifier loop_state_safe
+# rejects, say): it holds other people's task text, and a completed task no
+# longer needs it. The name comes from the completion's own `data` through
+# task_file_stem, the rule the claim used, so no shell variable has to survive
+# a Codex turn for the delete to find it. A 422 carries no `data` and deletes
+# nothing: the task is still claimed, and a retry still reads the file. `rm -f` on a symlink removes the link, never
+# its target, and on a directory it fails and leaves it.
+if [ "${HOOK_NAME:-}" = "before_review" ] \
+   && [ ! -L "$PROJECT_DIR/.stride" ] \
+   && loop_state_payload_ok "$(own_call_response_payload "$INPUT")"; then
+  _done_stem=$(task_file_stem "$(own_call_response_payload "$INPUT" | jq -c '.data' 2>/dev/null)")
+  [ -n "$_done_stem" ] && rm -f "$PROJECT_DIR/.stride/.task-$_done_stem.json" 2>/dev/null
 fi
 
 exit 0

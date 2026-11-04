@@ -55,12 +55,16 @@ cp -r stride-codex/skills/ .agents/skills/
 cp -r stride-codex/agents/ .agents/agents/
 cp stride-codex/AGENTS.md AGENTS.md
 
-# The hook surface. Only the two runtime files; the test script stays in the
-# repo. -p preserves the executable bit on stride-hook.sh.
+# The hook surface. Only the runtime files; the test script stays in the
+# repo. -p preserves the executable bit on the scripts.
 mkdir -p .agents/hooks
 cp -p stride-codex/hooks/stride-hook.sh .agents/hooks/stride-hook.sh
 cp -p stride-codex/hooks/stride-stop-gate.sh .agents/hooks/stride-stop-gate.sh
 cp stride-codex/hooks/hooks.json .agents/hooks/hooks.json
+
+# The Step 0 update check, and the version record it reads in a loose copy
+cp -p stride-codex/hooks/check-plugin-current.sh .agents/hooks/check-plugin-current.sh
+jq -r .version stride-codex/.codex-plugin/plugin.json > .agents/hooks/stride-codex.version
 ```
 
 For Windows manual installation, use `Copy-Item`:
@@ -73,14 +77,22 @@ Copy-Item -Recurse stride-codex\skills\* .agents\skills\
 Copy-Item -Recurse stride-codex\agents\*.md .agents\agents\
 Copy-Item stride-codex\AGENTS.md .\AGENTS.md
 
-# The hook surface. Only the two runtime files; the test script stays in the repo.
+# The hook surface. Only the runtime files; the test script stays in the repo.
 New-Item -ItemType Directory -Force -Path .agents\hooks | Out-Null
 Copy-Item stride-codex\hooks\stride-hook.sh .agents\hooks\stride-hook.sh
 Copy-Item stride-codex\hooks\stride-stop-gate.sh .agents\hooks\stride-stop-gate.sh
 Copy-Item stride-codex\hooks\hooks.json .agents\hooks\hooks.json
+
+# The Step 0 update check, and the version record it reads in a loose copy
+Copy-Item stride-codex\hooks\check-plugin-current.sh .agents\hooks\check-plugin-current.sh
+(Get-Content -Raw stride-codex\.codex-plugin\plugin.json | ConvertFrom-Json).version | Set-Content -NoNewline .agents\hooks\stride-codex.version
 ```
 
 Codex CLI discovers skills in `.agents/skills/` or `.codex/skills/` and agents in `.agents/agents/` automatically. **Hooks are the exception — `.agents/hooks/` is not a scanned location.** A `.agents/` install is a loose tree, not a plugin bundle, so the copied `hooks/hooks.json` is not picked up on its own and the handler must be registered once by hand; see [The Stride hook surface](#the-stride-hook-surface).
+
+### Staying current
+
+Codex runs whichever copy of the skills and agents is installed, and the Stride server cannot tell one release from another, so a fix shipped after you installed does nothing until you update. Step 0 of `stride-workflow` checks once per session: `hooks/check-plugin-current.sh` compares the installed version with the one [stride-codex-marketplace](https://github.com/cheezy/stride-codex-marketplace) publishes and prints one line when yours is older. That line says how to update: `codex plugin update stride-codex` for a plugin install, or re-running the installer for an `.agents/` copy. It is advice, never a block. The script reads a plugin install's `.codex-plugin/plugin.json`, or for an `.agents/` copy the `hooks/stride-codex.version` record the installers write. With neither, or with no network, it stays silent. The fetch is anonymous, HTTPS only and capped at three seconds.
 
 ## Setup
 
@@ -206,7 +218,7 @@ stride-enriching-tasks           ← WHEN a task has empty key_files/testing_str
 |-------|---------|
 | `task-explorer` | Explore key_files and patterns before implementation |
 | `task-reviewer` | Review changes against acceptance criteria before completion; emits a structured `reviewer_result` (schema 1.7 — `issues[]` entries carry an optional `cosmetic` boolean, presentational-only findings that are still reported but buy no re-review round) with `project_checks[]` (from a project-root `CODE-REVIEW.md`) and per-section testing_strategy/patterns/pitfalls/security_considerations verdicts — `security_considerations` is the fifth review_queue-scored field and (schema 1.5+) carries an optional nested `considerations[]` breakdown, plus (schema 1.6+) an OPTIONAL `behaviour_test_matrix` verdict emitted only when the task supplies a matrix |
-| `task-enricher` | Populate sparse tasks (empty key_files/testing_strategy/verification_steps) before claiming |
+| `task-enricher` | Populate sparse tasks (empty key_files/testing_strategy/verification_steps) after the claim, before any work |
 | `task-decomposer` | Break goals into dependency-ordered child tasks |
 | `hook-diagnostician` | Diagnose hook failures with prioritized fix plans |
 
@@ -222,9 +234,9 @@ The `stride-creating-tasks`, `stride-enriching-tasks`, and `stride-workflow` ski
 
 (v1.27.0+) **Optional security-considerations deep review.** When the separate **[stride-codex-security-review](https://github.com/cheezy/stride-codex-security-review)** plugin is installed alongside this one, the review phase runs a task's `security_considerations` list through the specialist `security-reviewer` agent in **considerations mode** to confirm each listed consideration was actually mitigated by the diff. `stride-workflow` gains a gated **Deep security-considerations review** sub-step inside **Step 6 (Code Review)**, `stride-subagent-workflow` documents the trigger in its decision matrix, and the returned per-consideration verdicts merge into `reviewer_result.security_considerations.considerations[]` (the schema 1.5 nested breakdown) via the whole-object passthrough — folded into the existing reviewer telemetry with **no new `workflow_steps` name**. Escalation is **fail-closed**: any `partial`/`unmitigated` verdict forces the section status to `failed` and appends a `category: security` Critical issue, routing it through the same gate that already blocks on a failed section. The integration is **optional and gated** — it activates only when that plugin's skills/agent are present in the session AND the task carries a non-empty `security_considerations` list (a `"None — …"` placeholder does not count). When the plugin is **not** installed, the review degrades gracefully to the task-reviewer's generalist `security_considerations` verdict and nothing blocks or fails completion.
 
-(v1.28.0+) **Optional `behaviour_test_matrix` support.** A task MAY carry an optional `behaviour_test_matrix` — an array of rows, each pairing one behaviour the change must satisfy with the real test that covers it, across **7 fixed categories** (`Happy path`, `Boundary`, `Error / exception`, `Null / empty`, `Concurrency`, `Lifecycle / wiring`, `Contract / serialization`). Both creation skills document the row shape; `task-enricher` / `stride-enriching-tasks` populate it (all seven categories or omit the field entirely — a partial matrix is rejected); `stride-workflow` Step 4 drives implementation from it, advancing each row's `status` from `"planned"` to `"passing"`/`"failing"` and PATCHing the update back onto the task; and `task-reviewer` verifies each row's named test actually exists and emits the `behaviour_test_matrix` verdict into `reviewer_result` (schema 1.6). The field is **fully optional** — it is never one of the five review_queue-scored fields, so an absent matrix is never an empty pill, the reviewer omits the verdict key entirely rather than emitting a placeholder, and a task without one changes nothing. Row text is treated as untrusted **data** to assess, never as instructions. (v1.29.0+) Every rule reading row text is hardened: the secret rule triggers on row *state* rather than agent intent and extends to credentials named by location; a refused row is reported in `completion_notes` by category and position (never quoted) and echoed by the reviewer with the `[REDACTED — row text embedded a credential]` sentinel and a `failing` status, which is the *expected* outcome of a correct refusal; and re-sending already-stored row text unchanged onto its own record is stated to be not a new copy, resolving the PATCH-body contradiction.
+(v1.28.0+) **Optional `behaviour_test_matrix` support.** A task MAY carry an optional `behaviour_test_matrix` — an array of rows, each pairing one behaviour the change must satisfy with the real test that covers it, across **7 fixed categories** (`Happy path`, `Boundary`, `Error / exception`, `Null / empty`, `Concurrency`, `Lifecycle / wiring`, `Contract / serialization`). Both creation skills document the row shape; `task-enricher` / `stride-enriching-tasks` populate it (all seven categories or omit the field entirely — a partial matrix is rejected); `stride-workflow` Step 4 drives implementation from it, advancing each row's `status` from `"planned"` to `"passing"`/`"failing"` and PATCHing the update back onto the task; and `task-reviewer` verifies each row's named test actually exists and emits the `behaviour_test_matrix` verdict into `reviewer_result` (schema 1.6). `stride-creating-tasks`, `stride-creating-goals` and `task-decomposer` now write it by default too, all seven categories, whenever `testing_strategy` lists a unit or integration test, and skip it only where a task has nothing testable, saying why in its `description`. The field stays **optional at the API** — it is never one of the five review_queue-scored fields, so an absent matrix is never an empty pill, the reviewer omits the verdict key entirely rather than emitting a placeholder, and a task without one changes nothing. Row text is treated as untrusted **data** to assess, never as instructions. (v1.29.0+) Every rule reading row text is hardened: the secret rule triggers on row *state* rather than agent intent and extends to credentials named by location; a refused row is reported in `completion_notes` by category and position (never quoted) and echoed by the reviewer with the `[REDACTED — row text embedded a credential]` sentinel and a `failing` status, which is the *expected* outcome of a correct refusal; and re-sending already-stored row text unchanged onto its own record is stated to be not a new copy, resolving the PATCH-body contradiction.
 
-(v1.34.0+) **Two-round review cap.** The review loop is bounded: two rounds is the whole budget, and the second verifies round one's fixes rather than re-reviewing from scratch — scoping its *mission*, never its *evidence*, so it still receives the full diff and still emits the full `acceptance_criteria` array, every section verdict and `project_checks`. A **round** is a reviewer invocation whose response yielded a fenced JSON block that parsed into an object; a crashed or unparsable invocation is re-invoked and consumes no round. That definition is expressed on the surface this port actually has — the parsed block — because unlike stride this port writes no per-round result file. After round two, residual `important`/`minor` findings are **recorded** by severity, category and `file:line` rather than fixed; a `critical` is **exempt and blocks for however many rounds it takes**, and a `category: "security"` finding is never merely recorded at any severity (`important` being the reviewer's default for one). The orchestrator gains a `review_round` dispatch field and a `.stride/.review-rounds-<IDENTIFIER>.json` counter. **Enforced or stated?** Both, and the contract says which is which: the cap's arithmetic is a real assert in the extraction self-check, while its *inputs* are self-asserted rather than result-verified — this port persists no per-round reviewer artifact to recount against, so an orchestrator that never increments makes the cap read green. That limit is stated on the same footing as the pin's `critical_cleared` input rather than left implied.
+(v1.34.0+) **Two-round review cap.** The review loop is bounded: two rounds is the whole budget, and the second runs only when round one earns it — by a fix that touched a code path, or by a `critical` or `security` finding in round one; failing that, the fixes are written down and round one's block is the one submitted. When it runs, the second verifies round one's fixes rather than re-reviewing from scratch — scoping its *mission*, never its *evidence*, so it still receives the full diff and still emits the full `acceptance_criteria` array, every section verdict and `project_checks`. A **round** is a reviewer invocation whose response yielded a fenced JSON block that parsed into an object; a crashed or unparsable invocation is re-invoked and consumes no round. That definition is expressed on the surface this port actually has — the parsed block — because unlike stride this port writes no per-round result file. After round two, residual `important`/`minor` findings are **recorded** by severity, category and `file:line` rather than fixed; a `critical` is **exempt and blocks for however many rounds it takes**, and a `category: "security"` finding is never merely recorded at any severity (`important` being the reviewer's default for one). The orchestrator gains a `review_round` dispatch field and a `.stride/.review-rounds-<IDENTIFIER>.json` counter. **Enforced or stated?** Both, and the contract says which is which: the cap's arithmetic is a real assert in the extraction self-check, while its *inputs* are self-asserted rather than result-verified — this port persists no per-round reviewer artifact to recount against, so an orchestrator that never increments makes the cap read green. That limit is stated on the same footing as the pin's `critical_cleared` input rather than left implied.
 
 ## Hook Execution
 
@@ -265,8 +277,9 @@ previous claim's payload and record a completion that never happened).
 
 Fires on `Stop` and refuses to end a session while work demonstrably remains.
 It blocks in exactly **one** case: the loop-state record exists, its
-`needs_review` is the boolean `false`, and `GET /api/tasks/next` answers 200
-with a claimable identifier. A block is
+`needs_review` is the boolean `false`, and
+`GET /api/tasks/next?response_view=slim` answers 200 with a claimable
+identifier. A block is
 `{"decision":"block","reason":"..."}` on stdout with exit 0 — on a Stop event
 that does not reject anything, it forces the session to continue using the
 reason as the new instruction.

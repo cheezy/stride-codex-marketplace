@@ -10,7 +10,8 @@
 #   1. An unfollowed completion (W2142):
 #     .stride/.loop-state.json exists
 #     AND its needs_review is the JSON boolean false
-#     AND GET <base>/api/tasks/next answers 200 with a claimable identifier
+#     AND GET <base>/api/tasks/next?response_view=slim answers 200 with a
+#         claimable identifier
 #
 #   2. A held claim (W2181):
 #     .stride/.loop-state.json does NOT exist
@@ -438,7 +439,12 @@ esac
 if [ "$GATE_MODE" = "held" ]; then
   _req_url="$_api_base/api/tasks/$HELD_IDENT?fields=status,claim_expires_at,completed_by_id"
 else
-  _req_url="$_api_base/api/tasks/next"
+  # The slim view: only the status code and .data.identifier are read below,
+  # and the summary carries that key under the same name. A server older than
+  # the slim view ignores the parameter and sends the full task, which parses
+  # the same way. The URL is the fixed base plus a literal path; no task text
+  # goes into it.
+  _req_url="$_api_base/api/tasks/next?response_view=slim"
 fi
 
 _resp=$(curl -s --connect-timeout 3 --max-time 5 -w '\n%{http_code}' \

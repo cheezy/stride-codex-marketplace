@@ -67,14 +67,30 @@ agent_count=$(find "$TMPDIR/stride-codex/agents" -maxdepth 1 -name '*.md' | wc -
 echo "Installing $agent_count agents..."
 cp "$TMPDIR/stride-codex/agents/"*.md "$INSTALL_DIR/agents/"
 
-# Copy the hook surface (W2141). Only the two runtime files ship — the test
-# script stays in the repo. Codex discovers a plugin-bundled hooks/hooks.json
-# by default, so without this copy the hook surface would be inert.
+# Copy the hook surface (W2141) and the Step 0 update check (W2591). Only the
+# runtime files ship — the test script stays in the repo. Codex discovers a
+# plugin-bundled hooks/hooks.json by default, so without this copy the hook
+# surface would be inert.
 echo "Installing hooks..."
 cp "$TMPDIR/stride-codex/hooks/stride-hook.sh" "$INSTALL_DIR/hooks/stride-hook.sh"
 cp "$TMPDIR/stride-codex/hooks/stride-stop-gate.sh" "$INSTALL_DIR/hooks/stride-stop-gate.sh"
 cp "$TMPDIR/stride-codex/hooks/hooks.json" "$INSTALL_DIR/hooks/hooks.json"
-chmod +x "$INSTALL_DIR/hooks/stride-hook.sh" "$INSTALL_DIR/hooks/stride-stop-gate.sh"
+cp "$TMPDIR/stride-codex/hooks/check-plugin-current.sh" "$INSTALL_DIR/hooks/check-plugin-current.sh"
+chmod +x "$INSTALL_DIR/hooks/stride-hook.sh" "$INSTALL_DIR/hooks/stride-stop-gate.sh" "$INSTALL_DIR/hooks/check-plugin-current.sh"
+
+# Record the installed version (W2591). This copy carries no plugin.json, so
+# Step 0's check-plugin-current.sh reads hooks/stride-codex.version instead. A
+# manifest version made of anything but digits and dots leaves no record,
+# and the check then stays silent rather than guess.
+VERSION_FILE="$INSTALL_DIR/hooks/stride-codex.version"
+manifest=$(cat "$TMPDIR/stride-codex/.codex-plugin/plugin.json" 2>/dev/null || true)
+if [[ "$manifest" =~ \"version\"[[:space:]]*:[[:space:]]*\"([0-9]+(\.[0-9]+)*)\" ]]; then
+  printf '%s\n' "${BASH_REMATCH[1]}" > "$VERSION_FILE"
+  echo "Recorded version ${BASH_REMATCH[1]}"
+else
+  rm -f "$VERSION_FILE"
+  echo "Warning: no version found in plugin.json; the Step 0 update check will stay silent" >&2
+fi
 
 # Copy AGENTS.md to project root if --project, or to global dir
 if [ "$MODE" = "project" ]; then

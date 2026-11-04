@@ -24,7 +24,7 @@ The full process runs in four ordered phases. Steps within Phase 2 are also orde
    5. Analyze code area for risks and security → `pitfalls`, `security_considerations`
    6. Convert intent to outcomes → `acceptance_criteria`
 3. **Phase 3 — Estimate Complexity**: Apply the heuristic table to all collected signals.
-4. **Phase 4 — Assemble and Validate**: Combine all fields, run the 18-item checklist, return the enriched JSON for the orchestrator to submit.
+4. **Phase 4 — Assemble and Validate**: Combine all fields, run the 18-item checklist, then the cross-field consistency pass, and return the enriched JSON for the orchestrator to submit.
 
 ## Phase 1: Parse Intent
 
@@ -227,7 +227,7 @@ All existing tests still pass
 
 If exploration surfaced concrete technical context that doesn't fit the structured fields — data shapes, gotchas, key decisions, or reference links — record it in an optional free-form `technical_details` object. Unlike the structured fields, it has no fixed keys: use whatever keys best describe what you found. This is an optional add-on beyond the six exploration steps, not a seventh required step.
 
-- **Optional and never fabricated.** Populate it only with context you actually discovered during Phase 2. When there is nothing substantive to capture, leave it as `{}` — a blank `technical_details` is expected and perfectly fine.
+- **Optional and never fabricated.** Populate it only with context you actually discovered during Phase 2; `open_questions` is the one key exempt from that, because the cross-field consistency pass writes it in Phase 4. When there is nothing substantive to capture, leave it as `{}` — a blank `technical_details` is expected and perfectly fine.
 - **Not review_queue-scored.** `technical_details` is NOT one of the five review_queue-scored fields (`acceptance_criteria`, `testing_strategy`, `security_considerations`, `pitfalls`, `patterns_to_follow`), so a blank value is never a scoring gap or an empty pill — never bump complexity or pad other fields to compensate for an empty `technical_details`.
 - **No secrets.** Because the object is free-form, never record tokens, passwords, credentials, or other secrets in it.
 
@@ -271,6 +271,19 @@ Combine all discovered fields into the final task specification. **Return the as
 - [ ] `needs_review` is set to `false`
 - [ ] No invented file paths — every entry is a path located via search, glob, or read
 - [ ] All 18 items above were considered for this task (none silently skipped) — for the one optional item, `behaviour_test_matrix`, a deliberate omission counts as considered
+
+### Cross-Field Consistency Pass (last, before returning)
+
+Each checklist item looks at one field. This pass reads the fields against one another, after the checklist and before the JSON goes back. When a task disagrees with itself, an implementer tends to obey whichever line is more specific, and that line is often the mistaken one. Run all six checks on every task and correct, in place, any field you wrote. `agents/task-decomposer.md` Step 7 holds the same six checks for child tasks, so keep the two in step when either changes.
+
+1. **Verification scope.** No verification step checks less than the acceptance criterion it stands for. If a grep reads one file where the criterion covers all of them, or a step tries one case where the criterion lists three, widen the step to match, or record the shortfall as an open question.
+2. **No contradiction.** Nothing in `what` or `patterns_to_follow` tells the implementer to do what a pitfall or a security consideration forbids. Correct whichever side you wrote. If the human wrote both sides, keep both and say which governs (check 4).
+3. **Prescribed patterns tested.** When the task prescribes a regex or a command, compare it with each edge case the task lists before you keep it, and do that by reading alone: take each edge-case string and work out whether the pattern would match it. Do not run the prescribed command, and do not execute anything with side effects to settle the question. With no regex or command prescribed, skip this check; with a pattern but no edge case to test it against, record an open question.
+4. **Precedence stated.** Wherever two instructions can pull in different directions (a pair of pitfalls, a pitfall against a pattern, or a criterion against a pattern), one of them says in its own text which one governs. A contradiction is never settled by quietly deleting either instruction.
+5. **One line per criterion.** Keep each acceptance criterion on a single line. The reviewer treats every non-blank line of `acceptance_criteria` as its own criterion, so a criterion that wraps is counted twice. Rejoin it, or rewrite it as two whole criteria.
+6. **External contracts named.** Any outside contract the change has to honour, such as a server-side validation, a behaviour a protocol requires, or a version already tagged, appears by name in `pitfalls` or `patterns_to_follow` with the `file:line` you found it at. Never copy a credential, a token or an internal hostname you saw while exploring into that text.
+
+**Edge cases.** With no verification steps, check 1 has nothing to read, and the other five still run. No check ever holds back the JSON: when one cannot be evaluated, write it down as an open question and return as usual. Because `title`, `type` and `description` come from the human and stay word for word, and that rule takes precedence over putting the question there, each open question goes into `technical_details.open_questions` as a one-sentence string. The pass edits only fields you wrote and never the human's `title`, `type` or `description`.
 
 ## Handling Defect Tasks
 
@@ -582,7 +595,7 @@ Your response is a single JSON object matching the Stride API task schema. Examp
 - `patterns_to_follow`: Newline-separated string (NOT an array)
 - `pitfalls`: Array of strings `["Don't...", "Avoid..."]`
 - `estimated_files`: Optional string range like `"3-5"` — emit when the count is meaningful, omit otherwise
-- `technical_details`: Optional free-form object `{"data_shapes": {...}, "gotchas": ["..."]}` — any keys; leave `{}` when nothing substantive was found; NOT a review_queue-scored field; never record secrets
+- `technical_details`: Optional free-form object `{"data_shapes": {...}, "gotchas": ["..."]}` — any keys, plus `open_questions` (an array of one-sentence strings) when the cross-field consistency pass recorded one; leave `{}` when nothing substantive was found; NOT a review_queue-scored field; never record secrets
 - `behaviour_test_matrix`: Optional array of row objects — shape shown as an **excerpt only**: `[{"category": "Happy path", "behaviour": "...", "test_name": "...", "type": "unit", "status": "planned", "position": 0}, …]`. A real matrix carries a row for **all 7** fixed categories or the field is omitted entirely; the single-row value above would be rejected as a partial matrix. Every row needs a real `test_name` or an `na_reason`; NOT a review_queue-scored field; never record secrets
 
 ## Important Constraints

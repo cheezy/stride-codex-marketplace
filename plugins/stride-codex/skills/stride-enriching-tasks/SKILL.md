@@ -1,6 +1,6 @@
 ---
 name: stride-enriching-tasks
-description: INTERNAL — invoked only by stride:stride-workflow. Do NOT invoke from a user prompt. Contains the task enrichment procedure (codebase exploration to populate key_files, testing_strategy, verification_steps for sparse tasks), used during the orchestrator's enrichment phase before claiming.
+description: INTERNAL — invoked only by stride:stride-workflow. Do NOT invoke from a user prompt. Contains the task enrichment procedure (codebase exploration to populate key_files, testing_strategy, verification_steps for sparse tasks), used during the orchestrator's enrichment phase, after the claim and before any work.
 ---
 
 # Stride: Enriching Tasks
@@ -35,7 +35,7 @@ The **review_queue dashboard** scores every completed task on these five fields:
 - `pitfalls`
 - `patterns_to_follow`
 
-Enrichment runs **before the claim** — it is the final point at which these can be populated before the task hits Doing. **Whatever you leave empty here will render as an empty pill on the review_queue dashboard at completion**, visible to every reviewer, and the implementing agent will not back-fill them mid-flight.
+Enrichment runs **before any work starts** (in the orchestrator, on the claim response's body, right after the claim) — it is the final point at which these can be populated before implementation begins. **Whatever you leave empty here will render as an empty pill on the review_queue dashboard at completion**, visible to every reviewer, and the implementing agent will not back-fill them mid-flight.
 
 Treat each of the five as a **mandatory-for-review** output of enrichment, not optional polish. If a field is genuinely not applicable (e.g. doc-only task has no `testing_strategy.unit_tests`, or a pure-styling task has no `security_considerations`), populate it with the specific reason — never leave it null and never bundle the five under a single checklist item.
 
@@ -199,6 +199,8 @@ Combine all discovered fields into the final task specification.
 - [ ] `needs_review` is set to `false`
 - [ ] No invented file paths — every entry is a path located via search, glob, or read
 - [ ] All 18 items above were considered for this task (none silently skipped) — for the one optional item, `behaviour_test_matrix`, a deliberate omission counts as considered
+
+**Cross-field consistency pass.** Enriching by hand through this walkthrough, without the `task-enricher` agent, does not skip the six checks that agent runs once this checklist is done, which read the fields against one another: run them as `agents/task-enricher.md` Phase 4 states them before you submit.
 
 ## API Integration
 

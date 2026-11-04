@@ -102,8 +102,8 @@ try {
         Copy-Item -Path $agentFile.FullName -Destination (Join-Path $InstallDir 'agents') -Force
     }
 
-    # Copy the hook surface (W2141). Only the two runtime files ship - the test
-    # script stays in the repo. Codex discovers a plugin-bundled hooks/hooks.json
+    # Copy the hook surface (W2141) and the Step 0 update check (W2591). Only
+    # the runtime files ship - the test script stays in the repo. Codex discovers a plugin-bundled hooks/hooks.json
     # by default, so without this copy the hook surface would be inert.
     #
     # NOTE: this port ships no stride-hook.ps1 twin yet, so on native Windows
@@ -112,8 +112,32 @@ try {
     Write-Host "Installing hooks..."
     $hookSrcRoot = Join-Path $cloneDir 'hooks'
     $hookDest = Join-Path $InstallDir 'hooks'
-    foreach ($hookFile in @('stride-hook.sh', 'stride-stop-gate.sh', 'hooks.json')) {
+    foreach ($hookFile in @('stride-hook.sh', 'stride-stop-gate.sh', 'hooks.json', 'check-plugin-current.sh')) {
         Copy-Item -Path (Join-Path $hookSrcRoot $hookFile) -Destination (Join-Path $hookDest $hookFile) -Force
+    }
+
+    # Record the installed version (W2591). This copy carries no plugin.json, so
+    # Step 0's check-plugin-current.sh reads hooks\stride-codex.version instead.
+    # A version made of anything but digits and dots leaves no record, and the
+    # check then stays silent rather than guess. Written without a BOM, LF only.
+    $versionFile = Join-Path $hookDest 'stride-codex.version'
+    $installedVersion = $null
+    try {
+        $manifest = Get-Content -Raw -Path (Join-Path (Join-Path $cloneDir '.codex-plugin') 'plugin.json') | ConvertFrom-Json
+        if ($manifest.version -is [string] -and $manifest.version -match '^[0-9]+(\.[0-9]+)*\z') {
+            $installedVersion = $manifest.version
+        }
+    }
+    catch {
+        $installedVersion = $null
+    }
+    if ($installedVersion) {
+        [IO.File]::WriteAllText($versionFile, "$installedVersion`n", (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "Recorded version $installedVersion"
+    }
+    else {
+        Remove-Item -Force -Path $versionFile -ErrorAction SilentlyContinue
+        Write-Warning "No version found in plugin.json; the Step 0 update check will stay silent"
     }
 
     # Copy AGENTS.md to the appropriate location.
