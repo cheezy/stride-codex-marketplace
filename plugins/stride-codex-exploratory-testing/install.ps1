@@ -81,7 +81,8 @@ try {
         throw "git clone failed with exit code $LASTEXITCODE"
     }
 
-    # Copy skills (each skill is a directory containing SKILL.md).
+    # Copy skills (each skill is a directory containing SKILL.md, plus a
+    # references/ directory beside it when the skill keeps reference files there).
     # @() forces array semantics so .Count is correct even for a single result on PS 5.1.
     $skillSrcRoot = Join-Path $cloneDir 'skills'
     $skillDirs = @(Get-ChildItem -Path $skillSrcRoot -Directory)
@@ -91,6 +92,12 @@ try {
         New-Item -ItemType Directory -Force -Path $destSkillDir | Out-Null
         $srcSkill = Join-Path $skillDir.FullName 'SKILL.md'
         Copy-Item -Path $srcSkill -Destination (Join-Path $destSkillDir 'SKILL.md') -Force
+        $srcRefs = Join-Path $skillDir.FullName 'references'
+        if (Test-Path -LiteralPath $srcRefs -PathType Container) {
+            $destRefs = Join-Path $destSkillDir 'references'
+            New-Item -ItemType Directory -Force -Path $destRefs | Out-Null
+            Copy-Item -Path (Join-Path $srcRefs '*') -Destination $destRefs -Recurse -Force
+        }
     }
 
     # Copy agents (each agent is a bare .md file, per Codex naming convention).

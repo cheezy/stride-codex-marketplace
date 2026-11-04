@@ -1,0 +1,96 @@
+{
+  "contract_version": "1.0",
+  "charter": "Explore the CSV receipt import with malformed, oversized, and wrong-encoding files (and files from another tenant's export) to discover how the parser fails, whether it corrupts existing receipts, and whether any row can leak across tenants.",
+  "status": "completed",
+  "session_sheet": {
+    "tester": "explorer subagent",
+    "probe_budget": 12,
+    "probes_attempted": 7,
+    "probes_with_finding": 5,
+    "on_charter_probes": 6,
+    "off_charter_probes": 1,
+    "tool_calls_used": 34,
+    "areas_covered": [
+      "CSV import screen (<tenant A> account on the demo instance)",
+      "Parser on valid, truncated, 250 MB, UTF-16, embedded-comma and <tenant B>-exported files",
+      "Post-import receipt list and running expense total",
+      "Import error banner and per-row rejection report"
+    ],
+    "heuristics_applied": ["Follow the Data", "Violate Format", "Goldilocks", "Change the Model"],
+    "stop_reason": "charter_quiet"
+  },
+  "notes": [
+    { "tag": "test-idea", "text": "Baseline: a clean 40-row CSV imports cleanly and the total updates; kept as the did-I-break-something oracle." },
+    { "tag": "question", "text": "A file cut mid-row imports 39 rows and silently drops the partial 40th; is that intended?" },
+    { "tag": "risk", "text": "The import screen restricts no file type; a renamed .exe is accepted for upload." },
+    { "tag": "surprise", "text": "A CSV exported from <tenant B> imported into <tenant A> with no tenant check at all." }
+  ],
+  "bugs": [
+    {
+      "summary": "CSV import does not scope rows to the current tenant",
+      "repro": "Log in as <tenant A>; open the CSV import screen; import a receipts CSV exported from <tenant B>'s account.",
+      "observed": "All 40 rows were accepted and attributed to <tenant A>; they appear in <tenant A>'s receipt list and running total.",
+      "why_wrong": "Data must never cross tenants; the import accepted another tenant's export without any ownership check.",
+      "oracle": "Never/Always invariant: data never crosses tenants",
+      "severity": "Critical",
+      "minimal_repro": "Import any CSV exported from <tenant B> while logged in as <tenant A>; one row is enough.",
+      "worst_observed": "<tenant B>'s receipt rows, vendor names and amounts persisted under <tenant A>.",
+      "generalization": "Reproduced with a 1-row and a 40-row export; not tried with other tenant pairs.",
+      "stakeholder_impact": "Every tenant: another tenant's expense data can be imported into, and read from, the wrong account.",
+      "replicated": "3/3",
+      "provisional": false
+    },
+    {
+      "summary": "UTF-16 CSVs import accented vendor names as mojibake, silently",
+      "repro": "As <tenant A>, import a UTF-16-encoded CSV whose vendor column contains \"Café Subroute\".",
+      "observed": "The receipt list shows \"CafÃ© Subroute\"; no warning or rejection was shown.",
+      "why_wrong": "The help text claims UTF-8 support; the accepted data is now stored wrong and exports wrong.",
+      "oracle": "Consistency with claims (the import help text)",
+      "severity": "High",
+      "minimal_repro": "A one-row UTF-16 CSV with one accented vendor name.",
+      "worst_observed": "The corrupted vendor name persisted and appeared the same way in a subsequent export.",
+      "generalization": "Also fails for a UTF-16 file with a byte-order mark; UTF-8 files with the same names import correctly.",
+      "stakeholder_impact": "Finance users importing from tools that export UTF-16: vendor names are silently corrupted and must be fixed by hand.",
+      "replicated": "2/2",
+      "provisional": false
+    },
+    {
+      "summary": "A 250 MB upload fails with a generic error that names no limit or row",
+      "repro": "As <tenant A>, upload a 250 MB synthetic receipts CSV on the import screen.",
+      "observed": "The request eventually failed with \"Something went wrong\" and no file-size limit or row detail.",
+      "why_wrong": "An error the user cannot act on: it names neither the limit nor what to change.",
+      "oracle": "Consistency with user expectations",
+      "severity": "Moderate",
+      "minimal_repro": "not established: only the one 250 MB file was tried; the threshold size is unknown",
+      "worst_observed": "The upload failed with a generic error; whether any rows persisted was not checked.",
+      "generalization": "not established: size probes were capped after this one cost 9 of 34 tool calls",
+      "stakeholder_impact": "Provisional: does a failed oversized upload persist any rows? Users with large exports cannot tell what to change.",
+      "replicated": "not established: the one oversized upload cost 9 of 34 tool calls and was not re-run",
+      "provisional": true
+    }
+  ],
+  "questions_risks": [
+    { "kind": "question", "text": "Is silently dropping a truncated final row acceptable, or should the import fail loudly?" },
+    { "kind": "question", "text": "Does a failed oversized upload persist any rows? (decides the 250 MB bug's magnitude)" },
+    { "kind": "risk", "text": "No server-side file-type validation was observed; only the absent client check." }
+  ],
+  "off_charter": [
+    { "item": "No file-type restriction on the import upload; a renamed .exe is accepted.", "candidate_charter": "Explore the import upload with disallowed and disguised file types to discover missing server-side validation." },
+    { "item": "A rapid double-submit of the same import was not tested for double counting.", "candidate_charter": "Explore the import submit with rapid repeated submissions to discover whether receipts or totals are double-counted." }
+  ],
+  "known_bad": [
+    { "summary": "Receipt dates display in UTC rather than the tenant's time zone", "observed": "Imported receipts dated 23:30 local time show the next day's date in the list.", "basis": "known_issues: EF-112 receipt dates display in UTC" }
+  ],
+  "debrief": {
+    "explored": "Charter #1 on the CSV import as <tenant A>: valid, truncated, 250 MB, UTF-16, embedded-comma and cross-tenant files, with Follow the Data, Violate Format, Goldilocks and Change the Model. 7 of 12 probes; stopped because the charter went quiet.",
+    "found": "A Critical cross-tenant import (3/3), a High UTF-16 mojibake (2/2), a provisional Moderate generic error on a 250 MB upload, and one known-bad UTC date display (EF-112) noted, not re-reported.",
+    "unknown": "Whether a failed oversized upload persists rows; the intended file-size limit; whether a truncated final row may be dropped silently.",
+    "proof": {
+      "past": "One budgeted session against charter #1 on the demo target.",
+      "results": "3 bugs (Critical 1, High 1, Moderate 1), 3 questions or risks, 2 off-charter items, 1 known-bad.",
+      "obstacles": "Oversized-file probes were setup-heavy; size probes were capped after one.",
+      "outlook": "Charter the upload file-type and double-submit items; re-check the cross-tenant fix in a follow-up session.",
+      "feelings": "Uneasy about tenant isolation beyond import; the cross-tenant bug suggests other import paths may skip the check."
+    }
+  }
+}

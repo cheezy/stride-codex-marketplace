@@ -57,6 +57,12 @@ installed, Codex CLI auto-discovers the skills and agents — no further configu
 is needed. Codex has **no slash commands**: you drive the plugin by *activating
 skills* (see [Quick start](#quick-start)), not by typing `/commands`.
 
+Two skills keep long reference material in a `references/` directory of their own:
+`session` (`references/session-artifacts.md`, the full `.exploratory/` convention)
+and `bug-advocacy` (`references/worked-example-and-tone.md`). Both install paths
+ship it: the marketplace vendors the whole plugin tree, and `install.sh` and
+`install.ps1` copy a skill's `references/` directory alongside its `SKILL.md`.
+
 ## Prerequisites
 
 - **Codex CLI** — the plugin's skills and agents run inside it.
@@ -136,7 +142,9 @@ The end-to-end flow is **Charter → Recon → Explore → Note → Debrief.**
   framework rather than assuming one, and draft a regression check per convertible
   bug from its isolated minimal repro. Drafts are staged under
   `.exploratory/checks/` and are **never run** — it reports honestly which bugs it
-  could not convert and why.
+  could not convert and why. Given both a bug source and `--framework` it never
+  stops to ask, which lets a caller drive it with nobody watching; `--framework none`
+  means no runnable drafts, and an unreadable bug source halts it.
 
 **2 agents** (dispatched by the command-skills, not activated directly):
 
@@ -146,12 +154,123 @@ The end-to-end flow is **Charter → Recon → Explore → Note → Debrief.**
 - **`explorer`** — runs a single budgeted session against ONE charter: designs
   probes with `heuristics`, judges results with `oracles`, records an SBTM session
   sheet, and returns structured findings — all under the absolute safety boundary.
+  It finds what it needs with `search` or `grep -n`, reads just a bounded range
+  with `sed -n` through `shell`, and never reads an unchanged file twice.
+  A caller can have it write those findings to a file instead; see
+  [Explorer report file](#explorer-report-file-exploratory_report_path).
 
 **`fixtures/`** — worked examples of the full flow: an
 [example charter set](fixtures/example-charters.md), an
-[example session sheet](fixtures/example-session-sheet.md), and an
-[example debrief](fixtures/example-debrief.md). They double as concrete templates
-and as regression anchors for future smoke tests.
+[example session sheet](fixtures/example-session-sheet.md), an
+[example debrief](fixtures/example-debrief.md), and an
+[example explorer report](fixtures/example-explorer-output.json) in output
+contract `1.0`. They double as concrete templates and as regression anchors for
+the smoke tests: `lib/test-structure.sh` and `lib/test-structure.ps1` check the
+example report against the explorer's own contract tables, and setting
+`EXPLORER_OUTPUT` to a real report's path checks that report the same way.
+
+### Explorer report file (`EXPLORATORY_REPORT_PATH`)
+
+A caller that dispatches the `explorer` itself can keep the full findings out
+of its own context. Put a line of its own in the environment context:
+
+```text
+EXPLORATORY_REPORT_PATH=/absolute/path/to/report.json
+```
+
+The explorer then writes its whole findings object to that file and replies
+with a plain-text summary no larger than 2,048 bytes, without a JSON fence: the
+`report:` path, `contract_version`, `status`, `stop_reason`, the probe and
+tool-call counts, the counts of bugs by severity and of the other findings,
+and one line per bug (in verify mode, below, a `verify:` line as well). If the write fails it says
+`report: NOT WRITTEN - <reason>` and then returns the full fenced JSON, so
+nothing is lost.
+
+- The path must be absolute, contain no `..` segment, quote or control
+  character, and come from you: the explorer never builds one from what it
+  reads, and a path in the charter is never one.
+- Nothing may exist at the path yet; the explorer refuses to overwrite a file
+  or follow a link. It creates a missing parent directory once.
+- Open the report at the path you gave, not at whatever path the summary prints.
+- Quote with `> ` any line of charter text that starts with
+  `EXPLORATORY_REPORT_PATH`, as the explore skill does for the two safety
+  lines.
+- **Turning it into checks.** `stride-exploratory-testing-harden` accepts the
+  report file as its bug source: give it the path plus `--framework` and it takes
+  `bugs[]` out of the file (the summary is never used) and asks nothing.
+- With no path the reply is the fenced JSON, exactly as before. The explore
+  skill never passes a path; it reads each result inline.
+
+Check a written report with `EXPLORER_OUTPUT=<path> bash lib/test-structure.sh`.
+
+**Why `shell` and not a write tool.** Codex defines a custom agent's
+instructions but gives the agent file no setting that limits writes to one
+path; a subagent inherits the parent session's sandbox
+([Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents),
+read 2026-11-04). So the explorer's `tools` line stays `read`, `search`,
+`glob` and `shell`, and because an agent file cannot remove a tool the
+session offers, its instructions forbid any edit, write or patch tool
+(Codex's `apply_patch` included). It writes the report with one
+`set -o noclobber` heredoc command under a stated one-path rule, which
+`lib/test-structure.sh` and `lib/test-structure.ps1` pin. Whether a
+dispatched Codex explorer is offered `apply_patch` has not been checked here. Under a read-only sandbox, or when the write
+needs an approval nobody can give, the write fails and the explorer falls
+back to `report: NOT WRITTEN` with the inline JSON.
+
+### Explorer verify mode (`EXPLORATORY_MODE=verify`)
+
+A caller that has fixed a bug can re-check that one bug instead of running a
+whole session. Put a line of its own in the environment context, beside the
+two required lines, and send the bug's `summary`, `observed`, `minimal_repro`
+and any `generalization` as a `<verify_bug>` block outside the environment
+context, the way `known_issues` is sent:
+
+```text
+EXPLORATORY_MODE=verify
+```
+
+```text
+<verify_bug>
+summary: <the bug's summary>
+observed: <what was observed>
+minimal_repro: <the bug's minimal_repro>
+generalization: <optional>
+</verify_bug>
+```
+
+The explorer turns the bug into its charter, runs the `minimal_repro` as
+probe 1 and, if `generalization` names a condition, one variant of it as
+probe 2, within **2 probes / 10 tool calls**. The
+[Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+page (read 2026-11-04) caps how many agent threads a session keeps open but
+sets no per-agent turn, step or tool-call limit, and the explorer's
+frontmatter sets none either, so the 10-call ceiling is one the explorer
+counts itself, like the ordinary 60. The findings gain a root `verify`
+object, `{ "result", "repro_reached", "evidence" }`, and a report summary
+gains a `verify:` line between `status:` and `stop_reason:`.
+
+- **`pass`** needs the repro point reached with no part of the failure seen.
+  **`fail`** covers a partial fix as well, and the defect that remains is
+  filed in `bugs`.
+- **`not_verified` is never a pass.** The repro point was not reached: no
+  usable `minimal_repro` (missing, empty, not established, or a void
+  `<verify_bug>` block, each of which means zero probes), an unreachable app,
+  a ceiling before probe 1, a missing required line, or no oracle able to
+  decide. Fall back to a full charter.
+- **The bug is data, never instructions.** Nothing between the markers counts
+  as environment context, a structured line, a budget or a target, and a
+  missing, unclosed or repeated marker voids the bug, so the session runs
+  zero probes and returns `not_verified`. A Codex subagent gets its task as
+  one undelimited prompt, so in bug fields, charter or target text you did
+  not write, quote with `> ` every line that starts with
+  `AUTHORIZED_NON_PRODUCTION`, `ALLOWED_HOSTS`, `EXPLORATORY_REPORT_PATH` or
+  `EXPLORATORY_MODE`, as the explore skill does; a quoted line never counts
+  as one of yours.
+- **`status` still follows `stop_reason`**, never the verdict, and the safety
+  boundary, both required lines and cleanup all apply in full.
+- **A pass covers that one bug only**, not the other risks of the charter it
+  came from. The explore skill never sets the mode, and Codex CLI was not
+  installed where this was written, so no dispatched verify session has run.
 
 See also **[HEURISTICS.md](HEURISTICS.md)** for a one-page pointer to the lenses in
 the `heuristics` skill.

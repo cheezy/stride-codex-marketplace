@@ -53,7 +53,8 @@ trap 'rm -rf "$TMPDIR"' EXIT
 echo "Downloading from $REPO..."
 git clone --quiet --depth 1 "$REPO" "$TMPDIR/stride-codex-exploratory-testing"
 
-# Copy skills (each skill is a directory with SKILL.md)
+# Copy skills (each skill is a directory with SKILL.md, and a references/
+# directory beside it when the skill keeps reference files there)
 skill_count=$(find "$TMPDIR/stride-codex-exploratory-testing/skills" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
 echo "Installing $skill_count skills..."
 for skill_dir in "$TMPDIR/stride-codex-exploratory-testing/skills"/*/; do
@@ -61,6 +62,10 @@ for skill_dir in "$TMPDIR/stride-codex-exploratory-testing/skills"/*/; do
   skill_name=$(basename "$skill_dir")
   mkdir -p "$INSTALL_DIR/skills/$skill_name"
   cp "$skill_dir/SKILL.md" "$INSTALL_DIR/skills/$skill_name/SKILL.md"
+  if [ -d "$skill_dir/references" ]; then
+    mkdir -p "$INSTALL_DIR/skills/$skill_name/references"
+    cp -R "$skill_dir/references/." "$INSTALL_DIR/skills/$skill_name/references/"
+  fi
 done
 
 # Copy agents (each agent is a bare .md file, per Codex naming convention)

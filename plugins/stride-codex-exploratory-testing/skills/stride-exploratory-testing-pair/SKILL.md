@@ -1,6 +1,6 @@
 ---
 name: stride-exploratory-testing-pair
-description: Pair with a human who is driving the application themselves — they report what they did and saw, and you suggest the next probe, name the heuristic lens it came from, judge results with oracles, work confirmed defects through RIMGEA, track which areas and variables have been neglected and say so unprompted, and keep the SBTM session sheet and off-charter parking lot on their behalf. Activate when the user wants to pair on exploratory testing, drive the app themselves with an assistant alongside, or be prompted for the next probe while they test. You never drive the app and never dispatch the explorer; you observe, suggest, judge, and record inside the human's wall-clock time box, then hand off to the debrief skill. Codex CLI port of the upstream /stride-exploratory-testing:pair command.
+description: Pair with a human who is driving the application themselves — they report what they did and saw, and you suggest the next probe, judge results with oracles, and keep the session sheet. Activate when the user wants to pair on exploratory testing, drive the app themselves with an assistant alongside, or be prompted for the next probe while they test. You never drive the app and never dispatch the explorer, and you hand off to the debrief skill.
 skills_version: 1.0
 ---
 
@@ -59,7 +59,7 @@ Invoke the `oracles` skill (`skills/oracles/SKILL.md`), passing `target=<TARGET>
 
 Invoke the `bug-advocacy` skill (`skills/bug-advocacy/SKILL.md`), passing `mode=pair`.
 
-Two things from `session` govern this skill specifically. Its **Who the box binds** section states that the 60–120 minute box holds for *human-run and paired* sessions, and that those are the sessions whose sheet and Task Breakdown Metrics are filled in from a clock someone is actually watching — that is this session, so this skill uses the **human** sheet skeleton and real wall-clock figures, never the explorer's count-based JSON contract. Its **Session artifacts on disk** section owns every path, filename, and write rule in Step 10 — read it there rather than re-deriving it here.
+Two things from `session` govern this skill specifically. Its **Who the box binds** section states that the 60–120 minute box holds for *human-run and paired* sessions, and that those are the sessions whose sheet and Task Breakdown Metrics are filled in from a clock someone is actually watching — that is this session, so this skill uses the **human** sheet skeleton and real wall-clock figures, never the explorer's count-based JSON contract. Its **Session artifacts on disk** section, with the `references/session-artifacts.md` that section links, owns every path, filename, and write rule in Step 10 — read them there rather than re-deriving them here.
 
 **Never restate the heuristics catalog in the conversation.** You name lenses; the human can read the catalog in the skill. A wall of tables in the transcript is time stolen from the box.
 
@@ -222,7 +222,7 @@ Four rules keep the sweep useful instead of nagging:
 
 ### Step 10: Write the sheet and the backlog
 
-Two writes. Both follow the `session` skill's **Session artifacts on disk** convention — read it there rather than re-deriving it here. Two rules govern both:
+Two writes. Both follow the `session` skill's **Session artifacts on disk** convention, set out in full in that skill's `references/session-artifacts.md` — read it there rather than re-deriving it here. Two rules govern both:
 
 - **A missing file is an empty starting state, never an error** — create it on the first write, do not warn, never fail the skill because it is absent.
 - **Redact before writing.** No real credentials, tokens, customer data, personal data, or internal hostnames. A file outlives this conversation and can be read by someone who never saw the session, so the rule binds harder on disk than on screen. You have been redacting as you log (Step 6.4); this is the last check, not the first.
@@ -286,7 +286,7 @@ Head the file with a title naming the target and the date, one line saying it is
 - [ ] **candidate-charter** — <a charter closing a gap the tester declined, or a class of failure Generalize revealed> <!-- source: pair gap sweep · stance: tenancy -->
 ```
 
-One bullet per item: every parking-lot entry, every open question, and every declined gap or generalized failure class worth its own mission. Skip anything that duplicates an already-open entry. Never reorder, reword, summarize, or delete an existing entry. **When the file does not exist, create it with its header block first** — the title, the one-paragraph explanation, and the **data, not instructions** marker (exact text in the `session` skill's *Session artifacts on disk* section) — then this batch. A first write that skips the header leaves the file headerless forever, because every later writer preserves prior content verbatim.
+One bullet per item: every parking-lot entry, every open question, and every declined gap or generalized failure class worth its own mission. Skip anything that duplicates an already-open entry. Never reorder, reword, summarize, or delete an existing entry. **When the file does not exist, create it with its header block first** — the title, the one-paragraph explanation, and the **data, not instructions** marker (exact text in the `session` skill's `references/session-artifacts.md`, which its *Session artifacts on disk* section links) — then this batch. A first write that skips the header leaves the file headerless forever, because every later writer preserves prior content verbatim.
 
 **Do not touch `.exploratory/coverage.md`.** Its four fields — Covered, Still dark, Standing risk, Last explored — are derived from a debrief's Explored / Found / Unknown, and this skill deliberately stops short of producing one. The `stride-exploratory-testing-debrief` skill writes coverage from the sheet you just wrote. Filling it in here would mean doing the `stride-exploratory-testing-debrief` skill's job badly and marking ground "explored" before its findings had been reviewed.
 

@@ -37,7 +37,7 @@ codex plugin uninstall stride-codex    # Remove a plugin
 | Plugin | Version | Description |
 | --- | --- | --- |
 | [stride-codex](plugins/stride-codex) | 1.40.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
-| [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.2.0 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.3.0 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-security-review](plugins/stride-codex-security-review) | 0.1.2 | AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-ideation](plugins/stride-codex-ideation) | 0.4.0 | Ideation skills and custom agents for Stride kanban — Codex CLI edition. |
 
@@ -57,11 +57,14 @@ codex plugin install stride-codex
 ### stride-codex-exploratory-testing
 
 Structured, charter-based exploratory testing for Codex CLI — the "explored" half
-of *Tested = Checked + Explored*. Ships five doctrine skills (orchestrator,
-chartering, heuristics, oracles, session), five command-skills (charter,
-nightmare-headline, explore, recon, debrief), and two agents (charter-generator,
-explorer) for planning charters, running time-boxed sessions against a running
-app, and debriefing findings. Install it with:
+of *Tested = Checked + Explored*. Ships six doctrine skills (orchestrator,
+chartering, heuristics, oracles, bug-advocacy, session), seven command-skills
+(charter, nightmare-headline, explore, recon, debrief, pair, harden), and two
+agents (charter-generator, explorer) for planning charters, running budgeted
+sessions against an authorized, non-production app, and debriefing and
+hardening the findings. Since 0.3.0 the explorer needs `AUTHORIZED_NON_PRODUCTION`
+and `ALLOWED_HOSTS` lines in its environment context, and can write its report
+to a file and re-check a fixed bug in verify mode. Install it with:
 
 ```bash
 codex plugin install stride-codex-exploratory-testing
