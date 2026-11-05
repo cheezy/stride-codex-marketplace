@@ -1,0 +1,20 @@
+diff --git a/app/users.py b/app/users.py
+index 9a0b1c2..3c4d5e6 100644
+--- a/app/users.py
++++ b/app/users.py
+@@ -14,3 +14,16 @@ def get_user(request):
+     log.info("fetched user", extra={"user_id": user_id})
+     return jsonify(row)
++
++
++def search_users(request):
++    q = request.args.get("q", "")
++    sort = request.args.get("sort", "email")
++    # The search term is bound as a parameter; the sort column comes straight
++    # from the query string.
++    rows = db.execute(
++        f"SELECT id, email FROM users WHERE email LIKE ? ORDER BY {sort}",
++        (f"%{q}%",),
++    ).fetchall()
++    log.info("searched users", extra={"result_count": len(rows)})
++    return jsonify(rows)

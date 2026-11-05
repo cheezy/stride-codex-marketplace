@@ -1,0 +1,60 @@
+diff --git a/app/archive.py b/app/archive.py
+new file mode 100644
+index 0000000..5f0b324
+--- /dev/null
++++ b/app/archive.py
+@@ -0,0 +1,27 @@
++import os
++import tarfile
++
++from flask import Blueprint, jsonify, request
++from flask_login import current_user, login_required
++
++UPLOAD_ROOT = "/srv/app/imports"
++
++imports = Blueprint("imports", __name__)
++
++
++@imports.route("/imports", methods=["POST"])
++@login_required
++def import_archive():
++    dest = os.path.join(UPLOAD_ROOT, str(current_user.id))
++    os.makedirs(dest, exist_ok=True)
++    written = []
++    with tarfile.open(fileobj=request.files["archive"].stream, mode="r|*") as tar:
++        for member in tar:
++            if not member.isfile():
++                continue
++            target = os.path.join(dest, member.name)
++            os.makedirs(os.path.dirname(target), exist_ok=True)
++            with open(target, "wb") as out:
++                out.write(tar.extractfile(member).read())
++            written.append(member.name)
++    return jsonify({"imported": written})
+diff --git a/tests/test_archive.py b/tests/test_archive.py
+new file mode 100644
+index 0000000..c1ddd76
+--- /dev/null
++++ b/tests/test_archive.py
+@@ -0,0 +1,21 @@
++import io
++import tarfile
++
++# Reproduce with: pytest tests/test_archive.py
++
++
++def make_archive(name, body):
++    buf = io.BytesIO()
++    with tarfile.open(fileobj=buf, mode="w") as tar:
++        info = tarfile.TarInfo(name)
++        info.size = len(body)
++        tar.addfile(info, io.BytesIO(body))
++    buf.seek(0)
++    return buf
++
++
++def test_import_writes_member(client, signed_in_user):
++    archive = make_archive("notes.txt", b"hello")
++    resp = client.post("/imports", data={"archive": (archive, "a.tar")})
++    assert resp.status_code == 200
++    assert resp.get_json() == {"imported": ["notes.txt"]}

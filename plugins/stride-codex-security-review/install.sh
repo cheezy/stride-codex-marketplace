@@ -56,12 +56,27 @@ git clone --quiet --depth 1 "$REPO" "$TMPDIR/stride-codex-security-review"
 # Copy skills (each skill is a directory with SKILL.md)
 skill_count=$(find "$TMPDIR/stride-codex-security-review/skills" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
 echo "Installing $skill_count skills..."
+rule_count=0
 for skill_dir in "$TMPDIR/stride-codex-security-review/skills"/*/; do
   [ -d "$skill_dir" ] || continue
   skill_name=$(basename "$skill_dir")
   mkdir -p "$INSTALL_DIR/skills/$skill_name"
   cp "$skill_dir/SKILL.md" "$INSTALL_DIR/skills/$skill_name/SKILL.md"
+  # Rule files (W2636): the stride-security-review skill reads its packs/ and
+  # modes/ from its own directory and sends them to the agent, so copy each
+  # .md file of those two fixed subdirectories beside SKILL.md. Only this
+  # clone's own files, never a link; a skill without them is skipped.
+  for sub in packs modes; do
+    [ -d "$skill_dir/$sub" ] || continue
+    mkdir -p "$INSTALL_DIR/skills/$skill_name/$sub"
+    for rule_file in "$skill_dir/$sub"/*.md; do
+      [ -f "$rule_file" ] && [ ! -L "$rule_file" ] || continue
+      cp "$rule_file" "$INSTALL_DIR/skills/$skill_name/$sub/"
+      rule_count=$((rule_count + 1))
+    done
+  done
 done
+echo "Installed $rule_count rule files"
 
 # Copy agents (each agent is a bare .md file, per Codex naming convention).
 # Guard the glob so an empty agents/ does not abort the install under `set -e`

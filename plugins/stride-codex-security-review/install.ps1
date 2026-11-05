@@ -86,12 +86,30 @@ try {
     $skillSrcRoot = Join-Path $cloneDir 'skills'
     $skillDirs = @(Get-ChildItem -Path $skillSrcRoot -Directory)
     Write-Host ("Installing {0} skills..." -f $skillDirs.Count)
+    $ruleCount = 0
     foreach ($skillDir in $skillDirs) {
         $destSkillDir = Join-Path (Join-Path $InstallDir 'skills') $skillDir.Name
         New-Item -ItemType Directory -Force -Path $destSkillDir | Out-Null
         $srcSkill = Join-Path $skillDir.FullName 'SKILL.md'
         Copy-Item -Path $srcSkill -Destination (Join-Path $destSkillDir 'SKILL.md') -Force
+        # Rule files (W2636): the stride-security-review skill reads its packs\
+        # and modes\ from its own directory and sends them to the agent, so copy
+        # each .md file of those two fixed subdirectories beside SKILL.md. Only
+        # this clone's own files, never a link; a skill without them is skipped.
+        foreach ($sub in @('packs', 'modes')) {
+            $srcSub = Join-Path $skillDir.FullName $sub
+            if (-not (Test-Path -LiteralPath $srcSub -PathType Container)) { continue }
+            $destSub = Join-Path $destSkillDir $sub
+            New-Item -ItemType Directory -Force -Path $destSub | Out-Null
+            $ruleFiles = @(Get-ChildItem -LiteralPath $srcSub -Filter '*.md' -File |
+                Where-Object { -not ($_.Attributes -band [System.IO.FileAttributes]::ReparsePoint) })
+            foreach ($ruleFile in $ruleFiles) {
+                Copy-Item -LiteralPath $ruleFile.FullName -Destination (Join-Path $destSub $ruleFile.Name) -Force
+                $ruleCount++
+            }
+        }
     }
+    Write-Host ("Installed {0} rule files" -f $ruleCount)
 
     # Copy agents (each agent is a bare .md file, per Codex naming convention).
     $agentSrcRoot = Join-Path $cloneDir 'agents'

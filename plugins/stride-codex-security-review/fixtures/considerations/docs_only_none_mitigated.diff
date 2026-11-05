@@ -1,0 +1,21 @@
+diff --git a/app/users.py b/app/users.py
+index 3c4d5e6..7e8f9a0 100644
+--- a/app/users.py
++++ b/app/users.py
+@@ -6,8 +6,13 @@ from app.db import db
+ log = logging.getLogger("app.users")
+
+
+ def get_user(request):
++    """Return one user's id and email as JSON.
++
++    The id comes from the ``id`` query parameter and is bound as a SQL
++    parameter; nothing about the request is logged except the user id.
++    """
+     user_id = request.args.get("id")
+     row = db.execute(
+         "SELECT id, email FROM users WHERE id = ?", (user_id,)
+     ).fetchone()
+-    log.info("fetched user", extra={"user_id": user_id})  # TODO: doc
++    log.info("fetched user", extra={"user_id": user_id})
+     return jsonify(row)

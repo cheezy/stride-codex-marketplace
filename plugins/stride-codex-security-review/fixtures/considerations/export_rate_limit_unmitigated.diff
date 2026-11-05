@@ -1,0 +1,25 @@
+diff --git a/app/exports.py b/app/exports.py
+new file mode 100644
+index 0000000..3c4d5e6
+--- /dev/null
++++ b/app/exports.py
+@@ -0,0 +1,19 @@
++import csv
++import io
++
++from flask import Response
++
++
++def export_orders(request):
++    user = require_login(request)
++    # Builds a full CSV of the user's order history on every call; no limiter.
++    rows = db.execute(
++        "SELECT id, placed_at, total FROM orders WHERE user_id = ?", (user.id,)
++    ).fetchall()
++    buf = io.StringIO()
++    writer = csv.writer(buf)
++    writer.writerow(["id", "placed_at", "total"])
++    writer.writerows(rows)
++    return Response(buf.getvalue(), mimetype="text/csv")
++
++

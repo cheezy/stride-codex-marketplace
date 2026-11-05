@@ -1,0 +1,15 @@
+diff --git a/app/sessions.py b/app/sessions.py
+index 2b3c4d5..6e7f8a9 100644
+--- a/app/sessions.py
++++ b/app/sessions.py
+@@ -11,9 +11,10 @@ log = logging.getLogger("app.sessions")
+ def login(request):
+     email = request.form.get("email")
+     row = db.execute(
+         "SELECT id, password_hash FROM users WHERE email = ?", (email,)
+     ).fetchone()
+     if row is None or not check_password(row["password_hash"], request.form.get("password")):
+         return jsonify({"error": "invalid credentials"}), 401
+     token = issue_session_token(row["id"])
++    log.info("login ok user=%s token=%s", row["id"], token)
+     return jsonify({"token": token})

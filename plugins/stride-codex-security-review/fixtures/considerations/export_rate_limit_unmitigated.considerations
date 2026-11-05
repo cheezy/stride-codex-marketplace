@@ -1,0 +1,2 @@
+The order export endpoint is rate-limited so one client cannot flood it with expensive export requests
+Exported rows are limited to the requesting user's own orders

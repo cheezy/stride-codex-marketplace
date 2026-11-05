@@ -38,7 +38,7 @@ codex plugin uninstall stride-codex    # Remove a plugin
 | --- | --- | --- |
 | [stride-codex](plugins/stride-codex) | 1.40.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.3.0 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
-| [stride-codex-security-review](plugins/stride-codex-security-review) | 0.1.2 | AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex-security-review](plugins/stride-codex-security-review) | 0.2.0 | AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-ideation](plugins/stride-codex-ideation) | 0.4.0 | Ideation skills and custom agents for Stride kanban — Codex CLI edition. |
 
 The plugin list above is kept in sync with the `plugins[]` array in
@@ -77,8 +77,8 @@ Codex CLI. Ships the `security-review-essentials` doctrine skill, the
 `stride-security-review` command-equivalent skill (full flag parity — `--full`,
 `--json`, `--sarif`, `--maestro`, `--rci`, `--baseline`, `--update-baseline`,
 `--patches`, `--base`, `--fail-on`, and `--considerations`), and the
-`security-reviewer` agent with seven
-framework rule packs plus Web/supply-chain/CI-CD and MAESTRO agentic classes. Returns
+`security-reviewer` agent, which reviews against seven framework rule packs plus
+Web-defense, supply-chain, CI/CD and MAESTRO agentic packs that the skill sends it. Returns
 severity-graded JSON findings and per-consideration mitigated/partial/unmitigated
 verdicts. Install it with:
 

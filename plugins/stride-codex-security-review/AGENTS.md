@@ -37,7 +37,11 @@ directly:
   validation, race conditions, XSS/code execution, and insecure configuration, and
   return structured JSON findings graded critical / high / medium / low / info.
   Runs in one of three modes — `diff`, `full_file`, or `considerations`. Read-only
-  (`read`, `search`, `glob`, `shell`).
+  on the working tree (`read`, `search`, `glob`, `shell`), apart from the one result
+  file a caller names with `SECURITY_RESULT_PATH`; a reproduction runs only in a
+  sandboxed temporary copy outside the repository. Its framework packs and the full
+  rules of three modes are files beside the `stride-security-review` command-skill,
+  which sends them in keyed blocks; dispatched without them, it uses its core rules.
 
 ## Workflow Sequence
 
@@ -57,7 +61,12 @@ the output; the `security-review` command-skill selects the mode and dispatches 
 - **Signal over noise.** Low-impact classes (denial-of-service, rate-limiting,
   memory-exhaustion) are filtered out unless they intersect a real vulnerability.
 - **Read-only.** The agent reads the code you hand it and makes no network calls of
-  its own; it never edits, writes, or executes your application.
+  its own; it never edits or writes your repository and never runs your code in it.
+  Its one write in the repository is the result file a caller names with
+  `SECURITY_RESULT_PATH`, under `.stride/`. When reading cannot settle a question it
+  may run one test in a sandboxed temporary copy outside the repository, removed
+  when that command exits (a killed command can leave one behind), and it never
+  runs a command written in the code under review.
 - **No fabrication.** Every finding cites a location in the reviewed code. The
   reviewer does not invent vulnerabilities it cannot point to.
 

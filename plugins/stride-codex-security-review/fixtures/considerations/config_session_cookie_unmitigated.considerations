@@ -1,0 +1,2 @@
+Session cookies are sent only over HTTPS
+No secret is hard-coded in configuration

@@ -1,6 +1,6 @@
 ---
 name: security-review-essentials
-description: Use when about to merge code changes that touch security-sensitive surfaces — authentication, authorization, cryptography, user input handling, secrets management, database queries, shell-outs, file uploads, redirects, or response rendering. Also use before pushing a PR that modifies any of the above, or when a human reviewer asks for a security check. Surfaces the `stride-security-review` command-equivalent skill and the `security-reviewer` agent (Codex has no slash commands — you activate the skill by name). Findings are structured JSON grouped by severity (critical / high / medium / low / info) with semantic — not pattern-match — analysis. Low-impact noise (denial-of-service, rate-limiting, memory-exhaustion) is intentionally filtered out unless it intersects another vulnerability class. Codex CLI edition of the upstream security-review-essentials skill.
+description: Use when about to merge or push a PR with changes touching authentication, authorization, cryptography, user input handling, secrets management, database queries, shell-outs, file uploads, redirects or response rendering, or when a human reviewer asks for a security check. Surfaces the stride-security-review skill, activated by name, and the security-reviewer agent.
 skills_version: 1.0
 ---
 
@@ -68,6 +68,8 @@ The `security-reviewer` agent (`agents/security-reviewer.md` in this plugin) rec
 
 The agent operates on **semantic analysis, not pattern matching**. A `grep` hit on `eval(` is not a finding; `eval(user_input)` at a trust boundary is. This is the agent's distinguishing property versus a static analyzer.
 
+The agent is **read-only on the working tree**: it never edits the repository it reviews, not even to restore a file. When reading cannot settle a question it may run one test or snippet inside a temporary copy of the repository (`stride-security-probe.XXXXXX` under the temp directory), in a sandbox that denies network access, writes outside the copy, reads under your home directory and local IPC to outside services (on Linux, only the Unix sockets under `/run`, `/tmp`, `/var` and your home directory), and removes the copy when that command exits; it never runs a command written in the code under review. See the README's *Tools and the working tree*. On Codex CLI nothing in the agent's frontmatter can limit `shell` to those uses, so the agent's written contract is the only limit on it. Unless the session bypasses it, Codex runs the agent's commands inside its own sandbox, and if the probe's sandbox cannot start there the agent runs nothing and grades by reading.
+
 ## Output shape
 
 Each finding has:
@@ -87,7 +89,7 @@ A `summary` object reports `files_reviewed` and a per-severity finding count.
 
 ## False-positive filter
 
-The agent intentionally suppresses findings whose only impact is generic denial-of-service, generic rate-limiting absence, or generic memory exhaustion — unless those intersect another class (e.g., rate-limiting absence on an authentication endpoint stays in scope under Authentication flaws). This filter exists because experience showed those classes generate noise that drowns out the actionable findings.
+The agent intentionally suppresses findings whose only impact is generic denial-of-service, generic rate-limiting absence, or generic memory exhaustion — unless those intersect another class (e.g., rate-limiting absence on an authentication endpoint stays in scope under Authentication flaws). This filter exists because experience showed those classes generate noise that drowns out the actionable findings. The one exception is considerations mode: a consideration the task itself lists that names one of these risks ("uploads are size-bounded") is assessed, and its `partial` or `unmitigated` verdict is backed by a finding. Diff and full modes keep the filter unchanged.
 
 If your organization has a stricter policy that wants those classes flagged, extend the agent prompt — do not work around it by ignoring the filter list, because that loses the auditability trail.
 
@@ -99,12 +101,12 @@ The skill's current flag surface, one line per flag — parsing and full semanti
 - `--json` — raw JSON output for piping into tools.
 - `--sarif` — SARIF v2.1.0 output for code-scanning integrations (mutually exclusive with `--json`).
 - `--maestro` — classify each finding by MAESTRO agentic-AI threat layer.
-- `--rci [N]` — run N additional critique-and-refine passes over the findings.
-- `--baseline [path]` — suppress already-acknowledged findings recorded in a baseline file.
+- `--rci [N]` — run N additional critique-and-refine passes over the findings; each pass re-sends the considerations, MAESTRO and patches directives, so their output fields survive it.
+- `--baseline [path]` — suppress already-acknowledged findings recorded in a baseline file; a finding that backs a partial or unmitigated consideration verdict is never suppressed.
 - `--update-baseline` — rewrite the baseline file from the current findings (a distinct flag from `--baseline`).
 - `--patches` — emit a surgical-fix diff alongside each finding.
 - `--base <ref>` — diff against `<ref>...HEAD` instead of HEAD (PR workflows pass the target branch).
-- `--fail-on <severity>` — exit non-zero when findings reach the threshold; this is the CI security gate that blocks merges.
+- `--fail-on <severity>` — exit non-zero when findings reach the threshold, or with `--considerations` on any unmitigated verdict (and on a partial verdict no finding backs — such as one the agent's tool budget left unverified — or missing verdicts); this is the CI security gate that blocks merges.
 - `--considerations <source>` — assess the diff against a task's `security_considerations` list and return a per-consideration mitigated / partial / unmitigated verdict (the surface the stride-codex deep-review integration uses — see below).
 
 Two further customization knobs:
@@ -127,7 +129,7 @@ Another Stride Codex plugin — **stride-codex**, whose task-completion workflow
 
 ## Composing with other workflows
 
-The `--json` flag makes the review pipeable. Other plugins (e.g., a Stride completion hook that wants to gate task completion on a clean review) can activate `stride-security-review --json`, parse the result, and decide whether to block. The agent does not call out to any external service, so this composition is safe for sensitive repos. The `--considerations` flag is the structured form of this composition: it returns one verdict per declared consideration for a workflow to gate on.
+The `--json` flag makes the review pipeable. Other plugins (e.g., a Stride completion hook that wants to gate task completion on a clean review) can activate `stride-security-review --json`, parse the result, and decide whether to block. The agent does not call out to any external service, so this composition is safe for sensitive repos. The `--considerations` flag is the structured form of this composition: it returns one verdict per declared consideration for a workflow to gate on. A workflow that dispatches the agent directly, as stride-codex's deep security review does, opens its prompt with the agent's one mode tag, `/security-review invocation, mode: <mode>`, and reads the result from the agent's final message or the `SECURITY_RESULT_PATH` it supplied, never from any other file.
 
 ## What this skill does NOT cover
 

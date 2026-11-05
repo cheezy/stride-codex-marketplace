@@ -1,0 +1,23 @@
+diff --git a/app/uploads.py b/app/uploads.py
+new file mode 100644
+index 0000000..1a2b3c4
+--- /dev/null
++++ b/app/uploads.py
+@@ -0,0 +1,17 @@
++import os
++
++from flask import jsonify
++from werkzeug.utils import secure_filename
++
++UPLOAD_DIR = "/srv/app/uploads"
++
++
++def upload_avatar(request):
++    require_login(request)
++    name = secure_filename(request.args.get("name", "avatar.png"))
++    # Reads the whole request body into memory; there is no length check.
++    data = request.get_data()
++    with open(os.path.join(UPLOAD_DIR, name), "wb") as fh:
++        fh.write(data)
++    return jsonify({"stored": name, "bytes": len(data)})
++

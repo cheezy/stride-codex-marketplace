@@ -1,0 +1,19 @@
+diff --git a/app/reports.py b/app/reports.py
+index 5d6e7f8..9a0b1c2 100644
+--- a/app/reports.py
++++ b/app/reports.py
+@@ -12,10 +12,18 @@ log = logging.getLogger("app.reports")
+ def legacy_report(request):
+     region = request.args.get("region")
+     rows = db.execute(
+         f"SELECT id, amount FROM sales WHERE region = '{region}'"
+     ).fetchall()
+     return jsonify(rows)
++
++
++def monthly_report(request):
++    month = request.args.get("month")
++    rows = db.execute(
++        "SELECT id, amount FROM sales WHERE month = ?", (month,)
++    ).fetchall()
++    return jsonify(rows)
