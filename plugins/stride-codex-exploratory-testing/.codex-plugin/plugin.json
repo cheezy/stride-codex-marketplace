@@ -1,6 +1,6 @@
 {
   "name": "stride-codex-exploratory-testing",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition.",
   "skills": "./skills/"
 }

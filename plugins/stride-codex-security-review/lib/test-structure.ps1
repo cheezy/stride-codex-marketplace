@@ -117,7 +117,7 @@ else {
 
 # --- lib/ tooling (transform + eval + self-tests) --------------------------
 
-foreach ($script in @('sarif_transform.sh', 'run_eval.sh', 'run_transform_tests.sh', 'check_fixtures.sh', 'check_eval_invocation.sh', 'check_git_hardening.sh', 'check_install.sh', 'test-all.sh', 'test-structure.sh', 'test-frontmatter.sh')) {
+foreach ($script in @('sarif_transform.sh', 'run_eval.sh', 'run_transform_tests.sh', 'check_fixtures.sh', 'check_eval_invocation.sh', 'check_git_hardening.sh', 'check_probe_cleanup.sh', 'check_install.sh', 'test-all.sh', 'test-structure.sh', 'test-frontmatter.sh')) {
     $p = Join-Path $PluginRoot ("lib/{0}" -f $script)
     if (Test-Path -LiteralPath $p -PathType Leaf) { Test-Ok ("lib/{0} exists" -f $script) }
     else { Test-Nope ("lib/{0} is missing" -f $script) }

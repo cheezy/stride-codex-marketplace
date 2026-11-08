@@ -102,6 +102,7 @@ for script in \
   check_fixtures.sh \
   check_eval_invocation.sh \
   check_git_hardening.sh \
+  check_probe_cleanup.sh \
   check_install.sh \
   test-all.sh \
   test-structure.sh \

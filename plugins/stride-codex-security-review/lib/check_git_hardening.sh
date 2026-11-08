@@ -211,6 +211,26 @@ run_control() {
 run_control "$R" "an unflagged commit-to-commit diff runs diff.external and the diff driver" "external diffcmd" git diff "$C1" "$C2"
 run_control "$R" "an unflagged log -p runs textconv and gpg.program" "textconv gpg" git -c diff.external= log -p -2
 run_control "$R" "an unflagged ls-files -m runs core.fsmonitor" "fsmonitor" git ls-files -m
+# W2668: --modified, ls-files' long form of -m, and --modif, an abbreviation
+# of it, run core.fsmonitor as -m does.
+run_control "$R" "an unflagged ls-files --modified runs core.fsmonitor" "fsmonitor" git ls-files --modified
+run_control "$R" "an unflagged ls-files --modif runs core.fsmonitor" "fsmonitor" git ls-files --modif
+# The marker cannot show that git took a spelling: a spelling git rejects
+# (--modifx) runs core.fsmonitor too, before its option parser exits. The exit
+# status can: with core.fsmonitor off, each spelling git takes exits 0, and the
+# rejected one does not, so an exit 0 here is git taking the spelling.
+for sp in --modified --modif --m; do
+  if ( cd "$R" && git -c core.fsmonitor=false ls-files "$sp" ) </dev/null >/dev/null 2>&1; then
+    echo "ok: git takes ls-files $sp"
+  else
+    echo "FAIL: git takes ls-files $sp -- it exited non-zero"; fail=1
+  fi
+done
+if ( cd "$R" && git -c core.fsmonitor=false ls-files --modifx ) </dev/null >/dev/null 2>&1; then
+  echo "FAIL: git rejects ls-files --modifx -- it exited 0, so an exit 0 shows nothing"; fail=1
+else
+  echo "ok: git rejects ls-files --modifx, so an exit 0 above is git taking the spelling"
+fi
 run_control "$R" "the pre-D377 copy step runs core.fsmonitor" "fsmonitor" \
   sh -c 'git ls-files -z --cached --others --exclude-standard | tar --null -T - -cf - | tar -xf - -C "$1"' sh "$(mktemp -d "$TMP/copy.XXXXXX")"
 run_control "$P" "an unflagged read of a blob the partial clone lacks runs core.sshCommand" "ssh" git cat-file -p HEAD:sub/h.txt

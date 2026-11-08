@@ -36,9 +36,9 @@ codex plugin uninstall stride-codex    # Remove a plugin
 
 | Plugin | Version | Description |
 | --- | --- | --- |
-| [stride-codex](plugins/stride-codex) | 1.40.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
-| [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.3.0 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
-| [stride-codex-security-review](plugins/stride-codex-security-review) | 0.2.0 | AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex](plugins/stride-codex) | 1.41.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.3.1 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex-security-review](plugins/stride-codex-security-review) | 0.2.1 | AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-ideation](plugins/stride-codex-ideation) | 0.4.0 | Ideation skills and custom agents for Stride kanban — Codex CLI edition. |
 
 The plugin list above is kept in sync with the `plugins[]` array in
@@ -48,7 +48,9 @@ version matches the vendored plugin's `.codex-plugin/plugin.json`.
 ### stride-codex
 
 The core Stride task-lifecycle plugin: skills and agents for claiming, working,
-reviewing, and completing kanban tasks from Codex CLI. Install it with:
+reviewing, and completing kanban tasks from Codex CLI. Since 1.41.0 its deep
+security review sends the reviewer's mode files and a result path, and Steps 6.5
+and 6.6 send the exploratory-testing 0.3.0 contract. Install it with:
 
 ```bash
 codex plugin install stride-codex
@@ -64,7 +66,9 @@ agents (charter-generator, explorer) for planning charters, running budgeted
 sessions against an authorized, non-production app, and debriefing and
 hardening the findings. Since 0.3.0 the explorer needs `AUTHORIZED_NON_PRODUCTION`
 and `ALLOWED_HOSTS` lines in its environment context, and can write its report
-to a file and re-check a fixed bug in verify mode. Install it with:
+to a file and re-check a fixed bug in verify mode. Known issue: its installer
+copies its own `AGENTS.md` over an existing one in the project root (or in
+`~/.agents/`), including the security-review plugin's. Install it with:
 
 ```bash
 codex plugin install stride-codex-exploratory-testing
@@ -80,7 +84,11 @@ Codex CLI. Ships the `security-review-essentials` doctrine skill, the
 `security-reviewer` agent, which reviews against seven framework rule packs plus
 Web-defense, supply-chain, CI/CD and MAESTRO agentic packs that the skill sends it. Returns
 severity-graded JSON findings and per-consideration mitigated/partial/unmitigated
-verdicts. Install it with:
+verdicts. Since 0.2.1 its reproduction probe ends the snippet it starts and its
+process group and looks no tool up through an empty or relative `PATH` entry; the
+Linux `bwrap` path has not been run on any host. Known issue: its installer
+copies its own `AGENTS.md` over an existing one in the project root (or in
+`~/.agents/`). Install it with:
 
 ```bash
 codex plugin install stride-codex-security-review

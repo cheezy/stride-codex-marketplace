@@ -1305,11 +1305,17 @@ if [ -f "$EXPLORER" ] && [ -f "$EXPLORE_SKILL" ] && [ -f "$README_MD" ]; then
   RP_TOOLS=$(frontmatter_tools < "$EXPLORER")
   if [ -n "$RP_TOOLS" ] && ! tools_have_edit "$RP_TOOLS" \
      && grep -qF -e 'never use an edit, write or patch tool, whatever the session offers' "$EXPLORER" \
-     && grep -qF -e 'The one file you may ever write is the report, through `shell`' "$EXPLORER" \
+     && grep -qF -e 'The report is the only file you write outside your own `mktemp -d` scratch directory, and it never goes inside that directory: you write it through `shell`' "$EXPLORER" \
      && grep -qF -e '**Write the report with a single `shell` command**, never with an edit or patch tool' "$EXPLORER"; then
     ok "explorer tools hold no edit or write tool, so the report goes through shell"
   else
     nope "explorer tools hold no edit or write tool, so the report goes through shell" "found: ${RP_TOOLS:-no tools line}"
+  fi
+
+  if grep -qF -e 'The one file you may ever write is the report' "$EXPLORER"; then
+    nope "explorer never says the report is the one file it may ever write" "found the old sentence, which forbids the cleanup rule's mktemp -d scratch files"
+  else
+    ok "explorer never says the report is the one file it may ever write"
   fi
 
   MISSED_EDIT=""
