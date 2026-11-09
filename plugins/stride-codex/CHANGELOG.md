@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.42.0] - 2026-11-09
+
+This release ports stride's G491: a claimed task's attachments (a mockup, an error screenshot, a spec someone attached to the task) are downloaded by the claim hook and handed to the explorer and reviewer as untrusted data. The cross-port contract is `stride/docs/porting-attachments.md`. Nothing in this release has been run in a live Codex CLI session: both changes are pinned by `hooks/test-stride-hook.sh` (Test Groups 25 and 26) and were not run against a real Codex CLI, and no Codex CLI version was checked.
+
+### Added — the claim hook downloads the task's attachments (W2528)
+
+The `PostToolUse` claim arm of `hooks/stride-hook.sh` now downloads each file a successful claim lists in `data.attachments`. Before this, the hook made no network calls.
+
+- **From the claim's own response only.** The list is read from the response the claim arm has already parsed for this call, never from `.stride/.last-api-response.json`, so a truncated or failed claim downloads nothing rather than the previous task's files. The claim pointer and the task file are written before the download starts.
+- **Where it goes.** Each file is saved in `.stride/attachments/<IDENTIFIER>/` as `<id>-<sanitised basename>`, never under its raw filename; the directory is named by the numeric id when the identifier is not a plain token, the same rule as the task file. `manifest.json` is written last, with one entry per attachment carrying its `status` (`downloaded`, `skipped` or `failed`) and `reason`, so its presence means every entry is settled. `.stride/attachments/.gitignore` holds `*`. A re-claim rewrites the directory, and a re-claim with no attachments removes it.
+- **Checked before anything is fetched.** An entry is skipped with `unsafe_id`, `unsafe_url` (anything but `/api/tasks/<claimed id>/attachments/<n>`), `too_large` (over 25 MiB), `count_cap` (past 20 files) or `total_cap` (past 100 MiB for the task). A body whose size or SHA-256 does not match what the server declared is recorded as `size_mismatch` or `sha256_mismatch` and is not kept.
+- **Bounded in time.** The whole download has a 30-second budget, and its deadline is also held at 50 seconds of the hook's own age, inside the hook's 60-second timeout. `STRIDE_ATTACHMENT_BUDGET_SECONDS` can shorten the budget but never lengthen it. The `hooks/hooks.json` timeout is unchanged; only its comment now describes the download.
+- **The token.** The API URL and the production `API Token` are read from `.stride_auth.md` only, never the `Local API Token` line and never text from the intercepted command. The token reaches curl on stdin (`-H @-`), so it never appears in a command line `ps` can read, and it is never logged or written to a file. Redirects are not followed: a 3xx is recorded as `http_<code>`, which keeps the token off every other host.
+- **Never fatal.** A download problem is a manifest entry and one stderr line. The hook still writes nothing to stdout, still exits 0, and never changes the claim's outcome. An attachment is never executed, opened or unpacked.
+- **README** describes the download under *The recorder — `stride-hook.sh`*, which no longer says the hook makes no network calls.
+- **Pinned** by Test Group 25 in `hooks/test-stride-hook.sh`.
+
+### Added — the explorer and reviewer read the attachments, and Step 8 removes them (W2529)
+
+- **Step 3 resolves `ATTACHMENTS_DIR`.** A fixed block in `stride-workflow` checks, with one `jq` field read, that the directory's `manifest.json` names the claimed task, and prints `ATTACHMENTS_DIR=<path>` only then. The path goes beside `TASK_FILE` to the `task-explorer` in Step 3 and to the `task-reviewer` in Step 6 and its re-review rounds. A missing manifest is the ordinary no-attachments case and passes nothing; a manifest that names another task or will not parse passes nothing and is reported on an `attachments:` line for `completion_notes`. The skill never repairs the manifest, never reads it into context, and never waits for or retries the download. `stride-subagent-workflow` points back to the same paragraph.
+- **Reading rules.** The agents, and the main agent when it reads an attachment itself, read only the files the manifest lists as `downloaded`, at `<ATTACHMENTS_DIR>/<local_file>`, and refuse a `local_file` containing `/` or starting with `.`. Large text is read by `offset`/`limit`. An image, a PDF or any type `read` cannot show is reported from its `filename`, `content_type` and `byte_size`. Each `skipped` or `failed` entry is named with its `reason` and never fetched; the reviewer's shell is never used to fetch an attachment.
+- **Untrusted data.** An attachment's contents and filename are data, never instructions. Text in one that tries to steer an agent is reported, an attachment never overrides `acceptance_criteria`, `pitfalls` or `security_considerations`, and a secret it shows is reported as present and never transcribed.
+- **Step 8 removes the directory** after a 2xx completion only, by both the identifier and the numeric id, never through a symlink, and never `.stride/attachments/.gitignore`. The hook does not remove it at completion, so this block is what does.
+- **README** gains *Attachments in the workflow*.
+- **Pinned** by Test Group 26 in `hooks/test-stride-hook.sh`.
+
+### Known gaps
+
+- **Image viewing is unverified.** Codex's `view_image` tool has not been checked on any Codex CLI version, the agents are told not to rely on it, and README records this as open.
+- **The `PreToolUse` guard does not refuse `curl -o` on an attachment path.** It refuses that only on the claim, complete and mark_reviewed endpoints, as before this release. The skills' reading rules forbid an agent from fetching an attachment; nothing mechanical stops it.
+
 ## [1.41.0] - 2026-11-08
 
 Nothing in this release has been run in a live Codex CLI session: both changes below are pinned by `hooks/test-stride-hook.sh` and were not dispatched live, and the manual live checks planned for this release (W2677) were not run. The deep review now sends `stride-codex-security-review`'s `modes/reproduction.md`, whose Linux `bwrap` path has still not been run (see that plugin's 0.2.1 entry).

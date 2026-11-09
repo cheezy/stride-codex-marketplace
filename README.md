@@ -36,7 +36,7 @@ codex plugin uninstall stride-codex    # Remove a plugin
 
 | Plugin | Version | Description |
 | --- | --- | --- |
-| [stride-codex](plugins/stride-codex) | 1.41.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
+| [stride-codex](plugins/stride-codex) | 1.42.0 | Task lifecycle skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-exploratory-testing](plugins/stride-codex-exploratory-testing) | 0.3.1 | Exploratory-testing skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-security-review](plugins/stride-codex-security-review) | 0.2.1 | AI-powered security-review skills and custom agents for Stride kanban — Codex CLI edition. |
 | [stride-codex-ideation](plugins/stride-codex-ideation) | 0.4.0 | Ideation skills and custom agents for Stride kanban — Codex CLI edition. |
@@ -50,7 +50,10 @@ version matches the vendored plugin's `.codex-plugin/plugin.json`.
 The core Stride task-lifecycle plugin: skills and agents for claiming, working,
 reviewing, and completing kanban tasks from Codex CLI. Since 1.41.0 its deep
 security review sends the reviewer's mode files and a result path, and Steps 6.5
-and 6.6 send the exploratory-testing 0.3.0 contract. Install it with:
+and 6.6 send the exploratory-testing 0.3.0 contract. Since 1.42.0 its claim hook
+downloads a claimed task's attachments into `.stride/attachments/<IDENTIFIER>/`,
+and the explorer and reviewer read them as untrusted data; image viewing has not
+been verified on any Codex CLI version. Install it with:
 
 ```bash
 codex plugin install stride-codex
