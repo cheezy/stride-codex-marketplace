@@ -71,8 +71,8 @@ so it must be updated to match the vendored `plugin.json` on every sync.
    cd "$(git rev-parse --show-toplevel)"
    git add -A
    SECRET_RE='BEGIN [A-Z ]*PRIVATE KEY\|ghp_[A-Za-z0-9]\{20,\}\|github_pat_[A-Za-z0-9_]\{20,\}\|stride_dev_[A-Za-z0-9+/=]\{30,\}\|stride_prod_[A-Za-z0-9+/=]\{30,\}'
-   git grep -n --cached "$SECRET_RE"
-   git grep -n "$SECRET_RE" $(git rev-list --all)
+   git --no-pager grep -n -G --cached "$SECRET_RE"
+   git --no-pager grep -n -G "$SECRET_RE" $(git rev-list --all)
    ```
 
    **Expect literally zero output from both scans.** Any hit is a real finding — stop, do not
@@ -106,6 +106,23 @@ so it must be updated to match the vendored `plugin.json` on every sync.
    Without it, a match in such a file is reported as `Binary file <path> matches`, which is a hit
    like any other. A compressed archive or non-UTF-8 text is opaque to both scans either way, so
    a vendored tree should not carry one.
+
+   **Keep `-G`.** `SECRET_RE` is a basic regular expression — its `\|` and `\{30,\}` mean
+   alternation and a repeat count only in that mode — and `git grep` otherwise takes its mode
+   from the operator's `grep.patternType` or `grep.extendedRegexp` setting. Under `extended` or
+   `perl` those characters are literals, the pattern matches nothing, and both scans print the
+   empty output this step reads as a pass. Under `fixed` the whole pattern is one literal string
+   that matches only a copy of its own definition, so a real token goes unreported beside that
+   self-match. `-G` (`--basic-regexp`) fixes the mode on the command line, so the gate means the
+   same thing on every machine.
+
+   **Keep `--no-pager`.** In a terminal, `git grep` starts the pager, and a pager started by the
+   first scan reads the keystrokes of the lines pasted after it, so the history scan is swallowed
+   or mangled and never runs, or worse, `less` treats the pasted text as its own commands. Under
+   git's default `LESS=FRX` that happens on any index hit, however short; with a `LESS` or
+   `core.pager` that drops `-F`, the pager holds the terminal even when the index scan found
+   nothing. `--no-pager` prints straight to the terminal, so a pasted block runs every line it
+   shows. It is an option to `git` itself, so it goes before `grep`, never after.
 
    **What a hit costs depends on which scan printed it.** An index hit (`<path>:<line>:`) has not
    left your machine: `git restore --staged .` unstages the tree, the fix belongs in the source
@@ -147,7 +164,8 @@ so it must be updated to match the vendored `plugin.json` on every sync.
 - [ ] Validation node one-liner prints `<name> <version> ok` for every plugin
 - [ ] Port-canon drift check run; no vendored copy of this repo appears in its output
 - [ ] From the repository root, tree staged with `git add -A`, then both secret scans — the
-      staged tree (`--cached`) and the history — return empty, before the commit block runs
+      staged tree (`--cached`) and the history, each run as `git --no-pager grep -n -G` — return
+      empty, before the commit block runs
 - [ ] Commit pushed and GitHub release tagged
 
 ## Adding a new plugin
@@ -180,9 +198,12 @@ so it must be updated to match the vendored `plugin.json` on every sync.
    from its first commit rather than from its first re-sync.
 
 6. Stage, secret-scan, commit, push, and publish the release exactly as in the
-   Sync steps above. Run `git add -A` first: the new plugin tree is entirely
+   Sync steps above, running the same two scans from step 5 with `-G` and
+   `--no-pager` kept. Run `git add -A` first: the new plugin tree is entirely
    untracked, so the history scan alone sees none of it, and only the staged-tree
-   scan (`git grep --cached`) reads it before the commit.
+   scan (`git grep --cached`) reads it before the commit. Read step 5 there for
+   why the blocks are separate, why the scan runs from the root without `-I` and
+   with `-G` and `--no-pager`, and what an index hit costs against a history hit.
 
 ### Add-a-plugin checklist
 
@@ -192,5 +213,6 @@ so it must be updated to match the vendored `plugin.json` on every sync.
 - [ ] README Plugins table row added
 - [ ] Validation node one-liner passes for every plugin
 - [ ] Port-canon drift check run; the new vendored copy does not appear in its output
-- [ ] Tree staged from the root, then both secret scans (staged tree and history) empty before the commit
+- [ ] Tree staged from the root, then both secret scans (staged tree and history, each run as
+      `git --no-pager grep -n -G`) empty before the commit
 - [ ] Commit pushed, GitHub release tagged
