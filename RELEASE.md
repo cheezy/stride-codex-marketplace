@@ -64,20 +64,59 @@ so it must be updated to match the vendored `plugin.json` on every sync.
    not be read as a pass. Run it here, before the commit in the next step,
    while acting on a red result still costs only a re-run of step 1.
 
-5. Secret-scan the whole history, then commit and push:
+5. Stage the re-vendored tree and secret-scan it and the whole history, from the repository
+   root:
 
    ```bash
-   git grep -nI 'BEGIN [A-Z ]*PRIVATE KEY\|ghp_[A-Za-z0-9]\{20,\}\|github_pat_[A-Za-z0-9_]\{20,\}\|stride_dev_[A-Za-z0-9+/=]\{30,\}\|stride_prod_[A-Za-z0-9+/=]\{30,\}' $(git rev-list --all)   # expect empty
+   cd "$(git rev-parse --show-toplevel)"
    git add -A
+   SECRET_RE='BEGIN [A-Z ]*PRIVATE KEY\|ghp_[A-Za-z0-9]\{20,\}\|github_pat_[A-Za-z0-9_]\{20,\}\|stride_dev_[A-Za-z0-9+/=]\{30,\}\|stride_prod_[A-Za-z0-9+/=]\{30,\}'
+   git grep -n --cached "$SECRET_RE"
+   git grep -n "$SECRET_RE" $(git rev-list --all)
+   ```
+
+   **Expect literally zero output from both scans.** Any hit is a real finding — stop, do not
+   commit, and rotate the credential. There is no allow-list to consult and none to widen.
+
+   Only when both scans printed nothing, commit and push:
+
+   ```bash
    git commit -m "Sync <name> to X.Y.Z"
    git push origin main
    ```
 
-   **Expect literally zero output.** Any hit is a real finding — stop, do not commit, and rotate
-   the credential. There is no allow-list to consult and none to widen.
+   **The scans and the commit are separate blocks on purpose.** `git grep` prints a hit and
+   carries on, so a single block pasted whole would commit and push whatever the scans had just
+   reported. Its exit status also reads backwards for a gate — `0` means it found a match — so
+   do not chain the commit onto a scan with `&&` or run the block under `set -e`.
 
-   Each clause bounds the *shape* of a real credential rather than listing exceptions, which is
-   what lets the gate be satisfiable. A genuine token is a long run of unbroken base64; the
+   **Stage first, because history alone cannot see what you are about to commit.**
+   `$(git rev-list --all)` lists commits, so the second scan reads committed history only, and
+   the files step 1's `rsync` has just copied in sit in no commit yet. `git add -A` puts every one
+   of them in the index — new files, changed files, and the removal of any file `rsync --delete`
+   dropped — and `git grep --cached` reads the index, which is exactly the tree the commit
+   records. Keep the history scan as well: the index cannot see a credential that an earlier
+   commit added and a later one removed.
+
+   **Run from the root, and without `-I`.** `git grep` searches only the current directory and
+   below, while `git add -A` stages the whole tree, so from a subdirectory both scans would come
+   back empty over files they never read; the `cd` removes that. And `-I` would skip every file
+   git treats as binary — including any plain-text file a vendored `.gitattributes` marks
+   `binary` or `-diff` — so a credential there would reach the commit with no output at all.
+   Without it, a match in such a file is reported as `Binary file <path> matches`, which is a hit
+   like any other. A compressed archive or non-UTF-8 text is opaque to both scans either way, so
+   a vendored tree should not carry one.
+
+   **What a hit costs depends on which scan printed it.** An index hit (`<path>:<line>:`) has not
+   left your machine: `git restore --staged .` unstages the tree, the fix belongs in the source
+   plugin, and you re-vendor from step 1 and scan again. A history hit (`<commit>:<path>:<line>:`)
+   is already in a commit, normally one that has been pushed, and neither unstaging nor a
+   re-vendor clears it — rotate the credential at once, and stop the release for a human to
+   decide what happens to that history.
+
+   Each clause of `SECRET_RE` bounds the *shape* of a real credential rather than listing
+   exceptions, which is what lets the gate be satisfiable. A genuine token is a long run of
+   unbroken base64; the
    self-describing fixtures a vendored plugin legitimately ships — negative-test canaries and
    documentation placeholders whose names announce what they are — are short and word-shaped, so
    the `{30,}` bound excludes them by construction instead of by name. `BEGIN [A-Z ]*PRIVATE KEY`
@@ -107,7 +146,8 @@ so it must be updated to match the vendored `plugin.json` on every sync.
 - [ ] README Plugins table version matches the vendored `plugin.json`
 - [ ] Validation node one-liner prints `<name> <version> ok` for every plugin
 - [ ] Port-canon drift check run; no vendored copy of this repo appears in its output
-- [ ] Secret scan returns empty
+- [ ] From the repository root, tree staged with `git add -A`, then both secret scans — the
+      staged tree (`--cached`) and the history — return empty, before the commit block runs
 - [ ] Commit pushed and GitHub release tagged
 
 ## Adding a new plugin
@@ -139,8 +179,10 @@ so it must be updated to match the vendored `plugin.json` on every sync.
    vendored copy is a copy like any other, so it is subject to the same check
    from its first commit rather than from its first re-sync.
 
-6. Secret-scan, commit, push, and publish the release exactly as in the Sync
-   steps above.
+6. Stage, secret-scan, commit, push, and publish the release exactly as in the
+   Sync steps above. Run `git add -A` first: the new plugin tree is entirely
+   untracked, so the history scan alone sees none of it, and only the staged-tree
+   scan (`git grep --cached`) reads it before the commit.
 
 ### Add-a-plugin checklist
 
@@ -150,4 +192,5 @@ so it must be updated to match the vendored `plugin.json` on every sync.
 - [ ] README Plugins table row added
 - [ ] Validation node one-liner passes for every plugin
 - [ ] Port-canon drift check run; the new vendored copy does not appear in its output
-- [ ] Secret scan empty, commit pushed, GitHub release tagged
+- [ ] Tree staged from the root, then both secret scans (staged tree and history) empty before the commit
+- [ ] Commit pushed, GitHub release tagged
