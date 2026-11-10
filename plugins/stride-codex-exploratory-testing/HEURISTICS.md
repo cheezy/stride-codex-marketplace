@@ -19,6 +19,11 @@ want to widen it. Grab a lens below by name, then read its entry in the skill.
 - **Web heuristics** — HTTP- and browser-specific probes (e.g. Tamper the URL,
   Back / Forward / Resubmit, Multiple Tabs, Cookies / Session, Special Characters &
   Injection, Resize / Zoom / Responsive).
+- **Change-risk lenses** — chosen by the kind of change being tested, each with a
+  *When it applies* trigger. General: Change the Rights, Shadow Decision,
+  Who Else Is Watching, Pull the Rug, Every Surface, Every Locale,
+  Developer Guidebook, Leave No Trace, Telemetry Semantics. Web only:
+  Other Verbs, After the Headers, Response Hardening.
 - **Variable catalog** — the dimensions worth deliberately varying: Count, Position,
   Files & storage, Geography / locale, Format, Size, Depth, Timing, Input method.
 - **Tours** — James Whittaker's tours grouped by *tourist district* (Business,

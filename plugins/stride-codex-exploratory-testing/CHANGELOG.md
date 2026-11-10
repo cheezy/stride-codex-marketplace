@@ -5,6 +5,51 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-09
+
+The G503 batch from the Claude Code plugin, carried over to Codex CLI in this edition's own words. The heuristics catalog gains twelve change-risk lenses, the oracles skill and the explorer card gain two oracles, a project can describe its test environment once in `.exploratory.md`, the explorer can sign fixture users in through a probe harness, and the charter-generator can charter a code change from its edge cases.
+
+One release covers the whole port. The four commits since 0.3.1 are W2663 (the change-risk lenses, `be441fc`), W2664 (the two oracles, `3cb2919`), W2665 (`.exploratory.md` and the probe harness, `d6dce9e`) and W2666 (the charter-generator's change mode, `ec82269`). The explorer's tools line is still `read`, `search`, `glob` and `shell`, the charter-generator's is still `read`, `search` and `glob`, and both structure suites now run 404 checks each, with identical labels in bash and PowerShell. A figure given inside a bullet below is the value at that step.
+
+**A consumer that wants the harness surface must change, and the output contract is now `"1.1"`.** The explorer uses the probe harness only when its environment context carries a `PROBE_HARNESS` line, so `stride-codex`'s Step 6.5 must read the project's `.exploratory.md`, confirm it with the user and send `PROBE_HARNESS`, with `PROBE_SERVICES` and `PROBE_DIR` when it has them, before any session can sign in through the harness. It does neither today. Every report now carries `contract_version: "1.1"` and `session_sheet.surfaces_used`; the explore skill reads a `1.0` report unchanged, and a consumer that insists on `"1.0"` must accept `"1.1"`. Without a `PROBE_HARNESS` line or a change context, a session and a charter run behave as they did in 0.3.1.
+
+### Added
+
+- **The `.exploratory.md` project environment file** (W2665). `docs/project-environment.md` describes it and `templates/exploratory.md` is a starting copy: six optional sections, `{probe_file}` as the only placeholder, and no secret values, only key names. Neither file is installed; both live in the repository only, so the explore skill carries the format it needs inline.
+- **The probe harness** (W2665). The explorer takes optional `PROBE_HARNESS`, `PROBE_SERVICES` and `PROBE_DIR` lines: one command with exactly one `{probe_file}` that runs a scratch probe under the project's own test framework, so a session can sign in fixture users with several roles. Each service it reaches must also be in `ALLOWED_HOSTS`, and a harness connection to any other host ends the session `blocked`. A probe file is written through one `shell` heredoc under `noclobber`, in the session's `mktemp -d` directory or a gitignored `PROBE_DIR`, and removed at cleanup.
+- **Twelve change-risk lenses in the heuristics catalog** (W2663). `skills/heuristics/SKILL.md` gains a General change-risk lenses sub-section (Change the Rights, Shadow Decision, Who Else Is Watching, Pull the Rug, Every Surface, Every Locale, Developer Guidebook, Leave No Trace, Telemetry Semantics) and a Web change-risk lenses sub-section (Other Verbs, After the Headers, Response Hardening), each row with a trigger naming the kind of change that calls for it. Pull the Rug and After the Headers keep Interrupt's in-app limits, and After the Headers must be observed on a real server; Other Verbs and Response Hardening are for authorized testing of your own system only. HTTP requests are made with `curl -q -sS -i` through `shell`, never `-L`. `HEURISTICS.md` names the twelve.
+- **Two oracles, Adapter Is Not the Wire and Two Decision Sites** (W2664). `skills/oracles/SKILL.md` gains a section for each, with an example, before the quality-criteria checklist. A result seen only through an adapter does not establish streamed or chunked responses, `HEAD`, connection aborts or `Content-Length`, so it is confirmed on a real server with `curl -q -sS -i` through `shell` or recorded under `debrief.unknown`, never `found`; and when a client and a server each decide the same thing, they must agree in every state. *Safety of oracle examples* says wire confirmation grants no new reach.
+- **The charter-generator's change mode** (W2666). `agents/charter-generator.md` takes an optional change context (target, acceptance criteria, edge cases, key files, changed-file list and named unit tests), labelled untrusted data. In change mode every edge case is chartered or named as covered by a unit test the change names, and a change-risk lens applies only when its trigger matches. `skills/chartering/SKILL.md` gains a *Chartering a change from its edge cases* section, and `fixtures/example-charters.md` a worked change-context example.
+
+### Changed
+
+- **The explore skill's Step 3 reads `.exploratory.md` first** (W2665). It shows the file's hosts and harness command verbatim and uses them only once the operator confirms them in the single question round, offers once to save the answers (only on a yes, and never over an existing file), and reads results by contract `1.1`.
+- **Explorer output contract `1.1`** (W2665). `session_sheet.surfaces_used` records which of `http`, `harness`, `browser` and `source` a session used, and `contract_version` is `"1.1"`. `fixtures/example-explorer-output.json` moves to `1.1`, and `fixtures/example-session-sheet.md`'s key list names `surfaces_used`.
+- **Charter output gains `surface` and `edge_cases_covered`** (W2666). In change mode every charter is tagged with the surface it needs (`http`, `harness`, `browser` or `source`), the `source` enum gains `change-risk` and keeps `sfdpot` and every other value, and the root gains `edge_cases_covered`. Without a change context the output is unchanged, and a surface tag grants no new reach.
+- **The explorer card has one line per new oracle, and its byte cap rises from 4,096 to 4,480** (W2664). The card is 4,427 bytes. The severity line, ladder and stop rules are unchanged. Outside the card, the explorer's pointer to the `oracles` skill names both new oracles.
+- **`README.md`** names the lenses, the two oracles, the charter-generator's change mode, and the environment doc and template.
+- **Both structure suites pin each step**, with identical labels in bash and PowerShell: the change-risk lenses, one row per lens found by its trimmed first cell with CRLF tolerated (W2663); the two oracles and the card cap (W2664); `.exploratory.md`, the `PROBE_` lines, the probe-file rules and contract `1.1` (W2665); and change mode (W2666). The suites go from 205 checks at 0.3.1 to 404.
+
+### Not verified in a live Codex CLI
+
+- **Nothing in this release has been run in a live Codex CLI session**: the CLI is not installed where the port was done. Every change was checked by the two structure suites only. Three live checks were handed back to a human: the explore skill reading, showing and confirming a `.exploratory.md` (including no file and a file with an unknown section); the explorer running a confirmed `PROBE_HARNESS` probe, removing its file and recording `harness` in `surfaces_used`; and the charter-generator mapping `edge_cases_covered` for a change with no edge cases and for one whose edge case a named unit test covers.
+
+### Not carried by this edition
+
+Each item is listed so a reader can tell a deliberate omission from an oversight.
+
+- **W2582 to W2587** are `stride`-side: they change `stride`'s Step 0, its Step 5.5 and its task authoring, not this plugin. The matching work is owed to `stride-codex`, starting with the `.exploratory.md` read and the `PROBE_HARNESS` line above.
+- **W2588**'s measurements come from Claude Code alone, so nothing here claims a catch rate, a saving or a speed-up for this edition.
+- **This edition has no write tool**, so probe files go through one `shell` heredoc rather than a file-write tool, and **`docs/` and `templates/` are not installed**, so the explore skill states the `.exploratory.md` format inline.
+- **The card cap is 4,480 bytes here**, not upstream's 4,352, because this card measures 4,427 bytes.
+- **Upstream's untasked `d560bd0`**, which made upstream's rules and examples app-neutral and added an *App neutrality* scan over its whole rule set, is not carried as a scan. This edition's new sections were written with generic examples, and its structure suites refuse a task identifier or project name only in some of the files W2663 to W2666 changed (`skills/heuristics/SKILL.md`, `HEURISTICS.md`, `skills/oracles/SKILL.md`, the environment doc and template, `agents/charter-generator.md`, `skills/chartering/SKILL.md` and `fixtures/example-charters.md`), not across every file.
+- **Unlike upstream, this edition pins every step in a PowerShell suite as well as a bash one.** There is still no hook suite in this repository, so drift against `stride-codex` is not checked mechanically.
+
+### Known issues
+
+- **The charter and nightmare-headline command-skills were not changed for change mode.** `skills/stride-exploratory-testing-charter/SKILL.md` still lists the `source` values without `change-risk`, `skills/stride-exploratory-testing-nightmare-headline/SKILL.md` names only `source: "nightmare-headline"`, and neither renders `surface` or `edge_cases_covered`. Upstream left its matching command files unchanged as well, so this is a gap the two editions share.
+- 0.3.1's two *Known issues* are still open: the installers overwrite an existing `AGENTS.md`, and no live install has checked whether Codex picks up agents copied as Markdown into `~/.agents/agents/`.
+
 ## [0.3.1] - 2026-11-08
 
 ### Fixed

@@ -120,8 +120,8 @@ SESSION BUDGET
 
 Read as JSON, that is the `session_sheet` object in `agents/explorer.md`: `tester`,
 `probe_budget`, `probes_attempted`, `probes_with_finding`, `on_charter_probes`,
-`off_charter_probes`, `tool_calls_used`, `areas_covered`, `heuristics_applied`, and
-`stop_reason`.
+`off_charter_probes`, `tool_calls_used`, `areas_covered`, `heuristics_applied`,
+`surfaces_used` (contract `1.1`), and `stop_reason`.
 
 The *shape* the percentages carried survives — most of the session served the charter,
 one detour produced a new candidate charter — but nothing here is estimated. And

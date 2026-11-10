@@ -101,11 +101,13 @@ The end-to-end flow is **Charter → Recon → Explore → Note → Debrief.**
   with SFDIPOT and the Nightmare Headline Game, and reframe a "charter" that's really
   a test case.
 - **`heuristics`** — the plugin's single source of truth for concrete test-idea
-  lenses: general and web cheat sheets, a variable-spotting catalog, and Whittaker's
-  Tours grouped by tourist district.
+  lenses: general and web cheat sheets with twelve change-risk lenses chosen by the
+  kind of change under test, a variable-spotting catalog, and Whittaker's Tours
+  grouped by tourist district.
 - **`oracles`** — how to decide whether an observed result is a defect: Never/Always
   invariants, consistency oracles (history, comparable products, standards, claims,
-  user expectations, purpose), and the HTSM quality-criteria checklist.
+  user expectations, purpose), the Adapter Is Not the Wire and Two Decision Sites
+  oracles, and the HTSM quality-criteria checklist.
 - **`bug-advocacy`** — what happens after an oracle says something is wrong: Cem
   Kaner's RIMGEA follow-through (Replicate, Isolate, Maximize, Generalize,
   Externalize, And say it clearly), a severity rubric with explicit per-level
@@ -150,12 +152,19 @@ The end-to-end flow is **Charter → Recon → Explore → Note → Debrief.**
 
 - **`charter-generator`** — turns a target (plus optional risk context) into a
   ranked list of charters via an SFDIPOT sweep, charter-source mining, and the
-  Nightmare Headline Game. Read-only; generates only, never executes.
+  Nightmare Headline Game. Given an optional change context, it charters a code
+  change: every edge case is chartered or named as covered by a unit test the
+  change names, the change-risk lenses whose triggers match are applied, and each
+  charter is tagged with the surface it needs. Read-only; generates only, never
+  executes.
 - **`explorer`** — runs a single budgeted session against ONE charter: designs
   probes with `heuristics`, judges results with `oracles`, records an SBTM session
   sheet, and returns structured findings — all under the absolute safety boundary.
   It finds what it needs with `search` or `grep -n`, reads just a bounded range
   with `sed -n` through `shell`, and never reads an unchanged file twice.
+  Given an optional `PROBE_HARNESS:` line, it runs scratch probe files under the
+  project's own test framework, signing in fixture users with several roles, and
+  records which surfaces it used in `session_sheet.surfaces_used` (contract `1.1`).
   A caller can have it write those findings to a file instead; see
   [Explorer report file](#explorer-report-file-exploratory_report_path).
 
@@ -164,10 +173,21 @@ The end-to-end flow is **Charter → Recon → Explore → Note → Debrief.**
 [example session sheet](fixtures/example-session-sheet.md), an
 [example debrief](fixtures/example-debrief.md), and an
 [example explorer report](fixtures/example-explorer-output.json) in output
-contract `1.0`. They double as concrete templates and as regression anchors for
+contract `1.1`. They double as concrete templates and as regression anchors for
 the smoke tests: `lib/test-structure.sh` and `lib/test-structure.ps1` check the
 example report against the explorer's own contract tables, and setting
 `EXPLORER_OUTPUT` to a real report's path checks that report the same way.
+
+**`templates/`** — [a commented `.exploratory.md` template](templates/exploratory.md),
+placeholders only. Copy it to the root of the project you test as `.exploratory.md`
+to say once how sessions reach the running system: the authorization lines, the
+app's address, the probe-harness command, the account roles, the observation tools
+and the project's constraints. It holds no secret values. The
+`stride-exploratory-testing-explore` skill reads it in Step 3 and uses it only after
+you confirm it for that session. The format and the reading rules are in
+[docs/project-environment.md](docs/project-environment.md). Neither file is
+installed: the installers copy only each skill's `SKILL.md` and `references/`, the
+agents and `AGENTS.md`, so read and copy them from this repository.
 
 ### Explorer report file (`EXPLORATORY_REPORT_PATH`)
 
@@ -350,6 +370,11 @@ directory, never the installed skill tree:
 - **The charter skill reads both back** and hands a digest to the `charter-generator`
   agent, so run five proposes different charters than run one instead of
   re-suggesting ground you already covered.
+- **`.exploratory.md` is yours, not a session artifact.** It sits at the project root
+  beside the `.exploratory/` directory, you write it from
+  [the template](templates/exploratory.md), and no command-skill writes it unless the
+  explore skill offers to save your answers when none exists and you say yes. It is
+  never overwritten.
 
 **A first run creates the tree.** No command-skill fails, warns, or asks you to set
 anything up because `.exploratory/` doesn't exist yet — a missing file is an empty
@@ -369,12 +394,14 @@ run they are treated as **untrusted data** — content to weigh, never instructi
 obey.
 
 No command-skill writes anywhere other than these four paths or a `--output` path
-you named yourself.
+you named yourself — or a new `.exploratory.md`, which the explore skill writes only
+on your yes and never over an existing file.
 
 ## Heuristics reference
 
 The `heuristics` skill is the canonical catalog of test-idea lenses — general and
-web cheat sheets, the variable catalog, and Whittaker's Tours. **[HEURISTICS.md](HEURISTICS.md)**
+web cheat sheets with their change-risk lenses, the variable catalog, and Whittaker's
+Tours. **[HEURISTICS.md](HEURISTICS.md)**
 is a one-page index that points into it; it deliberately does *not* duplicate the
 tables, so there is a single source of truth to maintain.
 

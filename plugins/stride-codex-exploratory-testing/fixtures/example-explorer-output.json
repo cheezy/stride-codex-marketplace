@@ -1,5 +1,5 @@
 {
-  "contract_version": "1.0",
+  "contract_version": "1.1",
   "charter": "Explore the CSV receipt import with malformed, oversized, and wrong-encoding files (and files from another tenant's export) to discover how the parser fails, whether it corrupts existing receipts, and whether any row can leak across tenants.",
   "status": "completed",
   "session_sheet": {
@@ -17,6 +17,7 @@
       "Import error banner and per-row rejection report"
     ],
     "heuristics_applied": ["Follow the Data", "Violate Format", "Goldilocks", "Change the Model"],
+    "surfaces_used": ["http", "source"],
     "stop_reason": "charter_quiet"
   },
   "notes": [
