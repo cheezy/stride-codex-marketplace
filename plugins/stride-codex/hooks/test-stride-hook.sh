@@ -4657,7 +4657,7 @@ assert_eq "23h: the twin still says to keep the two in sync" "1" \
   "$(g23_count 'keep the two in sync' "$G23_SWS")"
 assert_eq "23h: README describes the tag, the result path and the budget rule" "1 1 1" \
   "$(grep -c 'mode: considerations' "$G23_RM") $(grep -c 'SECURITY_RESULT_PATH' "$G23_RM") $(grep -c 'budget reached:' "$G23_RM")"
-assert_eq "23h: the changelog's first section is [Unreleased] and carries this entry" "## [Unreleased] 1" \
+assert_eq "23h: the changelog's first section is [Unreleased], and the changelog carries this entry" "## [Unreleased] 1" \
   "$(grep -m1 '^## \[' "$G23_CL") $(grep -c '^### Changed — .*(W2673)$' "$G23_CL")"
 
 # 23i: a None placeholder still skips the deep review in both twins
@@ -4904,9 +4904,9 @@ fi
 # 24j: README and CHANGELOG
 assert_eq "24j: README describes the two safety lines, the report path, the ending and the framework" "1 1 1 1 1" \
   "$(grep -c 'AUTHORIZED_NON_PRODUCTION: yes' "$G24_RM") $(grep -c 'ALLOWED_HOSTS: <host' "$G24_RM") $(grep -c 'EXPLORATORY_REPORT_PATH' "$G24_RM") $(grep -c 'no_observation_surface' "$G24_RM") $(grep -c 'explicit `--framework`' "$G24_RM")"
-assert_eq "24j: the changelog's first section is [Unreleased] and carries this entry once" "## [Unreleased] 1" \
+assert_eq "24j: the changelog's first section is [Unreleased], and the changelog carries this entry once" "## [Unreleased] 1" \
   "$(grep -m1 '^## \[' "$G24_CL") $(grep -c '^### Changed — .*(W2674)$' "$G24_CL")"
-assert_eq "24j: this entry follows W2673's, inside [Unreleased]" "yes" \
+assert_eq "24j: this entry follows W2673's, above [1.40.0]" "yes" \
   "$(awk '/^### Changed — .*\(W2673\)$/{a=NR} /^### Changed — .*\(W2674\)$/{b=NR} /^## \[1\.40\.0\]/{c=NR} END{print (a && b && c && a < b && b < c) ? "yes" : "no"}' "$G24_CL")"
 
 # 24k: what must not change
@@ -6251,10 +6251,15 @@ fi
 # byte-identical to stride's (the checker keys on them), stride-workflow
 # Step 6.5 defines exploratory_outcomes_ok, Step 8 runs it before the complete
 # call, and Step 9 repeats every HANDED BACK: line. g29_check scopes each rule
-# to its section and counts it exactly once there; 29l-29s run the checker,
-# extracted from the skill, against fixture records under $TMPDIR_TEST; 29u
-# mutates the extracted function and 29v-29w9 mutate COPIES of the skills --
-# the real files are never written. 29k compares the formats and the function
+# to its section and counts it exactly once there; 29l-29s7 run the checker,
+# extracted from the skill, against fixture records under $TMPDIR_TEST;
+# 29e2-29e13 run Step 8's whole block, 29e4-29e13 pinning each guard on its
+# refusal line;
+# 29u-29u8 mutate the extracted function; 29y gives every case that expects
+# false a twin with its defect removed, which must be true; and 29v-29w17
+# mutate COPIES of the skills -- the real files are never written. 29z and
+# 29z2 read this group's own text: every false case has its 29y twin, and no
+# comment gives a stale case range. 29k compares the formats and the function
 # with stride's own when that repo is present. It reuses Group 27's
 # g27_slice, g27_count and g27_mut and Group 28's g28_block.
 # What this does NOT prove: that an agent writes the lines or runs the check
@@ -6336,7 +6341,7 @@ g29_check() {
   g29_once c_one '**One coverage line, in `completion_summary`**, counting the outcome lines exactly.' "$ol"
 
   # s_: the skip line replaces "record nothing extra" in every fallback
-  g29_once s_bullet '**When Step 6.5 did not fire** — plugin unavailable, no authorized-and-non-production affirmative, no reach or `ALLOWED_HOSTS` established, or a budget too small for one charter — and the task carried `manual_tests` or `edge_cases`, write one `Exploratory testing skipped: <reason>` line and no charter or coverage line.' "$ol"
+  g29_once s_bullet '**When Step 6.5 did not fire** — it built no charter, in the one sense `stride-workflow` Step 6.5 defines: plugin unavailable, no authorized-and-non-production affirmative, no reach or `ALLOWED_HOSTS` established, a budget too small for one charter, or every manual test and edge case mapped to a unit test or a human responsibility — and the task carried `manual_tests` or `edge_cases`, write one `Exploratory testing skipped: <reason>` line and no charter or coverage line.' "$ol"
   g29_once s_ct 'record nothing beyond the one `Exploratory testing skipped: <reason>` line of § Outcome Lines, Coverage and Hand-Backs, and that only when the task carried `manual_tests` or `edge_cases`' "$(cat "$ct")"
   g29_once s_wf 'record only the one `Exploratory testing skipped: <reason>` line `stride-completing-tasks` asks for' "$c65"
   g29_once s_esc_wf 'The one record a skip owes is the `Exploratory testing skipped: <reason>` line, and only when the task carried `manual_tests` or `edge_cases`.' "$c65"
@@ -6477,7 +6482,7 @@ if [ -f "$G29_WF" ] && [ -f "$G29_SW" ] && [ -f "$G29_CT" ] && [ -f "$G29_DOC" ]
     echo "  SKIP: 29k: stride not found at $G29_UP -- the cross-repo compare runs only when the upstream repo is present"
   fi
 
-  # --- 29l-29s: the checker, extracted from the skill and run ---
+  # --- 29l-29s7: the checker, extracted from the skill and run ---
   if command -v jq >/dev/null 2>&1; then
     G29_FN=$(g29_fn "$G29_WF")
     eval "$G29_FN"
@@ -6638,9 +6643,98 @@ $G29_C1" '{completion_notes: $n, completion_summary: $s}' > "$G29_S/.outcomes-W9
       '{completion_notes: $n, completion_summary: $s}' > "$G29_S/.outcomes-W9.json"
     assert_eq "29e3: and false on a record missing its owner" "$G29_NO" \
       "$(cd "$G29_D" && G29_R1="$G29_R3" CODEX_PROJECT_DIR= CLAUDE_PROJECT_DIR= bash -c "$G29_B8" 2>&1)"
+    jq -n --arg n "${G29_L3% | owner=HANDED BACK} | owner=D123" --arg s 'Exploratory coverage: 0 performed, 0 partial, 1 not performed' \
+      '{completion_notes: $n, completion_summary: $s}' > "$G29_S/.outcomes-W9.json"
+    assert_eq "29y: 29e3 with an owner given to the charter, the block prints true" "$G29_OK" \
+      "$(cd "$G29_D" && G29_R1="$G29_R3" CODEX_PROJECT_DIR= CLAUDE_PROJECT_DIR= bash -c "$G29_B8" 2>&1)"
     rm -f "$G29_S/.outcomes-W9.json"
     assert_eq "29e4: and false when the agent wrote no outcomes file" "$G29_NO" \
       "$(cd "$G29_D" && G29_R1="$G29_R1" CODEX_PROJECT_DIR= CLAUDE_PROJECT_DIR= bash -c "$G29_B8" 2>&1)"
+    jq -n --arg n "$G29_L1" --arg s "$G29_C1" '{completion_notes: $n, completion_summary: $s}' > "$G29_S/.outcomes-W9.json"
+    assert_eq "29y: 29e4 with the agent's outcomes file written, the real block prints true" "$G29_OK" \
+      "$(cd "$G29_D" && G29_R1="$G29_R1" CODEX_PROJECT_DIR= CLAUDE_PROJECT_DIR= bash -c "$G29_B8" 2>&1)"
+    rm -f "$G29_S/.outcomes-W9.json"
+
+    # --- 29e4-29e13: each of the Step 8 block's own guards, pinned by running it ---
+    # The real checker fails closed on a missing payload by itself, so a
+    # missing-file case run through it passes with the block's guard deleted
+    # (W2681's review cap). G29_B8S is the same block with a stub checker that
+    # always prints true pasted in, so whatever it prints false, a guard
+    # printed. The symlink cases run the real checker on a sound record behind
+    # the link: with the guard gone it reads that record and prints true.
+    # 29e7, 29e8 and 29e9 delete each file guard from a copy of the block and show the case
+    # that pins it flips to true. Every link and directory is under $G29_D.
+    G29_STUB="exploratory_outcomes_ok() { echo 'exploratory_outcomes_ok: true'; }"
+    G29_B8S=${G29_B8/"$G29_FN"/$G29_STUB}
+    assert_eq "29e4: the stub checker stands in for the real one in a copy of the block" "yes" \
+      "$([ "$G29_B8S" != "$G29_B8" ] && printf '%s\n' "$G29_B8S" | grep -qxF -- "$G29_STUB" && echo yes || echo no)"
+    g29_b8() { # $1=block $2=directory to run it from $3=report path; prints what the block prints
+      ( cd "$2" && G29_R1="$3" CODEX_PROJECT_DIR= CLAUDE_PROJECT_DIR= bash -c "$1" 2>&1 )
+    }
+    g29_sound() { # $1=file: write a sound record for r1 alone there
+      jq -n --arg n "$G29_L1" --arg s "$G29_C1" '{completion_notes: $n, completion_summary: $s}' > "$1"
+    }
+    g29_bmut() { # $1=old $2=new $3=block: the block with old replaced, or MISSING
+      local m=${3/"$1"/"$2"}
+      if [ "$m" = "$3" ]; then echo MISSING; else printf '%s\n' "$m"; fi
+    }
+    G29_O8="$G29_S/.outcomes-W9.json"
+    # Each anchor names one guard alone, so deleting another guard leaves it found.
+    G29_G_NOFILE='[ ! -f "$OUT" ] || '
+    G29_G_LFILE=' || [ -L "$OUT" ]; then'
+    G29_G_LDIR=' || [ -L "$ROOT/.stride" ] \'
+    G29_G_NODIR=' || [ ! -d "$ROOT/.stride" ]'
+    G29_G_ROOT='[ -z "$ROOT" ] || '
+    G29_G_STEM=' || [ -z "$OC_STEM" ]'
+    # missing outcomes file
+    rm -f "$G29_O8"
+    assert_eq "29e4: the Step 8 block prints false for a missing outcomes file" "$G29_NO" "$(g29_b8 "$G29_B8S" "$G29_D" "$G29_R1")"
+    assert_eq "29e7: break-it -- without the missing-file guard, the missing file reaches the stub and prints true" "$G29_OK" \
+      "$(g29_b8 "$(g29_bmut "$G29_G_NOFILE" '' "$G29_B8S")" "$G29_D" "$G29_R1")"
+    g29_sound "$G29_O8"
+    assert_eq "29y: 29e4 with the outcomes file written, the stub's true gets through" "$G29_OK" "$(g29_b8 "$G29_B8S" "$G29_D" "$G29_R1")"
+    # outcomes file is a symlink to a sound record
+    rm -f "$G29_O8"; g29_sound "$G29_D/real-outcomes.json"; ln -s "$G29_D/real-outcomes.json" "$G29_O8"
+    assert_eq "29e4: the Step 8 block prints false when the outcomes file is a symlink" "$G29_NO" "$(g29_b8 "$G29_B8" "$G29_D" "$G29_R1")"
+    assert_eq "29e8: break-it -- without the file-symlink guard, the checker reads the record behind the link and prints true" "$G29_OK" \
+      "$(g29_b8 "$(g29_bmut "$G29_G_LFILE" '; then' "$G29_B8")" "$G29_D" "$G29_R1")"
+    rm -f "$G29_O8"; cp "$G29_D/real-outcomes.json" "$G29_O8"
+    assert_eq "29y: 29e4 with the same record as a regular file, the block prints true" "$G29_OK" "$(g29_b8 "$G29_B8" "$G29_D" "$G29_R1")"
+    # .stride is a symlink to a real .stride holding a sound record
+    G29_LD="$G29_D/lnk"; mkdir -p "$G29_LD"; touch "$G29_LD/.stride.md"; rm -f "$G29_LD/.stride"; ln -s "$G29_S" "$G29_LD/.stride"
+    assert_eq "29e4: the Step 8 block prints false when .stride is a symlink" "$G29_NO" "$(g29_b8 "$G29_B8" "$G29_LD" "$G29_R1")"
+    assert_eq "29e9: break-it -- without the .stride-symlink guard, the checker reads through the link and prints true" "$G29_OK" \
+      "$(g29_b8 "$(g29_bmut "$G29_G_LDIR" ' \' "$G29_B8")" "$G29_LD" "$G29_R1")"
+    rm -f "$G29_LD/.stride"; mkdir -p "$G29_LD/.stride"; cp "$G29_O8" "$G29_LD/.stride/.outcomes-W9.json"
+    assert_eq "29y: 29e4 with the same root's .stride a real directory holding the record, the block prints true" "$G29_OK" "$(g29_b8 "$G29_B8" "$G29_LD" "$G29_R1")"
+    # edge cases: a dangling link at the outcomes path, and a .stride that is a regular file
+    rm -f "$G29_O8"; ln -s "$G29_D/no-such-outcomes.json" "$G29_O8"
+    assert_eq "29e5: the Step 8 block prints false when the outcomes path is a dangling symlink" "$G29_NO" "$(g29_b8 "$G29_B8S" "$G29_D" "$G29_R1")"
+    rm -f "$G29_O8"; g29_sound "$G29_O8"
+    assert_eq "29y: 29e5 with a regular file in place of the dangling link, the stub's true gets through" "$G29_OK" "$(g29_b8 "$G29_B8S" "$G29_D" "$G29_R1")"
+    G29_FD="$G29_D/flat"; mkdir -p "$G29_FD"; touch "$G29_FD/.stride.md" "$G29_FD/.stride"
+    assert_eq "29e6: the Step 8 block prints false when .stride is a regular file" "$G29_NO" "$(g29_b8 "$G29_B8S" "$G29_FD" "$G29_R1")"
+    rm -f "$G29_FD/.stride"; mkdir -p "$G29_FD/.stride"; g29_sound "$G29_FD/.stride/.outcomes-W9.json"
+    assert_eq "29y: 29e6 with .stride a directory holding the record, the stub's true gets through" "$G29_OK" "$(g29_b8 "$G29_B8S" "$G29_FD" "$G29_R1")"
+    # 29e10-29e13: the two guards the file guards above would mask. An empty
+    # stem names .outcomes-.json, so a regular file there reaches the stub
+    # unless -z OC_STEM refuses it. An unrooted run is caught by the file
+    # guards too, so 29e11 runs a copy with ! -d and ! -f deleted, from a
+    # directory with no .stride.md above it: only -z ROOT is left to refuse.
+    G29_B8E=${G29_B8S/OC_IDENT=W9/OC_IDENT=bad.id}
+    g29_sound "$G29_S/.outcomes-.json"
+    assert_eq "29e10: the Step 8 block prints false when the identifier and numeric id are both unusable" "$G29_NO" "$(g29_b8 "$G29_B8E" "$G29_D" "$G29_R1")"
+    assert_eq "29e12: break-it -- without the empty-stem guard, .outcomes-.json reaches the stub and prints true" "$G29_OK" \
+      "$(g29_b8 "$(g29_bmut "$G29_G_STEM" '' "$G29_B8E")" "$G29_D" "$G29_R1")"
+    rm -f "$G29_S/.outcomes-.json"; g29_sound "$G29_O8"
+    assert_eq "29y: 29e10 with a plain identifier, the stub's true gets through" "$G29_OK" "$(g29_b8 "$G29_B8S" "$G29_D" "$G29_R1")"
+    G29_B8R=$(g29_bmut "$G29_G_NOFILE" '' "$(g29_bmut "$G29_G_NODIR" '' "$G29_B8S")")
+    G29_NR="$TMPDIR_TEST/g29-noroot"; mkdir -p "$G29_NR"
+    assert_eq "29e11: with the directory and file guards deleted, the block still prints false where no root is found" "$G29_NO" "$(g29_b8 "$G29_B8R" "$G29_NR" "$G29_R1")"
+    assert_eq "29e13: break-it -- without the empty-root guard too, the unrooted run reaches the stub and prints true" "$G29_OK" \
+      "$(g29_b8 "$(g29_bmut "$G29_G_ROOT" '' "$G29_B8R")" "$G29_NR" "$G29_R1")"
+    assert_eq "29y: 29e11 run from inside a root, the same copy's stub true gets through" "$G29_OK" "$(g29_b8 "$G29_B8R" "$G29_D" "$G29_R1")"
+    rm -f "$G29_O8"
 
     # --- 29u: mutating the extracted function proves the fixture cases bite ---
     g29_fmut() { # $1=old $2=new; prints the checker's verdict on the current p.json and $3...
@@ -6673,11 +6767,80 @@ ${G29_L3% | owner=HANDED BACK}" "$G29_COV"
 Exploratory testing skipped: no reason" "$G29_COV"
     assert_eq "29u8: without the no-skip-beside-charters rule, 29m3 would pass" "$G29_OK" \
       "$(g29_fmut 'else $skips == 0 and' 'else' "$G29_R1" "$G29_R2" "$G29_R3")"
+
+    # --- 29y: every false-polarity fixture, with its defect removed, is true ---
+    # A fixture that is false for some reason besides the defect it plants
+    # proves nothing about that defect. Each case rebuilds one false fixture
+    # of 29l-29s7 with that defect removed -- and, where removing it changes the
+    # count, the coverage line recounted -- and shows the checker then prints
+    # true, so the fixture's own assertion would fail. The 29e cases carry
+    # theirs inline above. 29z checks every false case has one.
+    g29_pay "Implemented.
+$G29_L1
+$G29_L2
+$G29_L3
+$G29_HB" "Exploratory coverage: 1 performed, 1 partial, 1 not performed"
+    assert_eq "29y: 29l3 with the r2 line restored and counted, the record is true" "$G29_OK" "$(g29 "$G29_R1" "$G29_R2" "$G29_R3")"
+    assert_eq "29y: 29l4 and the same record exits 0" "0" "$(exploratory_outcomes_ok "$G29_D/p.json" "$G29_R1" "$G29_R2" "$G29_R3" >/dev/null 2>&1; echo $?)"
+    g29_pay "Done.
+Exploratory testing skipped: the plugin is not installed" "Did it."
+    assert_eq "29y: 29m2 with a skip line added, the record is true" "$G29_OK" "$(g29)"
+    g29_pay "$G29_NOTES" "$G29_COV"
+    assert_eq "29y: 29m3 with the skip line beside the charters removed, the record is true" "$G29_OK" "$(g29 "$G29_R1" "$G29_R2" "$G29_R3")"
+    g29_pay "Exploratory testing skipped: the plugin is not installed" "Did it."
+    assert_eq "29y: 29m4 with a reason after the skip prefix, the record is true" "$G29_OK" "$(g29)"
+    g29_pay "$G29_U1
+$G29_U2
+HANDED BACK: u1 run Step 6.5 in a Codex CLI session
+HANDED BACK: u2 sign in and check the settings page" "Exploratory coverage: 0 performed, 0 partial, 2 not performed"
+    assert_eq "29y: 29n2 with the coverage line claiming none performed, the record is true" "$G29_OK" "$(g29)"
+    g29_pay "$G29_U1
+HANDED BACK: u1 x" "Exploratory coverage: 0 performed, 0 partial, 1 not performed"
+    assert_eq "29y: 29n3 with the undispatched charter back at zero probes, the record is true" "$G29_OK" "$(g29)"
+    g29_pay "$G29_L1
+$G29_L2
+${G29_L3/owner=HANDED BACK/owner=D123}" "$G29_COV"
+    assert_eq "29y: 29o with an owner given to the not-performed charter, the record is true" "$G29_OK" "$(g29 "$G29_R1" "$G29_R2" "$G29_R3")"
+    g29_pay "$G29_L1
+$G29_L2
+$G29_L3
+$G29_HB" "$G29_COV"
+    assert_eq "29y: 29o2 with the HANDED BACK line added, the record is true" "$G29_OK" "$(g29 "$G29_R1" "$G29_R2" "$G29_R3")"
+    g29_pay "$G29_L1
+$G29_L2
+$G29_L3
+HANDED BACK: r3 something else" "$G29_COV"
+    assert_eq "29y: 29o3 with the HANDED BACK line under its own key, the record is true" "$G29_OK" "$(g29 "$G29_R1" "$G29_R2" "$G29_R3")"
+    g29_pay "$G29_NOTES" "$G29_COV"
+    assert_eq "29y: 29p with the coverage line counted right, the record is true" "$G29_OK" "$(g29 "$G29_R1" "$G29_R2" "$G29_R3")"
+    g29_pay "$G29_NOTES" "Did it.
+$G29_COV"
+    assert_eq "29y: 29p2 with the coverage line moved to completion_summary, the record is true" "$G29_OK" "$(g29 "$G29_R1" "$G29_R2" "$G29_R3")"
+    g29_pay "$G29_NOTES" "$G29_COV"
+    assert_eq "29y: 29p3 with one coverage line, the record is true" "$G29_OK" "$(g29 "$G29_R1" "$G29_R2" "$G29_R3")"
+    g29_pay "$G29_L2" "Exploratory coverage: 0 performed, 1 partial, 0 not performed"
+    assert_eq "29y: 29q with the exhausted budget claimed partial, the record is true" "$G29_OK" "$(g29 "$G29_R2")"
+    g29_pay "${G29_L3/owner=HANDED BACK/owner=D123}" "Exploratory coverage: 0 performed, 0 partial, 1 not performed"
+    assert_eq "29y: 29q2 with the blocked charter claimed not performed, owned and counted, the record is true" "$G29_OK" "$(g29 "$G29_R3")"
+    g29_pay "$G29_L1" "$G29_C1"
+    assert_eq "29y: 29q4 with the report's probe count, the record is true" "$G29_OK" "$(g29 "$G29_R1")"
+    g29_pay 'Exploratory charter r4: the progress bar | stop_reason=no_observation_surface | probes=3 | surfaces=http | outcome=partial
+Visual pass r4: the bar filled to the end' "Exploratory coverage: 0 performed, 1 partial, 0 not performed"
+    assert_eq "29y: 29q5 with a visual pass line for r4, the record is true" "$G29_OK" "$(g29 "$G29_R4")"
+    g29_pay "$G29_RED" "$G29_C1"
+    assert_eq "29y: 29r2 with the redacted line kept, the record is true" "$G29_OK" "$(g29 "$G29_R1")"
+    g29_pay "Exploratory charter r5: the fence session | stop_reason=charter_quiet | probes=4 | surfaces=http | outcome=performed" "$G29_C1"
+    assert_eq "29y: 29s with the fence object written to r5's path, the record is true" "$G29_OK" "$(g29 "$G29_R5")"
+    g29_pay "$G29_L1" "$G29_C1"
+    assert_eq "29y: 29s3 with the prefix as written, the record is true" "$G29_OK" "$(g29 "$G29_R1")"
+    assert_eq "29y: 29s4 with the absolute report path, the record is true" "$G29_OK" "$(cd "$G29_D" && exploratory_outcomes_ok "$G29_D/p.json" "$G29_D/.stride/.exploratory-W9-r1.json" 2>&1)"
+    assert_eq "29y: 29s5 with the report inside .stride, the record is true" "$G29_OK" "$(g29 "$G29_R1")"
+    assert_eq "29y: 29s6 with the outcomes file present, the record is true" "$G29_OK" "$(exploratory_outcomes_ok "$G29_D/p.json" "$G29_R1" 2>&1)"
   else
-    echo "  SKIP: 29l-29u: jq not installed -- the checker needs it"
+    echo "  SKIP: 29e2-29e13, 29l-29u8 and 29y: jq not installed -- the checker needs it"
   fi
 
-  # --- 29v-29w9: break-it on mutated COPIES of the skills ---
+  # --- 29v-29w17: break-it on mutated COPIES of the skills ---
   G29_TMP="$TMPDIR_TEST/g29m"; mkdir -p "$G29_TMP"
   g29_neg() {
     local w="$G29_WF" s="$G29_SW" c="$G29_CT" r=""
@@ -6724,14 +6887,14 @@ Call `PATCH /api/tasks/:id/complete` with ALL required fields:'
   g29_neg "29w8: editing one byte of the checker fails the group" " k_sum " wf \
     'test("^[WDG][0-9]+$")' 'test("^[WD][0-9]+$")'
   g29_neg "29w9: stating the skip bullet twice fails the group (exactly once)" " s_bullet " ct \
-    '- **When Step 6.5 did not fire**' '- **When Step 6.5 did not fire** — plugin unavailable, no authorized-and-non-production affirmative, no reach or `ALLOWED_HOSTS` established, or a budget too small for one charter — and the task carried `manual_tests` or `edge_cases`, write one `Exploratory testing skipped: <reason>` line and no charter or coverage line.
+    '- **When Step 6.5 did not fire**' '- **When Step 6.5 did not fire** — it built no charter, in the one sense `stride-workflow` Step 6.5 defines: plugin unavailable, no authorized-and-non-production affirmative, no reach or `ALLOWED_HOSTS` established, a budget too small for one charter, or every manual test and edge case mapped to a unit test or a human responsibility — and the task carried `manual_tests` or `edge_cases`, write one `Exploratory testing skipped: <reason>` line and no charter or coverage line.
 - **When Step 6.5 did not fire**'
   g29_neg "29w10: dropping the one-coverage-line rule fails the group" " c_one " ct \
     '**One coverage line, in `completion_summary`**, counting the outcome lines exactly.' '**Coverage**, if you like.'
   g29_neg "29w11: dropping redacted-never-dropped fails the group" " r_rule " ct \
     '**A line whose charter would name a credential, token or internal hostname is redacted, never dropped**' '**Lines may be left out**'
   g29_neg "29w12: dropping the pathless not-run line from Step 6.5 fails the group" " x_wf " wf \
-    'in place of the checker'"'"'s `true` record `exploratory_outcomes_ok: not run — no report path was sent`' 'record nothing'
+    'in place of the checker'"'"'s `true`, record `exploratory_outcomes_ok: not run — no report path was sent`' 'record nothing'
   g29_neg "29w13: dropping the no-visual-pass rule fails the group" " v_rule " ct \
     'No stride-codex step runs a visual pass yet, so never write a `Visual pass` line here' 'Write a Visual pass line when you like'
   g29_neg "29w14: dropping the flowchart check line fails the group" " f_wf_chart " wf \
@@ -6745,6 +6908,40 @@ Call `PATCH /api/tasks/:id/complete` with ALL required fields:'
     'a symlink at either means do not write and do not submit' 'write it anyway'
   assert_eq "29x: the break-it cases left the real skill files untouched" "$G29_SUM_BEFORE" \
     "$(cksum < "$G29_WF") $(cksum < "$G29_SW") $(cksum < "$G29_CT")"
+
+  # --- 29z-29z2: this group's own text, read from this file ---
+  # 29z: every case expecting false (or exit 1) has a 29y twin naming it, one
+  # twin per case -- the ids are compared with their repeats, so a second false
+  # case under an id that already has a twin needs its own. It reads assert_eq
+  # lines (never comments), joining a line that ends in a backslash to the
+  # next first, so an expected value on the line after the label is read too:
+  # a false case is one expecting G29_NO in any spelling, a literal false
+  # verdict or exit 1, and a twin counts only when it expects G29_OK, a
+  # literal true verdict or exit 0.
+  # 29z2: each case range a comment or SKIP line gives starts and ends at a
+  # case that exists, and its end is that series' last case: a numbered end
+  # its highest number, and a bare end (29s) only a series with no numbers.
+  G29_SRC=$(awk 'index($0, "# Test Group 29:") == 1 { f = 1 } f { print } f && /^  echo "  SKIP: Test Group 29 / { exit }' "$SCRIPT_DIR/test-stride-hook.sh")
+  G29_ASSERTS=$(printf '%s\n' "$G29_SRC" | awk '{ if (sub(/\\$/, "")) { b = b $0; next } print b $0; b = "" }')
+  G29_NEG=$(printf '%s\n' "$G29_ASSERTS" | sed -nE 's/^ *assert_eq "(29[a-z][0-9]*): [^"]*" +("[^"]*"|[^ "]+).*/\1 \2/p' \
+    | awk '$1 != "29y" && ($2 ~ /G29_NO|exploratory_outcomes_ok: false/ || $2 == "\"1\"" || $2 == "1") { print $1 }' | sort)
+  G29_TWIN=$(printf '%s\n' "$G29_ASSERTS" | sed -nE 's/^ *assert_eq "29y: (29[a-z][0-9]*) [^"]*" +("[^"]*"|[^ "]+).*/\1 \2/p' \
+    | awk '$2 ~ /G29_OK|exploratory_outcomes_ok: true/ || $2 == "\"0\"" || $2 == "0" { print $1 }' | sort)
+  assert_eq "29z: break_it -- every false-polarity fixture fails when its defect is removed: each has a 29y twin" \
+    "yes|$(echo $G29_NEG)" "$([ "$(printf '%s\n' "$G29_NEG" | grep -c .)" -ge 25 ] && echo yes || echo no)|$(echo $G29_TWIN)"
+  G29_IDS=$(printf '%s\n' "$G29_SRC" | grep -oE '"29[a-z][0-9]*: ' | tr -d '": ' | sort -u)
+  G29_RANGES=$(printf '%s\n' "$G29_SRC" | grep -E '^ *#|SKIP:' | grep -oE '29[a-z][0-9]*-29[a-z][0-9]*')
+  G29_STALE=""
+  for G29_RG in $G29_RANGES; do
+    G29_A=${G29_RG%-*}; G29_E=${G29_RG#*-}
+    printf '%s\n' "$G29_IDS" | grep -qx -- "$G29_A" || { G29_STALE="$G29_STALE $G29_RG"; continue; }
+    printf '%s\n' "$G29_IDS" | grep -qx -- "$G29_E" || { G29_STALE="$G29_STALE $G29_RG"; continue; }
+    G29_SER=$(printf '%s' "$G29_E" | sed 's/[0-9]*$//'); G29_N=${G29_E#"$G29_SER"}
+    G29_HI=$(printf '%s\n' "$G29_IDS" | sed -n "s/^$G29_SER\([0-9][0-9]*\)\$/\1/p" | sort -n | tail -1)
+    [ "${G29_HI:-0}" -le "${G29_N:-0}" ] || G29_STALE="$G29_STALE $G29_RG"
+  done
+  assert_eq "29z2: comments -- no stale case range remains in Group 29" "found|" \
+    "$([ "$(printf '%s\n' "$G29_RANGES" | grep -c .)" -ge 5 ] && echo found || echo none)|$(echo $G29_STALE)"
 else
   echo "  SKIP: Test Group 29 (a skill or the rationale doc is missing)"
 fi
@@ -6802,7 +6999,7 @@ g30_lines() {
 }
 # g30_jq <workflow-skill>: the trigger's jq program, from the goal-scope block
 g30_jq() {
-  awk -v h="$G30_HEAD" -v a="jq -r --arg me \"\$GS_IDENT\" '" -v z="end' \"\$GS_TREE\"" '
+  awk -v h="$G30_HEAD" -v a="jq -r --arg me \"\$GS_IDENT\" --arg id \"\$GS_ID\" '" -v z="end' \"\$GS_TREE\"" '
     index($0, h) == 1 { f = 1 }
     f && /^### Sanctioned dispatch surfaces/ { exit }
     f && !g && index($0, a) { g = 1; next }
@@ -6899,9 +7096,9 @@ g30_check() {
   { [ "$pl" -gt "$ml" ] && [ "$ml" -gt 0 ] && [ "$pl" -lt "$el" ]; } || G30_FAILS="$G30_FAILS m_order"
   g30_once w_url '"$STRIDE_API_URL/api/tasks/$GS_GOAL/tree?response_view=slim"' "$G30_GS"
   g30_once w_digits "case \"\$GS_GOAL\" in ''|*[!0-9]*) GS_GOAL='' ;; esac" "$G30_GS"
-  g30_once w_jq 'elif all(.data.children[]; .identifier == $me or .status == "completed") then "goal-scope trigger: last open child"' "$G30_GS"
+  g30_once w_jq 'elif all(.data.children[]; mine or .status == "completed") then "goal-scope trigger: last open child"' "$G30_GS"
   g30_once w_auth $'exactly as Step 9\'s 1a block does' "$G30_GS"
-  g30_once w_file '"$GS_DIR/.goal-scope-$GS_IDENT-tree.json"' "$G30_GS"
+  g30_once w_file '"$GS_DIR/.goal-scope-$GS_STEM-tree.json"' "$G30_GS"
   g30_none w_notoken 'echo "$STRIDE_API_TOKEN' "$wf"
   g30_none w_notoken2 "printf '%s' \"\$STRIDE_API_TOKEN" "$wf"
   g30_once w_ptr '`docs/orchestrator-rationale.md` § Why the Last Open Child Runs a Goal-Scope Pass' "$G30_C65"
@@ -6992,7 +7189,7 @@ if [ -f "$G30_WF" ] && [ -f "$G30_SW" ] && [ -f "$G30_DOC" ]; then
     printf '%s' '{"data":{"task":{"id":1}}}' > "$G30_FX/l6.json"
     printf '%s' '{"data":{"task":{"id":1},"children":[{"identifier":"W2","status":"completed"},{"identifier":"W3","status":"completed"}]}}' > "$G30_FX/l7.json"
     printf '%s' 'not json' > "$G30_FX/l8.json"
-    g30_run() { jq -r --arg me W1 "$G30_JQ" "$1" 2>/dev/null; }
+    g30_run() { jq -r --arg me W1 --arg id '' "$G30_JQ" "$1" 2>/dev/null; }
     assert_eq "30l: every other child completed is the last open child" "goal-scope trigger: last open child" "$(g30_run "$G30_FX/l1.json")"
     assert_eq "30l: a sibling awaiting review (in_progress) means no pass" "goal-scope trigger: a sibling is still open" "$(g30_run "$G30_FX/l2.json")"
     assert_eq "30l: a blocked sibling means no pass" "goal-scope trigger: a sibling is still open" "$(g30_run "$G30_FX/l3.json")"
@@ -7001,7 +7198,7 @@ if [ -f "$G30_WF" ] && [ -f "$G30_SW" ] && [ -f "$G30_DOC" ]; then
     assert_eq "30l: no children array is an unreadable tree" "goal-scope trigger: tree unreadable" "$(g30_run "$G30_FX/l6.json")"
     assert_eq "30l: a tree that does not list this task is unreadable" "goal-scope trigger: tree unreadable" "$(g30_run "$G30_FX/l7.json")"
     assert_eq "30l: a body that does not parse makes the classifier itself fail" "fail" \
-      "$(jq -r --arg me W1 "$G30_JQ" "$G30_FX/l8.json" >/dev/null 2>&1 && echo pass || echo fail)"
+      "$(jq -r --arg me W1 --arg id '' "$G30_JQ" "$G30_FX/l8.json" >/dev/null 2>&1 && echo pass || echo fail)"
     # 30n: the WHOLE trigger block, extracted from the skill and run with curl
     # stubbed to copy a fixture (no network) in a scratch project root, so the
     # 2?? case, the || fallback, the non-2xx arm and the no-goal/no-task-file
@@ -7040,7 +7237,7 @@ if [ -f "$G30_WF" ] && [ -f "$G30_SW" ] && [ -f "$G30_DOC" ]; then
       "$(g30_block_run "$G30_FX/l1.json" 404)"
     G30_JQ_MUT="${G30_JQ/"all(.data.children[]; "/"any(.data.children[]; "}"
     assert_eq "30l: widening all() to any() in the classifier is caught" "different" \
-      "$([ "$G30_JQ_MUT" != "$G30_JQ" ] && [ "$(jq -r --arg me W1 "$G30_JQ_MUT" "$G30_FX/l2.json" 2>/dev/null)" != "goal-scope trigger: a sibling is still open" ] && echo different || echo same)"
+      "$([ "$G30_JQ_MUT" != "$G30_JQ" ] && [ "$(jq -r --arg me W1 --arg id '' "$G30_JQ_MUT" "$G30_FX/l2.json" 2>/dev/null)" != "goal-scope trigger: a sibling is still open" ] && echo different || echo same)"
   else
     echo "  SKIP: 30l (jq not installed)"
   fi
@@ -7069,7 +7266,7 @@ if [ -f "$G30_WF" ] && [ -f "$G30_SW" ] && [ -f "$G30_DOC" ]; then
   g30_neg "30m5: running the Phase 3.5 pass on any child fails the group" " t_only_sw " sw \
     'never on any other child of the goal, nor on a task with no goal' 'on any child of the goal'
   g30_neg "30m6: loosening the classifier to any() fails the group" " w_jq " wf \
-    'elif all(.data.children[]; .identifier == $me or .status == "completed")' 'elif any(.data.children[]; .status == "completed")'
+    'elif all(.data.children[]; mine or .status == "completed")' 'elif any(.data.children[]; .status == "completed")'
   g30_neg "30m7: dropping the default budget fails the group" " d_default_wf " wf \
     $'at the **default** budget (12 probes in today\'s unit)' 'at a budget of your choosing'
   g30_neg "30m8: a second coverage line in Phase 3.5 fails the group" " o_one_sw " sw \
@@ -7435,6 +7632,1190 @@ if [ -f "$G31_CT" ] && [ -f "$G31_GO" ] && [ -f "$G31_DE" ] && [ -f "$G31_EN" ];
     "$(cksum < "$G31_CT") $(cksum < "$G31_GO") $(cksum < "$G31_DE") $(cksum < "$G31_EN")"
 else
   echo "  SKIP: Test Group 31 (a creation skill or agent is missing)"
+fi
+
+# ============================================================================
+# Test Group 32: D404 -- the goal-scope trigger finds the project root by the
+# .stride.md walk-up and names its files by the claim hook's stem
+# ============================================================================
+# W2684's goal-scope session found the Step 6.5 trigger block rooted at
+# ${CLAUDE_PROJECT_DIR:-.}, which Codex CLI never sets: from a nested repository
+# or a subdirectory it read the wrong .stride/ (or said "no task file") and wrote
+# its tree file where Step 8's cleanup never looks. It also named the task file
+# by the identifier alone, where the claim hook (task_file_stem) falls back to
+# the numeric id, and Step 8's outcomes block did the same, so
+# exploratory_outcomes_ok printed false for a valid record under the numeric
+# id. 32a-32c2 pin the block's text, the twin prose in Step 6.5 and Phase 3.5,
+# the cleanup prose and the changelog entry (g32_check returns the failing ids);
+# 32d-32i, with the unlettered nested-subdirectory, numeric-id and rejection
+# checks, run the extracted trigger block with curl stubbed to copy a fixture
+# (no network) from nested subdirectories, with no .stride.md anywhere, under
+# the numeric id, with a traversal identifier, a non-digit id and two roots that
+# differ, under CDPATH with a relative root (32j) and with a same-stem task
+# file naming another task (32k, 32k2); the unlettered numeric-id outcomes check, 32l2 and 32l3 run the
+# extracted Step 8 outcomes block; 32n-32n12 break COPIES of the skills and show
+# each check can fail; 32z shows the real files were never written. Reuses Group 27's g27_slice, g27_count and g27_mut.
+# What this does NOT prove: that an agent fills the two placeholder lines
+# correctly in a live Codex CLI session (no Codex CLI here).
+echo ""
+echo "=== Test Group 32: goal-scope trigger root walk-up and numeric-id stem (D404) ==="
+
+G32_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G32_SW="$PORT_ROOT/skills/stride-subagent-workflow/SKILL.md"
+G32_CL="$PORT_ROOT/CHANGELOG.md"
+G32_HEAD=$'### The goal-scope pass: when this task is its goal\'s last open child'
+G32_PG=$'**The goal-scope pass — when this task is its goal\'s last open child.**'
+
+# g32_block <workflow-skill>: the goal-scope trigger block, unindented
+g32_block() {
+  awk -v h="$G32_HEAD" '
+    index($0, h) == 1 { f = 1 }
+    f && /^### Sanctioned dispatch surfaces/ { exit }
+    f && !g && /^ *```bash/ { g = 1; next }
+    g && /^ *```/ { exit }
+    g { sub(/^   /, ""); print }' "$1"
+}
+# g32_oblock <workflow-skill>: the Step 8 exploratory_outcomes_ok block
+g32_oblock() {
+  awk '/^\*\*Check the exploratory record before the call/{f=1} f&&/^```bash/{g=1;next} g&&/^```/{exit} g' "$1"
+}
+# g32_once <id> <needle> <haystack>: record id unless needle occurs exactly once
+g32_once() {
+  [ "$(g27_count "$2" "$3")" = "1" ] || G32_FAILS="$G32_FAILS $1"
+}
+# g32_check <workflow-skill> <subagent-skill>: "OK", or the sorted failing ids
+g32_check() {
+  local wf="$1" sw="$2" blk ob c65 gs c35 pgt s8 p
+  G32_FAILS=""
+  blk=$(g32_block "$wf"); ob=$(g32_oblock "$wf")
+  c65=$(g27_slice "$wf" '## Step 6.5:' '## Step 6.6:')
+  gs=$(g27_slice "$wf" "$G32_HEAD" '### Sanctioned dispatch surfaces')
+  c35=$(g27_slice "$sw" '## Phase 3.5:' '## Phase 3.6:')
+  pgt=$(grep -F -- "$G32_PG" "$sw" | tr -s ' ')
+  s8=$(g27_slice "$wf" '## Step 8:' '## Step 9:')
+  [ -n "$blk" ] || G32_FAILS="$G32_FAILS scope_blk"
+  [ -n "$ob" ] || G32_FAILS="$G32_FAILS scope_ob"
+  [ -n "$gs" ] || G32_FAILS="$G32_FAILS scope_gs"
+  [ -n "$pgt" ] || G32_FAILS="$G32_FAILS scope_pg"
+  [ -n "$s8" ] || G32_FAILS="$G32_FAILS scope_s8"
+  # r_: the root -- no cwd fallback, the CODEX_PROJECT_DIR walk-up, auth under it
+  case "$blk" in *'${CLAUDE_PROJECT_DIR:-.}'*) G32_FAILS="$G32_FAILS r_nodot" ;; esac
+  g32_once r_codex 'ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"' "$blk"
+  g32_once r_walk '[ -f "$d/.stride.md" ] && { ROOT=$d; break; }' "$blk"
+  g32_once r_dir 'GS_DIR="$ROOT/.stride"' "$blk"
+  g32_once r_cdpath '[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"' "$blk"
+  g32_once r_auth 'AUTH="$ROOT/.stride_auth.md"' "$blk"
+  # s_: one stem, the identifier else the numeric id, both allow-listed
+  g32_once s_tok "case \"\$GS_IDENT\" in ''|*[!A-Za-z0-9_-]*) GS_IDENT='' ;; esac" "$blk"
+  g32_once s_len "[ \"\${#GS_IDENT}\" -le 64 ] || GS_IDENT=''" "$blk"
+  g32_once s_digits "case \"\$GS_ID\" in ''|*[!0-9]*) GS_ID='' ;; esac" "$blk"
+  g32_once s_stem 'GS_STEM="${GS_IDENT:-$GS_ID}"' "$blk"
+  g32_once s_task 'GS_TASKF="$GS_DIR/.task-$GS_STEM.json"' "$blk"
+  g32_once s_tree 'GS_TREE="$GS_DIR/.goal-scope-$GS_STEM-tree.json"' "$blk"
+  g32_once s_ident '($ident == "" or .identifier == $ident) and ($num == "" or (.id | tostring) == $num)' "$blk"
+  g32_once s_mine 'def mine: if $me != "" then .identifier == $me else (.id | tostring) == $id end;' "$blk"
+  # o_: Step 8's outcomes block keys on the same stem
+  g32_once o_digits "case \"\$OC_ID\" in ''|*[!0-9]*) OC_ID='' ;; esac" "$ob"
+  g32_once o_stem 'OC_STEM="${OC_IDENT:-$OC_ID}"' "$ob"
+  g32_once o_out 'OUT="$ROOT/.stride/.outcomes-$OC_STEM.json"' "$ob"
+  g32_once o_prose 'named by the same stem as the task file: the identifier when it is a plain 1-64 character `[A-Za-z0-9_-]` token, else the numeric id' "$s8"
+  # c_: the cleanup paragraph names the files its globs remove
+  g32_once c_prose $'and Step 6.5\'s goal-scope tree and sibling files (`.stride/.goal-scope-<IDENTIFIER>-*.json`)' "$s8"
+  g32_once c_sib '`.stride/.goal-scope-<STEM>-<id>.json`, `<STEM>` being the trigger block'"'"'s' "$gs"
+  # p_: Step 6.5 and Phase 3.5 state the same rules, once each in their own section
+  for p in \
+    'p_walk|the nearest directory above the working directory holding `.stride.md`' \
+    $'p_parent|a parent directory\'s `.stride_auth.md` is never read' \
+    'p_nested|from a nested repository or a subdirectory too' \
+    'p_token|reads the token from that root only once the task file and its goal are found' \
+    'p_cdpath|with `CDPATH` cleared' \
+    'p_ident|`identifier` and `id` match the values written into the block' \
+    'p_stem|the name the claim hook saved the task file under: the identifier when it is a plain 1-64 character `[A-Za-z0-9_-]` token, else the numeric id, 1-20 digits, and never an id holding anything but digits' \
+    'p_id|under the numeric id the block finds this task in the tree by its `id`' \
+    'p_out|checks `.stride/.outcomes-<stem>.json` under that same stem'; do
+    { [ "$(g27_count "${p#*|}" "$c65")" = "1" ] && [ "$(g27_count "${p#*|}" "$gs")" = "1" ]; } || G32_FAILS="$G32_FAILS ${p%%|*}_wf"
+    { [ "$(g27_count "${p#*|}" "$c35")" = "1" ] && [ "$(g27_count "${p#*|}" "$pgt")" = "1" ]; } || G32_FAILS="$G32_FAILS ${p%%|*}_sw"
+  done
+  if [ -z "$G32_FAILS" ]; then echo OK; else printf '%s\n' $G32_FAILS | sort -u | tr '\n' ' '; fi
+}
+
+if [ -f "$G32_WF" ] && [ -f "$G32_SW" ] && [ -f "$G32_CL" ]; then
+  G32_SUM_BEFORE="$(cksum < "$G32_WF") $(cksum < "$G32_SW")"
+  G32_REAL=$(g32_check "$G32_WF" "$G32_SW")
+  g32_ok() { # <label> <prefix>...: no failing id on the real files starts with a prefix
+    local label="$1" bad="" id pre; shift
+    for id in $G32_REAL; do
+      [ "$id" = OK ] && continue
+      for pre in "$@" scope_; do case "$id" in "$pre"*) bad="$bad $id" ;; esac; done
+    done
+    assert_eq "$label" "" "$bad"
+  }
+  g32_ok "Group 32: the goal-scope trigger block contains no \${CLAUDE_PROJECT_DIR:-.} and uses the CODEX_PROJECT_DIR walk-up" r_
+  g32_ok "32a: the trigger names its task and tree files by one stem, the identifier else the digits-only numeric id" s_
+  g32_ok "32b: Step 8's outcomes block keys .outcomes-<stem>.json on the same stem" o_
+  g32_ok "Group 32: Step 8 cleanup names the .goal-scope-<STEM> files" c_
+  g32_ok "Group 32: Phase 3.5 states the walk-up and fallback rules" p_
+  assert_eq "32c: every D404 rule found exactly once in its section" "OK" "$G32_REAL"
+  assert_eq "32c2: the CHANGELOG between [Unreleased] and [1.43.0] carries one (D404) entry" "1" \
+    "$(awk '/^## \[Unreleased\]/{f=1; next} f && /^## \[1\.43\.0\]/{exit} f' "$G32_CL" | grep -c '^### Fixed — .*(D404)$' | tr -d ' ')"
+
+  if command -v jq >/dev/null 2>&1; then
+    G32_X="$TMPDIR_TEST/g32"; mkdir -p "$G32_X"
+    G32_HDR="$G32_X/headers.txt"
+    # Trees: W1 (or id 8179) is in progress and its one sibling is completed.
+    printf '%s' '{"data":{"task":{"id":1},"children":[{"id":7,"identifier":"W1","status":"in_progress"},{"id":8,"identifier":"W2","status":"completed"}]}}' > "$G32_X/last.json"
+    printf '%s' '{"data":{"task":{"id":1},"children":[{"id":8179,"identifier":"odd/ident","status":"in_progress"},{"id":8,"identifier":"W2","status":"completed"}]}}' > "$G32_X/num.json"
+    printf '%s' '{"data":{"task":{"id":1},"children":[{"id":8179,"identifier":"odd/ident","status":"in_progress"},{"id":8,"identifier":"W2","status":"open"}]}}' > "$G32_X/num-open.json"
+    # g32_mkproj <dir> <stem> <token>: a scratch project root holding its own
+    # .stride.md, a fake .stride_auth.md and the claim hook's task file
+    g32_mkproj() {
+      mkdir -p "$1/.stride"
+      : > "$1/.stride.md"
+      printf -- '- **API URL:** `http://127.0.0.1:9`\n- **API Token:** `%s`\n' "$3" > "$1/.stride_auth.md"
+      [ -n "$2" ] && printf '%s' '{"identifier":"W1","id":8179,"parent_id":99}' > "$1/.stride/.task-$2.json"
+      return 0
+    }
+    # g32_run <skill> <identifier> <numeric id> <cwd> <fixture> [CODEX_PROJECT_DIR]:
+    # the extracted trigger block, its two placeholder lines filled, run from
+    # <cwd> with no root variable set (or only CODEX_PROJECT_DIR) and curl
+    # stubbed to copy <fixture> to -o and to record the -H header it was given
+    g32_run() {
+      local b r1="GS_IDENT='$2'" r2="GS_ID='$3'"
+      b=$(g32_block "$1")
+      b=${b/"GS_IDENT='<identifier>'"/$r1}
+      b=${b/"GS_ID='<numeric id>'"/$r2}
+      : > "$G32_HDR"
+      ( cd "$4" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR ${6:+CODEX_PROJECT_DIR="$6"} \
+          G32_FIXTURE="$5" G32_HDR="$G32_HDR" bash -c '
+        curl() { o=""; h=""; while [ $# -gt 0 ]; do case "$1" in -o) o="$2"; shift ;; -H) h="$2"; shift ;; esac; shift; done
+                 printf "%s\n" "$h" >> "$G32_HDR"; cp "$G32_FIXTURE" "$o"; printf "200"; }
+        '"$b" 2>/dev/null )
+    }
+    # A project whose cwd is a nested git repository two directories down, with
+    # no .stride.md of its own: the walk-up must reach the project's.
+    G32_P="$G32_X/proj"; g32_mkproj "$G32_P" W1 'stride_g32project'
+    mkdir -p "$G32_P/sub/deep"
+    if command -v git >/dev/null 2>&1; then
+      ( cd "$G32_P/sub" && git init -q ) >/dev/null 2>&1
+    fi
+    assert_eq "Group 32: the extracted trigger block run from a nested subdirectory of a scratch project finds that project's task file" \
+      "goal-scope trigger: last open child" "$(g32_run "$G32_WF" W1 '' "$G32_P/sub/deep" "$G32_X/last.json")"
+    assert_eq "32d: and writes its tree file under that project's .stride/, where Step 8's cleanup looks" "yes no" \
+      "$([ -f "$G32_P/.stride/.goal-scope-W1-tree.json" ] && echo yes || echo no) $([ -e "$G32_P/sub/deep/.stride" ] && echo yes || echo no)"
+    assert_eq "32d2: the token it sent is the project's own" "Authorization: Bearer stride_g32project" "$(cat "$G32_HDR")"
+    # The walk stops at the nearest .stride.md: an inner project inside an
+    # outer one reads its own .stride_auth.md, never the parent's.
+    G32_O="$G32_X/outer"; g32_mkproj "$G32_O" '' 'stride_g32outer'
+    G32_I="$G32_O/inner"; g32_mkproj "$G32_I" W1 'stride_g32inner'; mkdir -p "$G32_I/lib"
+    g32_run "$G32_WF" W1 '' "$G32_I/lib" "$G32_X/last.json" >/dev/null
+    assert_eq "32e: the walk stops at the nearest .stride.md, so a parent's .stride_auth.md is never read" \
+      "Authorization: Bearer stride_g32inner" "$(cat "$G32_HDR")"
+    # No .stride.md anywhere above the cwd: a .stride/ in the cwd is not used.
+    G32_N="$G32_X/noproj"; mkdir -p "$G32_N/.stride"
+    printf '%s' '{"identifier":"W1","parent_id":99}' > "$G32_N/.stride/.task-W1.json"
+    G32_NONE="no root"; d="$G32_N"; while [ "$d" != "/" ]; do [ -f "$d/.stride.md" ] && G32_NONE="root at $d"; d=$(dirname "$d"); done
+    if [ "$G32_NONE" = "no root" ]; then
+      assert_eq "32f: with no .stride.md above the cwd, the block says no task file and sends nothing" \
+        "goal-scope trigger: no task file|" "$(g32_run "$G32_WF" W1 '' "$G32_N" "$G32_X/last.json")|$(cat "$G32_HDR")"
+    else
+      echo "  SKIP: 32f (a .stride.md sits above the temp directory)"
+    fi
+    # Both roots exist and differ: CODEX_PROJECT_DIR wins over the walk-up.
+    G32_C="$G32_X/codexroot"; g32_mkproj "$G32_C" W1 'stride_g32codex'
+    G32_W="$G32_X/walkroot"; g32_mkproj "$G32_W" '' 'stride_g32walk'
+    assert_eq "32g: CODEX_PROJECT_DIR wins over a walk-up root that differs" \
+      "goal-scope trigger: last open child|Authorization: Bearer stride_g32codex" \
+      "$(g32_run "$G32_WF" W1 '' "$G32_W" "$G32_X/last.json" "$G32_C")|$(cat "$G32_HDR")"
+    # The numeric-id fallback: a non-plain identifier leaves its quotes empty.
+    G32_U="$G32_X/numproj"; g32_mkproj "$G32_U" 8179 'stride_g32num'
+    assert_eq "Group 32: the trigger and outcomes blocks fall back to the numeric id for a non-plain identifier" \
+      "goal-scope trigger: last open child yes" \
+      "$(g32_run "$G32_WF" '' 8179 "$G32_U" "$G32_X/num.json") $([ -f "$G32_U/.stride/.goal-scope-8179-tree.json" ] && echo yes || echo no)"
+    assert_eq "32h: under the numeric id an open sibling still means no pass" "goal-scope trigger: a sibling is still open" \
+      "$(g32_run "$G32_WF" '' 8179 "$G32_U" "$G32_X/num-open.json")"
+    G32_LONG=$(printf 'W%064d' 0)
+    assert_eq "32h2: a 65-character identifier is not a plain token, so the numeric id is used" "goal-scope trigger: last open child" \
+      "$(g32_run "$G32_WF" "$G32_LONG" 8179 "$G32_U" "$G32_X/num.json")"
+    # Rejections: a non-digit id and a traversal identifier never name a file,
+    # even when a file sits at the path they would build.
+    printf '%s' '{"identifier":"W1","id":"81a9","parent_id":99}' > "$G32_U/.stride/.task-81a9.json"
+    mkdir -p "$G32_U/.stride/.task-.."
+    printf '%s' '{"identifier":"W1","parent_id":99}' > "$G32_U/.stride/.task-../x.json"
+    assert_eq "Group 32: a non-digit numeric id and a traversal identifier are both rejected" \
+      "goal-scope trigger: no task file|goal-scope trigger: no task file|" \
+      "$(g32_run "$G32_WF" '' 81a9 "$G32_U" "$G32_X/num.json")|$(g32_run "$G32_WF" '../x' '' "$G32_U" "$G32_X/num.json")|$(cat "$G32_HDR")"
+    G32_L=$(ln -s "$G32_U/.stride" "$G32_X/linkstride" 2>/dev/null && echo ok)
+    if [ "$G32_L" = ok ]; then
+      G32_S="$G32_X/symproj"; mkdir -p "$G32_S"; : > "$G32_S/.stride.md"; ln -s "$G32_U/.stride" "$G32_S/.stride"
+      assert_eq "32i: a .stride that is a symlink is not followed" "goal-scope trigger: no task file" \
+        "$(g32_run "$G32_WF" '' 8179 "$G32_S" "$G32_X/num.json")"
+    fi
+    # CDPATH with a relative CODEX_PROJECT_DIR: cd would print the resolved
+    # path into the capture, giving ROOT two lines, unless CDPATH is cleared.
+    assert_eq "32j: CDPATH and a relative CODEX_PROJECT_DIR still find the project's task file" \
+      "goal-scope trigger: last open child|Authorization: Bearer stride_g32project" \
+      "$(CDPATH=. g32_run "$G32_WF" W1 '' "$G32_X" "$G32_X/last.json" proj)|$(cat "$G32_HDR")"
+    # A same-stem task file naming another task is not this task's file, so
+    # its goal and its root's token are never used.
+    G32_K="$G32_X/staleproj"; g32_mkproj "$G32_K" '' 'stride_g32stale'
+    printf '%s' '{"identifier":"W9","id":500,"parent_id":55}' > "$G32_K/.stride/.task-W1.json"
+    printf '%s' '{"identifier":"W9","id":500,"parent_id":55}' > "$G32_K/.stride/.task-8179.json"
+    assert_eq "32k: a same-stem task file whose identifier differs is no task file, and nothing is sent" \
+      "goal-scope trigger: no task file|" "$(g32_run "$G32_WF" W1 7 "$G32_K" "$G32_X/last.json")|$(cat "$G32_HDR")"
+    assert_eq "32k2: and under the numeric id a file whose id differs is no task file too" \
+      "goal-scope trigger: no task file|" "$(g32_run "$G32_WF" '' 8179 "$G32_K" "$G32_X/num.json")|$(cat "$G32_HDR")"
+
+    # --- 32l: Step 8's outcomes block under the numeric id ---
+    G32_FN=$(awk '/^\*\*Check the record before you submit/{f=1} f&&/^```bash/{g=1;next} g&&/^```/{exit} g' "$G32_WF")
+    # g32_orun <skill> <identifier> <numeric id> <cwd>: the extracted Step 8
+    # block with its placeholders filled and the checker pasted in, no reports
+    g32_orun() {
+      local b r1="OC_IDENT='$2'" r2="OC_ID='$3'"
+      b=$(g32_oblock "$1")
+      b=${b/"OC_IDENT='<identifier>'"/$r1}
+      b=${b/"OC_ID='<numeric id>'"/$r2}
+      b=${b/\# <paste exploratory_outcomes_ok from Step 6.5 here>/$G32_FN}
+      b=${b/" '<last returned report path, one per charter>'"/}
+      ( cd "$4" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR bash -c "$b" 2>&1 )
+    }
+    jq -n '{completion_notes: "Exploratory testing skipped: no app was reachable", completion_summary: "Did it."}' \
+      > "$G32_U/.stride/.outcomes-8179.json"
+    mkdir -p "$G32_U/lib"
+    assert_eq "Group 32: exploratory_outcomes_ok prints true for a valid record saved under the numeric id" \
+      "exploratory_outcomes_ok: true" "$(g32_orun "$G32_WF" '' 8179 "$G32_U/lib")"
+    # A valid record sits at the path a non-digit id would build, so only the
+    # block's digits check can make this false.
+    jq -n '{completion_notes: "Exploratory testing skipped: no app was reachable", completion_summary: "Did it."}' \
+      > "$G32_U/.stride/.outcomes-81a9.json"
+    assert_eq "32l2: and false for a non-digit id, even with a valid record at the path it would build" "exploratory_outcomes_ok: false" \
+      "$(g32_orun "$G32_WF" '' 81a9 "$G32_U/lib")"
+    jq -n '{completion_notes: "Exploratory testing skipped: no app was reachable", completion_summary: "Did it."}' \
+      > "$G32_P/.stride/.outcomes-W1.json"
+    assert_eq "32l3: a plain identifier still keys the file on the identifier" "exploratory_outcomes_ok: true" \
+      "$(g32_orun "$G32_WF" W1 8179 "$G32_P/sub/deep")"
+
+    # --- 32n: break-it on mutated COPIES of the skills ---
+    G32_TMP="$TMPDIR_TEST/g32m"; mkdir -p "$G32_TMP"
+    # g32_mut <label> <wf|sw> <old> <new>: mutate a copy into $G32_M, or record a
+    # failed assert and return 1 when <old> is missing (no subshell, so the
+    # assert counts)
+    g32_mut() {
+      local src="$G32_WF" r
+      G32_M="$G32_TMP/wf.md"
+      [ "$2" = sw ] && { src="$G32_SW"; G32_M="$G32_TMP/sw.md"; }
+      rm -f "$G32_M"
+      r=$(g27_mut "$src" "$G32_M" "$3" "$4")
+      if [ "$r" = MISSING ]; then
+        assert_eq "$1 (mutation target present)" "present" "MISSING"
+        return 1
+      fi
+      return 0
+    }
+    # g32_neg <label> <" id "> <wf|sw> <old> <new>: the mutated copy fails the check
+    g32_neg() {
+      local w="$G32_WF" s="$G32_SW"
+      g32_mut "$1" "$3" "$4" "$5" || return 0
+      if [ "$3" = sw ]; then s="$G32_M"; else w="$G32_M"; fi
+      assert_contains "$1" "$2" " $(g32_check "$w" "$s") "
+    }
+    if g32_mut "32n" wf 'GS_DIR="$ROOT/.stride"' 'GS_DIR="${CLAUDE_PROJECT_DIR:-.}/.stride"'; then
+      assert_contains "Group 32: break-it: restoring \${CLAUDE_PROJECT_DIR:-.} fails the group" " r_nodot " " $(g32_check "$G32_M" "$G32_SW") "
+      assert_eq "32n: and the restored block, run from the nested subdirectory, no longer finds the task file" \
+        "goal-scope trigger: no task file" "$(g32_run "$G32_M" W1 '' "$G32_P/sub/deep" "$G32_X/last.json")"
+    fi
+    if g32_mut "32n2" wf 'GS_STEM="${GS_IDENT:-$GS_ID}"' 'GS_STEM="$GS_IDENT"'; then
+      assert_contains "Group 32: break-it: dropping the numeric-id fallback fails the group" " s_stem " " $(g32_check "$G32_M" "$G32_SW") "
+      assert_eq "32n2: and the block without it says no task file under the numeric id" \
+        "goal-scope trigger: no task file" "$(g32_run "$G32_M" '' 8179 "$G32_U" "$G32_X/num.json")"
+    fi
+    if g32_mut "32n3" wf "case \"\$GS_ID\" in ''|*[!0-9]*) GS_ID='' ;; esac" ''; then
+      assert_contains "32n3: letting a non-digit id through fails the group" " s_digits " " $(g32_check "$G32_M" "$G32_SW") "
+      assert_eq "32n3: and the block without the check reads the non-digit file" \
+        "goal-scope trigger: tree unreadable" "$(g32_run "$G32_M" '' 81a9 "$G32_U" "$G32_X/last.json")"
+    fi
+    if g32_mut "32n4" wf 'OC_STEM="${OC_IDENT:-$OC_ID}"' 'OC_STEM="$OC_IDENT"'; then
+      assert_contains "32n4: dropping the outcomes fallback fails the group" " o_stem " " $(g32_check "$G32_M" "$G32_SW") "
+      assert_eq "32n4: and the outcomes block without it is false under the numeric id" \
+        "exploratory_outcomes_ok: false" "$(g32_orun "$G32_M" '' 8179 "$G32_U/lib")"
+    fi
+    if g32_mut "32n5" wf 'def mine: if $me != "" then .identifier == $me else (.id | tostring) == $id end;' 'def mine: .identifier == $me;'; then
+      assert_contains "32n5: matching the tree by identifier only fails the group" " s_mine " " $(g32_check "$G32_M" "$G32_SW") "
+      assert_eq "32n5: and under the numeric id the tree then reads as unreadable" \
+        "goal-scope trigger: tree unreadable" "$(g32_run "$G32_M" '' 8179 "$G32_U" "$G32_X/num.json")"
+    fi
+    if g32_mut "32n10" wf "case \"\$OC_ID\" in ''|*[!0-9]*) OC_ID='' ;; esac" ''; then
+      assert_contains "32n10: letting a non-digit id through the outcomes block fails the group" " o_digits " " $(g32_check "$G32_M" "$G32_SW") "
+      assert_eq "32n10: and the outcomes block without the check reads the non-digit file" \
+        "exploratory_outcomes_ok: true" "$(g32_orun "$G32_M" '' 81a9 "$G32_U/lib")"
+    fi
+    if g32_mut "32n11" wf 'ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"' 'ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)"'; then
+      assert_contains "32n11: canonicalising the root with CDPATH honoured fails the group" " r_cdpath " " $(g32_check "$G32_M" "$G32_SW") "
+      assert_eq "32n11: and that block, under CDPATH with a relative root, says no task file" \
+        "goal-scope trigger: no task file" "$(CDPATH=. g32_run "$G32_M" W1 '' "$G32_X" "$G32_X/last.json" proj)"
+    fi
+    if g32_mut "32n12" wf '($ident == "" or .identifier == $ident) and ($num == "" or (.id | tostring) == $num)' 'true'; then
+      assert_contains "32n12: dropping the task file's identity check fails the group" " s_ident " " $(g32_check "$G32_M" "$G32_SW") "
+      assert_eq "32n12: and that block uses the stale file's goal and token" \
+        "goal-scope trigger: last open child|Authorization: Bearer stride_g32stale" \
+        "$(g32_run "$G32_M" W1 7 "$G32_K" "$G32_X/last.json")|$(cat "$G32_HDR")"
+    fi
+    g32_neg "32n6: reading the token before the root is known fails the group" " r_auth " wf \
+      'AUTH="$ROOT/.stride_auth.md"' 'AUTH="./.stride_auth.md"'
+    g32_neg "32n7: dropping the stem sentence from Phase 3.5 fails the group" " p_stem_sw " sw \
+      'the name the claim hook saved the task file under: the identifier when it is a plain 1-64 character `[A-Za-z0-9_-]` token, else the numeric id, 1-20 digits, and never an id holding anything but digits' 'the identifier'
+    g32_neg "32n8: dropping the stop-at-the-nearest rule from Step 6.5 fails the group" " p_parent_wf " wf \
+      $'so a parent directory\'s `.stride_auth.md` is never read' 'so any directory may be read'
+    g32_neg "32n9: dropping the goal-scope files from the cleanup prose fails the group" " c_prose " wf \
+      $', and Step 6.5\'s goal-scope tree and sibling files (`.stride/.goal-scope-<IDENTIFIER>-*.json`)' ''
+    rm -rf "$G32_TMP"
+  else
+    echo "  SKIP: 32d-32n (jq not installed)"
+  fi
+  assert_eq "32z: the break-it cases left the real skill files untouched" "$G32_SUM_BEFORE" \
+    "$(cksum < "$G32_WF") $(cksum < "$G32_SW")"
+else
+  echo "  SKIP: Test Group 32 (a skill or the changelog is missing)"
+fi
+
+# ============================================================================
+# Test Group 33: D405 -- goal-scope lines carry a marker, "fired" has one
+# definition, and one pathless dispatch no longer switches the check off
+# ============================================================================
+# W2684's goal-scope pass found six gaps in the W2681/W2682 outcome record: a
+# goal-scope charter's line looked like a task-scope one, "Step 6.5 fired" had
+# two readings, the rationale and the twins disagreed on the goal-scope
+# not-run line, one dispatch sent no report path turned the whole check into
+# "not run", goal-scope findings carried no goal-scope label, and AGENTS.md
+# said role accounts became PROBE_ lines. 33a-33f and 33t pin each rule once in
+# each place it lives (g33_check returns the failing ids) and 33c pins the
+# changelog entry; 33j-33k7 run the extracted checker on mixed records -- a
+# goal-scope line with its marker, a task-scope line whose restatement holds
+# it, a forged marker on a line that over-claims, a pathless dispatch beside a
+# checked charter and beside a u<k>, a missing line for a charter that has a
+# report path, and a goal-scope hand-back with its key first and with the
+# marker before its prefix; 33n-33n16 break
+# COPIES of the skills, the rationale and AGENTS.md and show each check can
+# fail; 33z shows the real files were never written. Reuses Group 27's
+# g27_slice, g27_count and g27_mut, Group 28's g28_block and Group 29's g29_fn.
+# What this does NOT prove: that an agent writes the marker, or records a
+# pathless dispatch, correctly in a live Codex CLI session (no Codex CLI here).
+echo ""
+echo "=== Test Group 33: goal-scope marker, one fired definition, pathless dispatch beside checked charters (D405) ==="
+
+G33_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G33_SW="$PORT_ROOT/skills/stride-subagent-workflow/SKILL.md"
+G33_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+G33_RAT="$PORT_ROOT/docs/orchestrator-rationale.md"
+G33_AG="$PORT_ROOT/AGENTS.md"
+G33_CL="$PORT_ROOT/CHANGELOG.md"
+G33_RM="$PORT_ROOT/README.md"
+G33_HEAD=$'### The goal-scope pass: when this task is its goal\'s last open child'
+G33_PG=$'**The goal-scope pass — when this task is its goal\'s last open child.**'
+
+# g33_once <id> <needle> <haystack>: record id unless needle occurs exactly once
+g33_once() {
+  [ "$(g27_count "$2" "$3")" = "1" ] || G33_FAILS="$G33_FAILS $1"
+}
+# g33_none <id> <needle> <file>: record id when needle occurs in file at all
+g33_none() {
+  if grep -qF -- "$2" "$3"; then G33_FAILS="$G33_FAILS $1"; fi
+}
+
+# g33_check <wf> <sw> <ct> <rat> <agents>: OK, or the sorted ids of the failed
+# checks. m_ the marker, f_ the fired definition, x_ the pathless dispatch,
+# t_ the goal-scope not-run line, a_ AGENTS.md.
+g33_check() {
+  local wf="$1" sw="$2" ct="$3" rat="$4" ag="$5" c65 gs s8 c35 pgt ol olb rrec rgs l
+  G33_FAILS=""
+  c65=$(g27_slice "$wf" '## Step 6.5:' '## Step 6.6:')
+  gs=$(g27_slice "$wf" "$G33_HEAD" '### Sanctioned dispatch surfaces')
+  s8=$(g27_slice "$wf" '## Step 8:' '## Step 9:')
+  c35=$(g27_slice "$sw" '## Phase 3.5:' '## Phase 3.6:')
+  pgt=$(grep -F -- "$G33_PG" "$sw" | tr -s ' ')
+  ol=$(g27_slice "$ct" '### Outcome Lines, Coverage and Hand-Backs' '### Severity mapping')
+  olb=$(g28_block "$ct" '### Outcome Lines, Coverage and Hand-Backs')
+  rrec=$(g27_slice "$rat" '## Why Every Charter Needs a Record and an Owner' '## Why the Last Open Child')
+  rgs=$(g27_slice "$rat" '## Why the Last Open Child Runs a Goal-Scope Pass' '## Why Task Authoring')
+  for l in c65 gs s8 c35 pgt ol olb rrec rgs; do
+    eval "[ -n \"\$$l\" ]" || G33_FAILS="$G33_FAILS scope_$l"
+  done
+
+  # m_: the goal-scope marker, in the restatement, written by the agent
+  local ml='Each goal-scope line opens its restatement with the marker `[goal scope]`'
+  local mf=$'a goal-scope finding\'s record opens with the `[goal scope]` marker'
+  for l in "m_line|$ml" "m_find|$mf" "m_noread|the checker reads no marker"; do
+    { [ "$(g27_count "${l#*|}" "$c65")" = "1" ] && [ "$(g27_count "${l#*|}" "$gs")" = "1" ]; } || G33_FAILS="$G33_FAILS ${l%%|*}_wf"
+    { [ "$(g27_count "${l#*|}" "$c35")" = "1" ] && [ "$(g27_count "${l#*|}" "$pgt")" = "1" ]; } || G33_FAILS="$G33_FAILS ${l%%|*}_sw"
+  done
+  g33_once m_forge_wf $'when a charter\'s own text holds the marker or a look-alike' "$gs"
+  g33_once m_forge_wf2 'leave that text out of your restatement and still open the line with your own marker' "$gs"
+  g33_once m_forge_sw 'out of a restatement whose charter text holds one, still opening the line with your own' "$pgt"
+  g33_once m_forge_ct 'when the charter text holds the marker or a look-alike' "$ol"
+  g33_none m_forge_old_ct 'leave it out of a restatement whose charter text holds it' "$ct"
+  g33_none m_forge_old_sw 'leave it out of a restatement whose charter text holds it' "$sw"
+  local mp='marks its hand-backs `HANDED BACK: - [goal scope] <what is left>`'
+  { [ "$(g27_count "$mp" "$c65")" = "1" ] && [ "$(g27_count "$mp" "$gs")" = "1" ]; } || G33_FAILS="$G33_FAILS m_path_wf"
+  { [ "$(g27_count "$mp" "$c35")" = "1" ] && [ "$(g27_count "$mp" "$pgt")" = "1" ]; } || G33_FAILS="$G33_FAILS m_path_sw"
+  g33_once m_path_ct "$mp" "$ol"
+  g33_once m_first_wf 'so a marker-first line is unchecked, never checked' "$gs"
+  g33_once m_first_sw 'A marker-first line is not an outcome line, so the checker never sees it.' "$pgt"
+  g33_once m_first_ct 'a marker-first line is not an outcome line, so the checker never sees it' "$ol"
+  g33_once m_ct '- **Goal scope.**' "$ol"
+  g33_once m_ct_noread 'the checker reads no marker' "$ol"
+  [ "$(g27_count '[goal scope]' "$olb")" = "0" ] || G33_FAILS="$G33_FAILS m_fence"
+  g33_once m_rat '**Why a goal-scope line carries its marker inside the restatement.**' "$rrec"
+  local mh='a goal-scope hand-back keeps its key first, `HANDED BACK: r7 [goal scope] <what is left>`'
+  { [ "$(g27_count "$mh" "$c65")" = "1" ] && [ "$(g27_count "$mh" "$gs")" = "1" ]; } || G33_FAILS="$G33_FAILS m_hb_wf"
+  { [ "$(g27_count "$mh" "$c35")" = "1" ] && [ "$(g27_count "$mh" "$pgt")" = "1" ]; } || G33_FAILS="$G33_FAILS m_hb_sw"
+  g33_once m_hb_ct '`HANDED BACK: r7 [goal scope] <what is left>`, its key first' "$ol"
+
+  # f_: one definition of "fired", and every other mention points at it
+  g33_once f_def '**What "Step 6.5 fired" means — the one definition.**' "$(cat "$wf")"
+  g33_once f_def65 '**What "Step 6.5 fired" means — the one definition.**' "$c65"
+  g33_once f_test '**Step 6.5 fired when it built at least one charter for this task**' "$(cat "$wf")"
+  g33_once f_sw 'this phase fired when it built at least one charter for this task' "$c35"
+  g33_once f_ct 'it built no charter, in the one sense `stride-workflow` Step 6.5 defines' "$ol"
+  g33_once f_gs_wf 'It runs only when this step fired, in the one sense defined at the top of this step' "$gs"
+  g33_once f_gs_sw 'only when this phase fired, in the one sense defined above' "$pgt"
+  g33_none f_old_wf 'this step fired and the explorer is being dispatched' "$wf"
+  g33_none f_old_sw 'this phase fired and the explorer is being dispatched' "$sw"
+  g33_once f_rat '**Why one definition of "fired".**' "$rrec"
+  g33_once f_budget 'A charter is built only once it survives step 1' "$c65"
+  g33_once f_budget_sw 'a charter cut by the cap or the budget not counting as built' "$c35"
+  g33_once f_readme 'on which Step 6.5 did not fire — it built no charter, in the one sense Step 6.5 defines' "$(cat "$G33_RM")"
+  g33_none f_readme_old 'a skipped gate on a task with manual tests or edge cases' "$G33_RM"
+  g33_once f_bounds '**Three boundaries, so no task can be read both ways:**' "$c65"
+  g33_once f_unit 'or every manual test and edge case mapped to a unit test the task names or to a human responsibility and left no charter' "$c65"
+  g33_once f_unit_ct 'or every manual test and edge case mapped to a unit test or a human responsibility' "$ol"
+  g33_once f_chart_wf "no charter: Step 6.5 did not fire, one 'Exploratory testing skipped:' line" "$(cat "$wf")"
+  g33_once f_chart_wf2 'build no charter, do NOT dispatch (did not fire: one skip line)' "$(cat "$wf")"
+  g33_once f_chart_sw 'charter funded --> build no charter: did not fire, one skip line' "$(cat "$sw")"
+  g33_once f_chart_sw2 '-> build no charter (did not fire: one skip line)' "$(cat "$sw")"
+  g33_none f_chart_old_wf '    Invoke the charter-generator AGENT once (change mode, pointers only);' "$wf"
+  local a b
+  a=$(g29_line "$wf" '## Step 6.5: Manual & Exploratory Testing')
+  b=$(g29_line "$wf" '**What "Step 6.5 fired" means — the one definition.**')
+  { [ "$a" -gt 0 ] && [ "$b" -gt "$a" ] && [ "$b" -lt "$(g29_line "$wf" '### Why this step exists')" ]; } 2>/dev/null || G33_FAILS="$G33_FAILS f_order"
+
+  # x_: a pathless dispatch is recorded apart; the checker still runs on the others
+  local xs='The checker still runs on every other charter'
+  local xo='every dispatch was sent no report path, and no `u<k>` line exists'
+  g33_once x_still_wf "$xs" "$c65"
+  g33_once x_still_sw "$xs" "$c35"
+  g33_once x_still_ct "$xs" "$ol"
+  g33_once x_still_rat "$xs" "$rrec"
+  g33_once x_only_wf "$xo" "$c65"
+  g33_once x_only_sw "$xo" "$c35"
+  g33_once x_only_ct "$xo" "$ol"
+  g33_once x_only_rat "$xo" "$rrec"
+  g33_once x_notrun_sw '`exploratory_outcomes_ok: not run — no report path was sent`' "$c35"
+  g33_once x_notrun_rat '`exploratory_outcomes_ok: not run — no report path was sent`' "$rrec"
+  g33_once x_s8 $'still run the block on every other charter\'s path' "$s8"
+  g33_once x_ds 'the checker still runs on the other charters, and its `not run` line stands only when every dispatch was sent no path' "$c65"
+  g33_once x_box 'while the checker still runs on the other charters; only when every dispatch was sent none' "$(cat "$ct")"
+  g33_none x_old_s8 'record the `not run` line Step 6.5 names instead.' "$wf"
+  g33_none x_old_box 'stands beside the `exploratory report path: not sent — …` line in place of `true`' "$ct"
+  g33_none x_old_ds $'hand back what it carried and record the checker\'s `not run` line' "$wf"
+  g33_once x_uk_s8 'only when every dispatch was sent none and no `u<k>` line exists' "$s8"
+  g33_once x_uk_box 'only when every dispatch was sent none and no `u<k>` line exists does' "$(cat "$ct")"
+  g33_once x_uk_ds 'only when every dispatch was sent no path and no `u<k>` line exists' "$c65"
+  g33_once x_crash_wf 'A dispatch sent no report path is recorded by the pathless rule after the checker, whatever it returned' "$c65"
+  g33_once x_crash_sw 'A dispatch sent no report path is recorded by the pathless rule below, whatever it returned' "$c35"
+  g33_once x_crash_ct 'A pathless dispatch is recorded this way whatever it returned, never as a `u<k>` crash.' "$ol"
+  g33_once x_stray_wf 'Never write that line on a record the checker ran on' "$c65"
+  g33_once x_stray_sw 'and never on a record the checker ran on' "$c35"
+  g33_once x_stray_ct 'never on a record the checker ran on' "$ol"
+  g33_once x_chart_wf '(every dispatch sent no report path and no u<k> line? --> the not-run line instead)' "$(cat "$wf")"
+  g33_once x_chart_wf2 '(all pathless, no u<k> line → the not-run line)' "$(cat "$wf")"
+  g33_once x_chart_sw '(all pathless, no u<k> line -> the not-run line)' "$(cat "$sw")"
+  g33_once x_agents 'a dispatch sent no report path is handed back instead, and the check still runs on the rest' "$(cat "$ag")"
+
+  # t_: the goal-scope not-run line needs the step to have fired, in all three
+  g33_once t_wf '**All three need this step to have fired:**' "$gs"
+  g33_once t_sw '**All three need this phase to have fired:**' "$pgt"
+  g33_once t_rat 'writes no `Goal-scope pass not run` line' "$rgs"
+  g33_none t_old_rat 'runs no pass and writes no line.' "$rat"
+
+  # a_: AGENTS.md names the PROBE_ lines and keeps role accounts out of them
+  g33_once a_new 'only a confirmed harness reaches the explorer as `PROBE_` lines (`PROBE_HARNESS`, `PROBE_SERVICES` and `PROBE_DIR`)' "$(cat "$ag")"
+  g33_once a_acct 'role accounts travel as a pointer in the environment context and never as a `PROBE_` line' "$(cat "$ag")"
+  g33_none a_old 'role accounts, which reaches the explorer as `PROBE_` lines' "$ag"
+
+  if [ -z "$G33_FAILS" ]; then echo OK; else printf '%s\n' $G33_FAILS | sort -u | tr '\n' ' '; fi
+}
+
+if [ -f "$G33_WF" ] && [ -f "$G33_SW" ] && [ -f "$G33_CT" ] && [ -f "$G33_RAT" ] && [ -f "$G33_AG" ] && [ -f "$G33_CL" ]; then
+  G33_SUM_BEFORE="$(cksum < "$G33_WF") $(cksum < "$G33_SW") $(cksum < "$G33_CT") $(cksum < "$G33_RAT") $(cksum < "$G33_AG")"
+  G33_REAL=$(g33_check "$G33_WF" "$G33_SW" "$G33_CT" "$G33_RAT" "$G33_AG")
+  g33_ok() { # <label> <prefix>...: no failing id on the real files starts with a prefix
+    local label="$1" bad="" id pre; shift
+    for id in $G33_REAL; do
+      [ "$id" = OK ] && continue
+      for pre in "$@" scope_; do case "$id" in "$pre"*) bad="$bad $id" ;; esac; done
+    done
+    assert_eq "$label" "" "$bad"
+  }
+  g33_ok "33a: a goal-scope charter line and a goal-scope finding open with the [goal scope] marker in Step 6.5, Phase 3.5 and the Outcome Lines" m_line m_find m_ct m_rat
+  g33_ok "33a2: a goal-scope hand-back keeps its key before the marker, in both twins and the Outcome Lines" m_hb
+  g33_ok "33b: the marker is the agent's, never copied from charter text, and the checker reads none" m_forge m_noread m_ct_noread
+  g33_ok "33b2: the six-line format fence carries no marker, so it stays upstream's" m_fence
+  g33_ok "33d: Group 30: goal-scope discovered findings are labelled goal scope in Step 6.5 and Phase 3.5" m_find
+  g33_ok "33d2: Group 30: one definition of Step 6.5 fired across stride-workflow and stride-completing-tasks" f_
+  g33_ok "33d3: Group 30: the rationale and both twins agree on the no-report-path line" x_
+  g33_ok "33e: the goal-scope not-run line needs the step to have fired, in both twins and the rationale" t_
+  g33_ok "33f: Group 28: AGENTS.md says only the probe harness, services and dir become PROBE_ lines" a_
+  assert_eq "33t: every rule found exactly once in its section" "OK" "$G33_REAL"
+  assert_eq "33c: the changelog carries one D405 entry between [Unreleased] and [1.43.0]" "1" \
+    "$(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.0\]/{exit} f' "$G33_CL" | grep -c '^### Fixed — .*(D405)$')"
+
+  # --- 33j-33k7: the checker, extracted from the skill and run ---
+  if command -v jq >/dev/null 2>&1; then
+    eval "$(g29_fn "$G33_WF")"
+    G33_D="$TMPDIR_TEST/g33"; G33_S="$G33_D/.stride"; mkdir -p "$G33_S"
+    G33_OK='exploratory_outcomes_ok: true'
+    G33_NO='exploratory_outcomes_ok: false'
+    g33_rep() { # $1=N $2=stop_reason $3=probes $4=surfaces JSON
+      jq -nc --arg s "$2" --argjson p "$3" --argjson u "$4" \
+        '{contract_version: "1.1", charter: "x", status: "completed", bugs: [],
+          session_sheet: {probe_budget: 12, probes_attempted: $p, stop_reason: $s, surfaces_used: $u}}' \
+        > "$G33_S/.exploratory-D9-r$1.json"
+    }
+    g33_pay() { # $1=notes $2=summary
+      jq -n --arg n "$1" --arg s "$2" '{completion_notes: $n, completion_summary: $s}' > "$G33_D/p.json"
+    }
+    g33() { exploratory_outcomes_ok "$G33_D/p.json" "$@" 2>&1; }
+    G33_R1="$G33_S/.exploratory-D9-r1.json"; G33_R2="$G33_S/.exploratory-D9-r2.json"
+    g33_rep 1 charter_quiet 5 '["http"]'
+    g33_rep 2 probe_budget_exhausted 12 '["http","source"]'
+    G33_L1='Exploratory charter r1: the board filter by label | stop_reason=charter_quiet | probes=5 | surfaces=http | outcome=performed'
+    G33_G2='Exploratory charter r2: [goal scope] the staged plan against the sibling broadcast refresh | stop_reason=probe_budget_exhausted | probes=12 | surfaces=http,source | outcome=partial'
+    G33_NS='exploratory report path: not sent — no project root'
+    G33_HBP='HANDED BACK: - run the CSV export manual test against a running app'
+
+    g33_pay "Done.
+$G33_L1
+$G33_G2" "Did it.
+Exploratory coverage: 1 performed, 1 partial, 0 not performed"
+    assert_eq "33j: Group 29: a goal-scope charter line carries the goal-scope marker and still passes exploratory_outcomes_ok" "$G33_OK" "$(g33 "$G33_R1" "$G33_R2")"
+    g33_pay "Done.
+Exploratory charter r1: the [goal scope] label filter | stop_reason=charter_quiet | probes=5 | surfaces=http | outcome=performed
+$G33_G2" "Exploratory coverage: 1 performed, 1 partial, 0 not performed"
+    assert_eq "33j2: a task-scope line whose restatement holds the marker is checked like any other" "$G33_OK" "$(g33 "$G33_R1" "$G33_R2")"
+    g33_pay "Done.
+$G33_L1
+Exploratory charter r2: [goal scope] the staged plan | stop_reason=probe_budget_exhausted | probes=12 | surfaces=http,source | outcome=performed" "Exploratory coverage: 2 performed, 0 partial, 0 not performed"
+    assert_eq "33j3: a marker cannot lift an outcome past what the report supports" "$G33_NO" "$(g33 "$G33_R1" "$G33_R2")"
+
+    g33_pay "Done.
+$G33_L1
+$G33_NS
+$G33_HBP" "Did it.
+Exploratory coverage: 1 performed, 0 partial, 0 not performed"
+    assert_eq "33k: Group 29: a mixed record with one no-report-path dispatch still checks the charters that have report paths" "$G33_OK" "$(g33 "$G33_R1")"
+    g33_pay "Done.
+$G33_L1
+$G33_NS
+$G33_HBP" "Did it.
+Exploratory coverage: 1 performed, 0 partial, 0 not performed"
+    assert_eq "33k2: Group 29: a mixed record with a missing line for a charter that has a report path prints false" "$G33_NO" "$(g33 "$G33_R1" "$G33_R2")"
+    g33_pay "Done.
+Exploratory charter r1: the board filter by label | stop_reason=charter_quiet | probes=4 | surfaces=http | outcome=performed
+$G33_NS
+$G33_HBP" "Exploratory coverage: 1 performed, 0 partial, 0 not performed"
+    assert_eq "33k3: beside a pathless dispatch, a checked line that miscopies its report is still false" "$G33_NO" "$(g33 "$G33_R1")"
+    g33_pay "Done.
+Exploratory charter u1: the members-only settings page | stop_reason=not_dispatched | probes=0 | surfaces=none | outcome=not performed | owner=HANDED BACK
+HANDED BACK: u1 sign in as a member and walk the settings page
+$G33_NS
+$G33_HBP" "Exploratory coverage: 0 performed, 0 partial, 1 not performed"
+    assert_eq "33k4: a pathless dispatch beside a u<k> charter is still checked, with no report path" "$G33_OK" "$(g33)"
+    g33_rep 3 blocked 0 '[]'
+    G33_R3="$G33_S/.exploratory-D9-r3.json"
+    G33_G3='Exploratory charter r3: [goal scope] the import seam between two siblings | stop_reason=blocked | probes=0 | surfaces=none | outcome=not performed | owner=HANDED BACK'
+    g33_pay "Done.
+$G33_L1
+$G33_G3
+HANDED BACK: r3 [goal scope] run the import seam charter against a running app" "Exploratory coverage: 1 performed, 0 partial, 1 not performed"
+    assert_eq "33k6: a handed-back goal-scope charter whose hand-back keeps its key first is true" "$G33_OK" "$(g33 "$G33_R1" "$G33_R3")"
+    g33_pay "Done.
+$G33_L1
+$G33_G3
+[goal scope] HANDED BACK: r3 run the import seam charter against a running app" "Exploratory coverage: 1 performed, 0 partial, 1 not performed"
+    assert_eq "33k7: a hand-back with the marker before its prefix leaves the charter unowned, so false" "$G33_NO" "$(g33 "$G33_R1" "$G33_R3")"
+    g33_pay "Done.
+$G33_NS
+$G33_HBP" "Exploratory coverage: 0 performed, 0 partial, 0 not performed"
+    assert_eq "33k5: every dispatch pathless and no u<k> leaves nothing to check, which is why the not-run line stands" "$G33_NO" "$(g33)"
+  else
+    echo "  SKIP: 33j-33k7 (jq not installed)"
+  fi
+
+  # --- 33n: break-it on mutated COPIES ---
+  G33_TMP="$TMPDIR_TEST/g33m"; mkdir -p "$G33_TMP"
+  g33_neg() { # <label> <expected id> <wf|sw|ct|rat|ag> <old> <new>
+    local w="$G33_WF" s="$G33_SW" c="$G33_CT" r="$G33_RAT" g="$G33_AG" m=""
+    rm -f "$G33_TMP"/*.md
+    case "$3" in
+      wf) m=$(g27_mut "$G33_WF" "$G33_TMP/wf.md" "$4" "$5"); w="$G33_TMP/wf.md" ;;
+      sw) m=$(g27_mut "$G33_SW" "$G33_TMP/sw.md" "$4" "$5"); s="$G33_TMP/sw.md" ;;
+      ct) m=$(g27_mut "$G33_CT" "$G33_TMP/ct.md" "$4" "$5"); c="$G33_TMP/ct.md" ;;
+      rat) m=$(g27_mut "$G33_RAT" "$G33_TMP/rat.md" "$4" "$5"); r="$G33_TMP/rat.md" ;;
+      ag) m=$(g27_mut "$G33_AG" "$G33_TMP/ag.md" "$4" "$5"); g="$G33_TMP/ag.md" ;;
+    esac
+    if [ "$m" = "MISSING" ]; then
+      assert_eq "$1 (mutation target present)" "present" "MISSING"
+      return
+    fi
+    assert_contains "$1" "$2" " $(g33_check "$w" "$s" "$c" "$r" "$g") "
+  }
+  g33_neg "33n: dropping the one fired definition fails the group" " f_def " wf \
+    '**What "Step 6.5 fired" means — the one definition.**' '**On firing.**'
+  g33_neg "33n2: restoring the gate-plus-prerequisites reading in Phase 3.5 fails the group" " f_old_sw " sw \
+    'only when this phase fired, in the one sense defined above' 'only when this phase fired and the explorer is being dispatched'
+  g33_neg "33n3: Group 29: break-it -- removing the goal-scope marker from Step 6.5 fails the group" " m_line_wf " wf \
+    '**Each goal-scope line opens its restatement with the marker `[goal scope]`**' '**Each goal-scope line is like any other**'
+  g33_neg "33n4: removing the goal-scope marker from Phase 3.5 fails the group" " m_line_sw " sw \
+    '**Each goal-scope line opens its restatement with the marker `[goal scope]`**' '**Each goal-scope line is like any other**'
+  g33_neg "33n5: dropping the finding marker from Step 6.5 fails the group" " m_find_wf " wf \
+    $'a goal-scope finding\'s record opens with the `[goal scope]` marker' 'a goal-scope finding is recorded'
+  g33_neg "33n16: dropping the finding marker from Phase 3.5 fails the group" " m_find_sw " sw \
+    $'a goal-scope finding\'s record opens with the `[goal scope]` marker' 'a goal-scope finding is recorded'
+  g33_neg "33n6: putting the marker in the format fence fails the group" " m_fence " ct \
+    'Exploratory charter r<N>: <the charter in your own words, redacted>' 'Exploratory charter r<N>: [goal scope] <the charter in your own words, redacted>'
+  g33_neg "33n7: Group 29: break-it -- removing the partial-check rule from Step 6.5 fails the group" " x_still_wf " wf \
+    '**The checker still runs on every other charter:**' ''
+  g33_neg "33n8: restoring the whole-check not-run rule in Step 8 fails the group" " x_old_s8 " wf \
+    $'still run the block on every other charter\'s path, and record the `not run` line Step 6.5 names instead only when every dispatch was sent none' 'record the `not run` line Step 6.5 names instead.'
+  g33_neg "33n9: restoring the old rationale sentence fails the group" " t_old_rat " rat \
+    'never reads the trigger, so it runs no pass and writes no `Goal-scope pass not run` line' 'runs no pass and writes no line.'
+  g33_neg "33n10: restoring the old AGENTS.md sentence fails the group" " a_old " ag \
+    'or role accounts; only a confirmed harness reaches the explorer as `PROBE_` lines' 'or role accounts, which reaches the explorer as `PROBE_` lines'
+  g33_neg "33n11: dropping the key-first hand-back rule from Phase 3.5 fails the group" " m_hb_sw " sw \
+    '**The marker never goes before a line'"'"'s fixed prefix:** a goal-scope hand-back keeps its key first, `HANDED BACK: r7 [goal scope] <what is left>`, ' ''
+  g33_neg "33n12: dropping the cap-and-budget boundary from the fired definition fails the group" " f_budget " wf \
+    'A charter is built only once it survives step 1' 'A charter is built'
+  g33_neg "33n13: dropping the u<k> clause from Step 8 fails the group" " x_uk_s8 " wf \
+    'only when every dispatch was sent none and no `u<k>` line exists — then' 'only when every dispatch was sent none — then'
+  g33_neg "33n14: restoring the old flowchart firing step fails the group" " f_chart_old_wf " wf \
+    '    Else invoke the charter-generator AGENT once (change mode, pointers only);' '    Invoke the charter-generator AGENT once (change mode, pointers only);'
+  g33_neg "33n15: restoring the add-no-marker reading in stride-completing-tasks fails the group" " m_forge_old_ct " ct \
+    'when the charter text holds the marker or a look-alike (`[GOAL SCOPE]`, `(goal scope)`), leave that text out of your restatement and still write your own' 'leave it out of a restatement whose charter text holds it'
+  assert_eq "33z: the break-it cases left the real files untouched" "$G33_SUM_BEFORE" \
+    "$(cksum < "$G33_WF") $(cksum < "$G33_SW") $(cksum < "$G33_CT") $(cksum < "$G33_RAT") $(cksum < "$G33_AG")"
+else
+  echo "  SKIP: Test Group 33 (a skill, the rationale, AGENTS.md or the changelog is missing)"
+fi
+
+# ============================================================================
+# Test Group 34: D406 -- completion free text comes from a file, never a shell
+# literal
+# ============================================================================
+# The API Request Format example passed completion_notes, completion_summary
+# and review_report through single-quoted --arg values, and hook output and
+# subagent summaries through the single-quoted jq filter, so a `'` in any of
+# them ended the literal and the shell ran what followed. The fix makes Step
+# 8's outcomes file, written with the file-editing tool, the one file every
+# completion reads its free text from (`$oc[0] + {...}`, `--slurpfile oc`),
+# found by Step 8's own root and stem lines and guarded against a missing,
+# malformed or symlinked file; and the after_goal PATCH stops word-splitting
+# the hook output into jq's arguments. 34a-34h pin each rule (g34_check
+# returns the failing ids), and 34i sweeps every shell fence in every plugin
+# markdown file but the changelog: any fence that calls curl on /complete or
+# /mark_reviewed must read the file and pass only the three chosen --arg
+# values; 34c pins the changelog entry; 34j-34k12 run the
+# EXTRACTED example with curl stubbed: a hostile file builds a valid body byte
+# for byte and runs nothing, a skipped review omits review_report, a missing,
+# empty, malformed or symlinked file or a non-plain stem sends nothing, and a
+# subdirectory cwd or CODEX_PROJECT_DIR still finds the file, reads the
+# root's changed-files snapshot, tees at the root and leaves the caller's
+# directory alone, and a refusal exits non-zero; 34l runs both
+# extracted after_goal PATCH blocks on output holding spaces, a glob and
+# quotes; 34m shows the old quoted-`--arg` shape really does run a hostile
+# note, so 34j2's "ran nothing" could have failed; 34n-34n27, 34n5b and 34c2 break
+# COPIES and show that the checks they name can fail (not every id has a
+# break of its own); 34z shows the real files were never written. Reuses
+# Group 27's g27_slice, g27_count and g27_mut.
+# What this does NOT prove: that an agent writes the file with its
+# file-editing tool in a live Codex CLI session (no Codex CLI here).
+echo ""
+echo "=== Test Group 34: completion notes, summary and review report are read from a file, never a shell literal (D406) ==="
+
+G34_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+G34_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G34_RAT="$PORT_ROOT/docs/orchestrator-rationale.md"
+G34_CL="$PORT_ROOT/CHANGELOG.md"
+G34_RM="$PORT_ROOT/README.md"
+G34_AG="$PORT_ROOT/AGENTS.md"
+G34_CF='--argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '"'"'[]'"'"')"'
+G34_TEE='| tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"'
+G34_GUARD='if [ -z "$ROOT" ] || [ -z "$OC_STEM" ] || [ ! -d "$ROOT/.stride" ] || [ -L "$ROOT/.stride" ] \'
+G34_GUARD2='   || [ ! -f "$OC" ] || [ -L "$OC" ] \'
+G34_VALID="   || ! jq -se 'length == 1 and (.[0] | type) == \"object\" and (.[0].completion_notes | type) == \"string\" and (.[0].completion_summary | type) == \"string\"' \"\$OC\" >/dev/null 2>&1; then"
+G34_MERGE="    '\$oc[0] + {"
+G34_AGNEW='-d "$(jq -n --arg out "$OUTPUT" --argjson ec "$EXIT_CODE" --argjson ms "$DURATION_MS" \'
+G34_AGOLD='--arg out \"$OUTPUT\"'
+
+# g34_fence <file> <lead>: the first ```bash (or ```text) fence after the first line holding lead
+g34_fence() {
+  G34_LEAD="$2" awk '
+    f == 0 && index($0, ENVIRON["G34_LEAD"]) { f = 1; next }
+    f == 1 && /^```(bash|text)/ { f = 2; next }
+    f == 2 && /^```/ { exit }
+    f == 2 { print }' "$1"
+}
+g34_once() { [ "$(g27_count "$2" "$3")" = "1" ] || G34_FAILS="$G34_FAILS $1"; }
+g34_none() { if grep -qF -- "$2" <<< "$3"; then G34_FAILS="$G34_FAILS $1"; fi; }
+# G34_SWEEP: every shell fence that calls curl on /complete or /mark_reviewed
+# prints HIT, and one BAD line per rule it breaks (read with awk "$G34_SWEEP")
+read -r -d '' G34_SWEEP <<'G34EOF'
+# Every shell fence (bash, sh, shell, zsh, console or no language) whose non-comment lines call curl on /complete or
+# /mark_reviewed: prints "HIT file:line" and one "BAD file:line reason" per rule broken.
+FNR == 1 { inb = 0 }
+inb == 0 && /^[[:space:]]*```/ {
+  lang = $0; sub(/^[[:space:]]*```+/, "", lang); sub(/[[:space:]].*$/, "", lang)
+  inb = 1; start = FNR; n = 0; shellish = (lang ~ /^(bash|sh|shell|zsh|console)?$/); next
+}
+inb == 1 && /^[[:space:]]*```/ { if (shellish) check(); inb = 0; next }
+inb == 1 { L[++n] = $0 }
+function bad(why) { print "BAD " FILENAME ":" start " " why }
+function check(   i, s, hit, all, t, w, rest) {
+  hit = 0; all = ""
+  for (i = 1; i <= n; i++) {
+    s = L[i]; if (s ~ /^[[:space:]]*#/) continue
+    all = all "\n" s
+    if (s ~ /curl/ && (s ~ /\/complete/ || s ~ /\/mark_reviewed/)) hit = 1
+  }
+  if (!hit) return
+  print "HIT " FILENAME ":" start
+  if (!index(all, "--slurpfile oc ")) bad("no_slurpfile")
+  if (!index(all, "'$oc[0] + {")) bad("no_merge")
+  for (i = 1; i <= n; i++) {
+    s = L[i]; if (s ~ /^[[:space:]]*#/) continue
+    if (s ~ /--(args|jsonargs|rawfile|data|json)([[:space:]=]|$)/ || s ~ /--data-/) bad("forbidden_option")
+    if (s ~ /\$ENV|env\./) bad("env_read")
+    if (s ~ /"?(completion_notes|completion_summary|review_report|output|summary|reason)"?[[:space:]]*:/) bad("free_text_key")
+    if ((s ~ /^[[:space:]]*-d[[:space:]]/ || (s ~ /curl/ && s ~ /[[:space:]]-d[[:space:]]/)) && !index(s, "-d \"$(jq -n")) bad("body_not_jq")
+    rest = s
+    while (match(rest, /--(arg|argjson|slurpfile)[[:space:]]+[^[:space:]]+/)) {
+      t = substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
+      split(t, w, /[[:space:]]+/)
+      if (w[1] == "--arg" && w[2] !~ /^(agent_name|complexity|files)$/) bad("arg_" w[2])
+      if (w[1] == "--argjson" && w[2] != "cf") bad("argjson_" w[2])
+      if (w[1] == "--slurpfile" && w[2] != "oc") bad("slurpfile_" w[2])
+    }
+  }
+}
+G34EOF
+# g34_mds <ct> <wf> <rat> <readme> <agents>: NUL-separated, every plugin .md but
+# the changelog, the five named files standing in for their real copies
+g34_mds() {
+  local f
+  printf '%s\0' "$@"
+  while IFS= read -r -d '' f; do
+    case "$f" in "$G34_CT"|"$G34_WF"|"$G34_RAT"|"$G34_RM"|"$G34_AG"|"$G34_CL") continue ;; esac
+    printf '%s\0' "$f"
+  done < <(find "$PORT_ROOT" -name '*.md' -not -path '*/.git/*' -print0)
+}
+
+# g34_check <ct> <wf> <rat> <readme> <agents>: OK, or the sorted failing ids.
+# n_ no free-text --arg, s_ the slurpfile read, k_ cf and tee kept, p_ the
+# prose rule, r_ the reconciled Step 6.5 paragraph, w_ Step 8's file shape,
+# a_ the after_goal PATCH, t_ the rationale.
+g34_check() {
+  local ct="$1" wf="$2" rat="$3" rm="$4" ag="$5" api frag s8 arf ctag wfag all l s8b sw
+  G34_FAILS=""
+  api=$(g34_fence "$ct" '## API Request Format')
+  frag=$(g34_fence "$ct" '**Why inline?** When you assemble the completion curl')
+  s8=$(g27_slice "$wf" '## Step 8:' '## Step 9:')
+  arf=$(g27_slice "$ct" '## API Request Format' '## Per-File Diff Capture (Manual)')
+  ctag=$(g34_fence "$ct" '5. **POST**: Forward the captured result to flip the parent goal to Done:')
+  wfag=$(g34_fence "$wf" '5. **POST**: Forward the captured result to the server:')
+  s8b=$(g34_fence "$wf" '**Check the exploratory record before the call')
+  for l in api frag s8 arf ctag wfag s8b; do
+    eval "[ -n \"\$$l\" ]" || G34_FAILS="$G34_FAILS scope_$l"
+  done
+  all=$(cat "$ct" "$wf" "$rm" "$ag")
+
+  # n_: no completion example passes notes, summary or report on --arg, and no
+  # free-text field is written into either fence's jq filter at all (and the
+  # full example's filter holds no string literal: its own values are --arg)
+  if grep -qE -- "--arg (notes|summary|report)( |$)" <<< "$all"; then G34_FAILS="$G34_FAILS n_arg"; fi
+  l=$(grep -E '(completion_notes|completion_summary|review_report|output|summary|reason): ' <<< "$api
+$frag")
+  if [ -n "$l" ]; then G34_FAILS="$G34_FAILS n_field"; fi
+  if grep -qE '[a-z_]+: "' <<< "$api"; then G34_FAILS="$G34_FAILS n_literal"; fi
+
+  # x_: the sweep over every shell fence in every plugin .md (but the changelog)
+  sw=$(g34_mds "$ct" "$wf" "$rat" "$rm" "$ag" | xargs -0 awk "$G34_SWEEP")
+  grep -q '^HIT ' <<< "$sw" || G34_FAILS="$G34_FAILS scope_sweep"
+  for l in $(awk '$1 == "BAD" { print "x_" $3 }' <<< "$sw"); do G34_FAILS="$G34_FAILS $l"; done
+
+  # s_: both fences merge the file read with --slurpfile oc; the example finds
+  # it with Step 8's own root and stem lines and refuses a bad file
+  g34_once s_api_path 'OC="$ROOT/.stride/.outcomes-$OC_STEM.json"' "$api"
+  [ -n "$s8b" ] && [ "$(printf '%s\n' "$api" | head -15)" = "$(printf '%s\n' "$s8b" | head -15)" ] \
+    || G34_FAILS="$G34_FAILS s_same"
+  g34_once s_api '--slurpfile oc "$OC" \' "$api"
+  g34_once s_frag '--slurpfile oc "${CLAUDE_PROJECT_DIR:-.}/.stride/.outcomes-<IDENTIFIER>.json" \' "$frag"
+  g34_once s_guard "$G34_GUARD" "$api"
+  g34_once s_guard2 "$G34_GUARD2" "$api"
+  g34_once s_valid "$G34_VALID" "$api"
+  g34_once s_merge_api "$G34_MERGE" "$api"
+  g34_once s_merge_frag "$G34_MERGE" "$frag"
+  g34_once s_cd '( cd "$ROOT" && curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \' "$api"
+  g34_once s_false "  echo 'completion text file missing, malformed or a symlink: not submitting' >&2; false" "$api"
+  [ "$(awk 'index($0, "A fragment, not a command — the `text` fence is deliberate:") { f = 1; next } f && NF { print; exit }' "$ct")" = '```text' ] \
+    || G34_FAILS="$G34_FAILS s_frag_text"
+
+  # k_: the changed-files read and the tee capture are kept
+  g34_once k_cf_api "$G34_CF" "$api"
+  g34_once k_cf_frag "$G34_CF" "$frag"
+  g34_once k_tee "  $G34_TEE" "$api"
+  g34_once k_close "  $G34_TEE )" "$api"
+
+  # p_: the rule, stated once, beside the example
+  g34_once p_rule '**Write the free text to a file first — never into a shell literal (D406).**' "$arf"
+  g34_once p_noshell 'none of it travels through a shell `echo`, `printf`, heredoc, quoted `--arg` or the single-quoted jq filter' "$arf"
+  g34_once p_tool 'Before the curl, **write `.stride/.outcomes-<IDENTIFIER>.json` with your file-editing tool**' "$arf"
+  g34_once p_fields 'and `after_doing_result`, `before_review_result`, `explorer_result`, `reviewer_result` and `workflow_steps` in their documented shapes' "$arf"
+  g34_once p_chosen 'adding only the values you choose yourself — `agent_name`, `time_spent_minutes`, `actual_complexity`, `actual_files_changed` and `changed_files`' "$arf"
+  g34_once p_same $'**The block finds the file exactly as Step 8\'s block does**' "$arf"
+  g34_once p_link 'send the full block from there, with its root and stem lines, its missing-file, malformed-file and symlink guard and its `| tee`, never this fragment' "$(cat "$ct")"
+  g34_once p_keep 'never move a free-text field back onto one, or into the jq filter' "$arf"
+  g34_once p_s8 '**Every completion builds its body from the outcomes file, whether or not Step 6.5 fired**' "$s8"
+  g34_none p_mistake "-d '{...both results...}'" "$(cat "$ct")"
+
+  # r_: the Step 6.5 paragraph is the same file, not a swap
+  g34_once r_same 'The file above is the same file `stride-workflow` Step 8 checks — one file, one stem, one cleanup line' "$arf"
+  g34_once r_keys 'The checker reads only `completion_notes` and `completion_summary`, so the other keys in the same file change no verdict.' "$arf"
+  g34_none r_old 'replace `--arg notes …` and `--arg summary …` above' "$(cat "$ct")"
+
+  # w_: Step 8's file is the one every completion reads its free text from
+  g34_once w_shape $'plus `review_report` when a reviewer ran and the body\'s other free-text fields, as `stride-completing-tasks` § API Request Format lists them (it is the one file every completion reads its free text from, and the checker reads only the first two keys)' "$s8"
+  g34_none w_old 'a JSON object with exactly two string keys' "$(cat "$wf")"
+
+  # a_: the after_goal PATCH quotes the output and passes the numbers as JSON
+  g34_once a_ct "$G34_AGNEW" "$ctag"
+  g34_once a_wf "$G34_AGNEW" "$wfag"
+  g34_none a_old "$G34_AGOLD" "$all"
+
+  # t_: the rationale says why it is one file
+  g34_once t_rat 'Since D406 it is the file every completion reads its free text from, checked or not, and it carries the review report, the hook results, the explorer and reviewer results and the telemetry steps too' "$(cat "$rat")"
+
+  if [ -z "$G34_FAILS" ]; then echo OK; else printf '%s\n' $G34_FAILS | sort -u | tr '\n' ' '; fi
+}
+
+if [ -f "$G34_CT" ] && [ -f "$G34_WF" ] && [ -f "$G34_RAT" ] && [ -f "$G34_CL" ] && [ -f "$G34_RM" ] && [ -f "$G34_AG" ]; then
+  G34_SUM_BEFORE="$(cksum < "$G34_CT") $(cksum < "$G34_WF") $(cksum < "$G34_RAT") $(cksum < "$G34_RM") $(cksum < "$G34_AG") $(cksum < "$G34_CL")"
+  G34_REAL=$(g34_check "$G34_CT" "$G34_WF" "$G34_RAT" "$G34_RM" "$G34_AG")
+  g34_ok() { # <label> <prefix>...: no failing id on the real files starts with a prefix
+    local label="$1" bad="" id pre; shift
+    for id in $G34_REAL; do
+      [ "$id" = OK ] && continue
+      for pre in "$@" scope_; do case "$id" in "$pre"*) bad="$bad $id" ;; esac; done
+    done
+    assert_eq "$label" "" "$bad"
+  }
+  g34_ok "34a: no completion example in stride-completing-tasks, stride-workflow, README or AGENTS uses --arg notes, --arg summary or --arg report, and neither fence writes free text into its jq filter" n_
+  g34_ok "34b: the completion examples read the free-text fields with --slurpfile from Step 8's outcomes file, found by Step 8's own root and stem lines, behind a missing, malformed and symlinked-file guard" s_
+  g34_ok "34d: the example still keeps --argjson cf and the | tee capture" k_
+  g34_ok "34e: the rule is stated beside the example, and the fragment points at the full block" p_
+  g34_ok "34f: the Step 6.5 paragraph and Step 8 name one file for every completion" r_ w_ t_
+  g34_ok "34g: the after_goal PATCH quotes the hook output and passes the numbers with --argjson" a_
+  g34_ok "34i: every shell fence in the plugin's markdown that calls /complete or /mark_reviewed reads the file and passes only agent_name, complexity, files, cf and oc" x_ scope_sweep
+  assert_eq "34h: every rule found exactly once in its section" "OK" "$G34_REAL"
+  assert_eq "34c: the changelog carries one D406 entry between [Unreleased] and [1.43.0]" "1" \
+    "$(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.0\]/{exit} f' "$G34_CL" | grep -c '^### Fixed — .*(D406)$')"
+
+  if command -v jq >/dev/null 2>&1; then
+    G34_D="$TMPDIR_TEST/g34"; rm -rf "$G34_D"; mkdir -p "$G34_D/.stride" "$G34_D/sub/deep"
+    : > "$G34_D/.stride.md"
+    G34_OCF="$G34_D/.stride/.outcomes-D9.json"
+    G34_NOTES='It'"'"'$(touch '"$G34_D"'/PWNED)'"'"'s done, "quoted", `whoami` and $(touch '"$G34_D"'/PWNED2).'
+    G34_REP='## Review Summary
+Approved \n stays two characters.'
+    G34_HOOK='3 tests, 0 failures; it'"'"'s `id` $(touch '"$G34_D"'/PWNED4) *'
+    # g34_api <block> [cwd] [CODEX_PROJECT_DIR|none]: run an example block with its
+    # two placeholder lines filled (D9 / 9), from cwd (default $G34_D), with
+    # CLAUDE_PROJECT_DIR=$G34_D unless a CODEX_PROJECT_DIR (or none) is given, and curl
+    # stubbed to print its -d body and touch CURLED; prints the body
+    g34_api() {
+      local b="$1" cwd="${2:-$G34_D}" rv="CLAUDE_PROJECT_DIR=$G34_D"
+      case "${3:-}" in ( '' ) ;; ( none ) rv="G34_NOROOT=1" ;; ( * ) rv="CODEX_PROJECT_DIR=$3" ;; esac
+      b=${b/"OC_IDENT='<identifier>'"/"OC_IDENT='${G34_IDENT-D9}'"}
+      b=${b/"OC_ID='<numeric id>'"/"OC_ID='9'"}
+      rm -f "$G34_D/CURLED" "$G34_D/.stride/.last-api-response.json"
+      ( cd "$cwd" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR \
+          "$rv" G34_D="$G34_D" \
+          STRIDE_API_URL='http://stub.invalid' STRIDE_API_TOKEN='stub' TASK_ID=1 bash -c '
+        curl() { while [ $# -gt 0 ]; do [ "$1" = -d ] && { printf "%s" "$2"; : > "$G34_D/CURLED"; }; shift; done; }
+        '"$b" 2>/dev/null )
+    }
+    g34_sent() { [ -e "$G34_D/CURLED" ] && echo present || echo absent; }
+    G34_BLK=$(g34_fence "$G34_CT" '## API Request Format')
+    g34_full() { # write the full free-text half, hostile text in every free-text slot
+      jq -n --arg n "$G34_NOTES" --arg s "One line; it's \"done\"." --arg r "$G34_REP" --arg h "$G34_HOOK" '
+        {completion_notes: $n, completion_summary: $s, review_report: $r,
+         after_doing_result: {exit_code: 0, output: $h, duration_ms: 0},
+         before_review_result: {exit_code: 0, output: $h, duration_ms: 0},
+         explorer_result: {dispatched: false, reason: "self_reported_exploration", summary: $n},
+         reviewer_result: {dispatched: false, reason: "self_reported_review", summary: $n},
+         workflow_steps: [{name: "explorer", dispatched: false, reason: $n}]}' > "$G34_OCF"
+    }
+
+    g34_full
+    rm -f "$G34_D/PWNED" "$G34_D/PWNED2" "$G34_D/PWNED4"
+    G34_BODY=$(g34_api "$G34_BLK")
+    assert_eq "34j: the extracted example builds a valid body from a file whose free text holds a single quote, a double quote, a backtick and \$(...)" "true" \
+      "$(printf '%s' "$G34_BODY" | jq --slurpfile oc "$G34_OCF" 'del(.agent_name, .time_spent_minutes, .actual_complexity, .actual_files_changed, .changed_files) == $oc[0] and .agent_name == "Codex CLI" and .actual_complexity == "small" and .changed_files == []' 2>/dev/null)"
+    assert_eq "34j2: the hostile notes, summaries, reasons and hook output ran nothing" "absent absent absent" \
+      "$([ -e "$G34_D/PWNED" ] && echo present || echo absent) $([ -e "$G34_D/PWNED2" ] && echo present || echo absent) $([ -e "$G34_D/PWNED4" ] && echo present || echo absent)"
+    assert_eq "34j3: a literal backslash-n in the review report reaches the body as two characters, beside a real newline" "true" \
+      "$(printf '%s' "$G34_BODY" | jq '(.review_report | contains("\\n stays")) and (.review_report | contains("Summary\nApproved"))' 2>/dev/null)"
+    assert_eq "34j4: the | tee capture holds the body the curl printed" "$G34_BODY" "$(cat "$G34_D/.stride/.last-api-response.json" 2>/dev/null)"
+
+    jq -n '{completion_notes: "Done.", completion_summary: "Small change, review skipped."}' > "$G34_OCF"
+    assert_eq "34j5: a file with no review_report key omits review_report from the body" "false" \
+      "$(g34_api "$G34_BLK" | jq 'has("review_report")' 2>/dev/null)"
+
+    rm -f "$G34_OCF"
+    g34_api "$G34_BLK" >/dev/null; G34_RC=$?
+    assert_eq "34k: a missing notes file sends nothing" "absent" "$(g34_sent)"
+    assert_eq "34k11: and the refusal exits non-zero" "nonzero" "$([ "$G34_RC" -ne 0 ] && echo nonzero || echo zero)"
+    G34_PAT='>&2; false'; G34_NEW='>&2'
+    G34_NOFALSE=${G34_BLK/"$G34_PAT"/"$G34_NEW"}
+    g34_api "$G34_NOFALSE" >/dev/null; G34_RC=$?
+    assert_eq "34n19: break-it -- without the false the refusal exits zero" "zero" "$([ "$G34_RC" -ne 0 ] && echo nonzero || echo zero)"
+    printf '%s\n' '{"completion_notes":"x","completion_summary":"y"}' > "$G34_D/elsewhere.json"
+    ln -s "$G34_D/elsewhere.json" "$G34_OCF"
+    g34_api "$G34_BLK" >/dev/null
+    assert_eq "34k2: a notes file that is a symlink sends nothing" "absent" "$(g34_sent)"
+    rm -f "$G34_OCF"
+    mv "$G34_D/.stride" "$G34_D/real-stride"; ln -s "$G34_D/real-stride" "$G34_D/.stride"
+    cp "$G34_D/elsewhere.json" "$G34_D/real-stride/.outcomes-D9.json"
+    g34_api "$G34_BLK" >/dev/null
+    assert_eq "34k3: a .stride/ that is a symlink sends nothing" "absent" "$(g34_sent)"
+    rm -f "$G34_D/.stride"; mv "$G34_D/real-stride" "$G34_D/.stride"
+    g34_api "$G34_BLK" >/dev/null
+    assert_eq "34k4: the same file as a regular file sends (so 34k-34k3 could have failed)" "present" "$(g34_sent)"
+    : > "$G34_OCF"; g34_api "$G34_BLK" >/dev/null
+    assert_eq "34k5: an empty file sends nothing" "absent" "$(g34_sent)"
+    printf '%s\n' '{"completion_notes":5,"completion_summary":"y"}' > "$G34_OCF"; g34_api "$G34_BLK" >/dev/null
+    assert_eq "34k6: a file whose notes are not a string sends nothing" "absent" "$(g34_sent)"
+    printf '%s\n%s\n' '{"completion_notes":"x","completion_summary":"y"}' '{"completion_notes":"z","completion_summary":"w"}' > "$G34_OCF"
+    g34_api "$G34_BLK" >/dev/null
+    assert_eq "34k7: a file holding two JSON objects sends nothing" "absent" "$(g34_sent)"
+    cp "$G34_D/elsewhere.json" "$G34_OCF"
+    printf '%s\n' '["root.ex"]' > "$G34_D/.stride-changed-files.json"
+    mkdir -p "$G34_D/sub/deep/.stride"; printf '%s\n' '["deep.ex"]' > "$G34_D/sub/deep/.stride-changed-files.json"
+    G34_BODY=$(g34_api "$G34_BLK"$'\npwd > "$G34_D/PWD_AFTER"' "$G34_D/sub/deep" none)
+    assert_eq "34k8: run from a subdirectory with no root variable, the .stride.md walk-up finds the checked file" "present" "$(g34_sent)"
+    assert_eq "34k12: and it reads the root's changed-files snapshot, tees at the root and leaves the caller's directory alone" \
+      'true|present|absent|sub/deep' \
+      "$(printf '%s' "$G34_BODY" | jq -c '.changed_files == ["root.ex"]' 2>/dev/null)|$([ -s "$G34_D/.stride/.last-api-response.json" ] && echo present || echo absent)|$([ -e "$G34_D/sub/deep/.stride/.last-api-response.json" ] && echo present || echo absent)|$(sed "s|^$G34_D/||" "$G34_D/PWD_AFTER" 2>/dev/null)"
+    G34_PAT='( cd "$ROOT" && curl'; G34_NEW='( curl'
+    G34_NOCD=${G34_BLK/"$G34_PAT"/"$G34_NEW"}
+    G34_BODY=$(g34_api "$G34_NOCD" "$G34_D/sub/deep" none)
+    assert_eq "34n18: break-it -- without the cd a subdirectory run reads the wrong changed-files snapshot and tees there" \
+      'false|present' \
+      "$(printf '%s' "$G34_BODY" | jq -c '.changed_files == ["root.ex"]' 2>/dev/null)|$([ -e "$G34_D/sub/deep/.stride/.last-api-response.json" ] && echo present || echo absent)"
+    rm -rf "$G34_D/.stride-changed-files.json" "$G34_D/sub/deep/.stride" "$G34_D/sub/deep/.stride-changed-files.json" "$G34_D/PWD_AFTER"
+    g34_api "$G34_BLK" "$G34_D/sub" "$G34_D" >/dev/null
+    assert_eq "34k9: CODEX_PROJECT_DIR alone names the root, as in Step 8's block" "present" "$(g34_sent)"
+    mkdir -p "$G34_D/.stride/.outcomes-D9"; cp "$G34_D/elsewhere.json" "$G34_D/.stride/x.json"
+    G34_IDENT='D9/../x'; g34_api "$G34_BLK" >/dev/null; unset G34_IDENT
+    rmdir "$G34_D/.stride/.outcomes-D9"; rm -f "$G34_D/.stride/x.json"
+    assert_eq "34k10: a non-plain identifier falls back to the numeric-id stem, never a path built from it" "absent" "$(g34_sent)"
+
+    # 34l: the after_goal PATCH, both copies, on output with spaces, a glob and quotes
+    G34_OUT='2 tests, 0 failures * "quoted" it'"'"'s $(touch '"$G34_D"'/PWNED3)'
+    for l in "ct|$G34_CT|5. **POST**: Forward the captured result to flip the parent goal to Done:" \
+             "wf|$G34_WF|5. **POST**: Forward the captured result to the server:"; do
+      G34_F=${l#*|}; G34_LD=${G34_F#*|}; G34_F=${G34_F%%|*}
+      G34_AGB=$(g34_fence "$G34_F" "$G34_LD")
+      G34_AGBODY=$(cd "$G34_D" && env OUTPUT="$G34_OUT" EXIT_CODE=0 DURATION_MS=1234 GOAL_ID=9 \
+        STRIDE_API_URL='http://stub.invalid' STRIDE_API_TOKEN='stub' bash -c '
+        curl() { while [ $# -gt 0 ]; do [ "$1" = -d ] && printf "%s" "$2"; shift; done; }
+        '"$G34_AGB" 2>/dev/null)
+      assert_eq "34l (${l%%|*}): the after_goal PATCH sends the hook output byte for byte, with numeric exit_code and duration_ms" "true" \
+        "$(printf '%s' "$G34_AGBODY" | jq --arg o "$G34_OUT" '.output == $o and .exit_code == 0 and .duration_ms == 1234' 2>/dev/null)"
+    done
+    assert_eq "34l2: the after_goal output ran nothing" "absent" "$([ -e "$G34_D/PWNED3" ] && echo present || echo absent)"
+
+    # 34m: the old quoted --arg shape, rebuilt from the real block, does run a
+    # hostile note -- the hazard is real and 34j2 could have seen it
+    jq -n '{completion_notes: "x", completion_summary: "y"}' > "$G34_OCF"
+    G34_PAT='--slurpfile oc "$OC"'; G34_NEW="--arg notes '$G34_NOTES'"
+    G34_OLD=${G34_BLK/"$G34_PAT"/"$G34_NEW"}
+    G34_PAT="'\$oc[0] + {"; G34_NEW="'{ completion_notes: \$notes,"
+    G34_OLD=${G34_OLD/"$G34_PAT"/"$G34_NEW"}
+    rm -f "$G34_D/PWNED" "$G34_D/PWNED2"
+    g34_api "$G34_OLD" >/dev/null
+    assert_eq "34m: break-it -- the old quoted --arg notes shape runs the hostile note" "present" \
+      "$([ -e "$G34_D/PWNED" ] || [ -e "$G34_D/PWNED2" ] && echo present || echo absent)"
+    rm -f "$G34_D/PWNED" "$G34_D/PWNED2"
+  else
+    echo "  SKIP: 34j-34m (jq not installed)"
+  fi
+
+  # --- 34n: break-it on mutated COPIES ---
+  G34_TMP="$TMPDIR_TEST/g34m"; mkdir -p "$G34_TMP"
+  g34_neg() { # <label> <expected id> <ct|wf|rat> <old> <new>
+    local c="$G34_CT" w="$G34_WF" r="$G34_RAT" m=""
+    rm -f "$G34_TMP"/*.md
+    case "$3" in
+      ct) m=$(g27_mut "$G34_CT" "$G34_TMP/ct.md" "$4" "$5"); c="$G34_TMP/ct.md" ;;
+      wf) m=$(g27_mut "$G34_WF" "$G34_TMP/wf.md" "$4" "$5"); w="$G34_TMP/wf.md" ;;
+      rat) m=$(g27_mut "$G34_RAT" "$G34_TMP/rat.md" "$4" "$5"); r="$G34_TMP/rat.md" ;;
+    esac
+    if [ "$m" = "MISSING" ]; then
+      assert_eq "$1 (mutation target present)" "present" "MISSING"
+      return
+    fi
+    assert_contains "$1" "$2" " $(g34_check "$c" "$w" "$r" "$G34_RM" "$G34_AG") "
+  }
+  g34_neg "34n: break-it -- restoring a quoted --arg notes fails the group" " n_arg " ct \
+    '    --slurpfile oc "$OC" \' "    --arg notes 'All tests passing.' \\"
+  g34_neg "34n2: writing the summary into the jq filter fails the group" " n_field " ct \
+    '       time_spent_minutes: 45,' '       completion_summary: $summary,'
+  g34_neg "34n3: dropping the root, stem and .stride/ guard fails the group" " s_guard " ct \
+    "$G34_GUARD" 'if false \'
+  g34_neg "34n4: dropping the | tee capture fails the group" " k_tee " ct \
+    "  $G34_TEE" '  '
+  g34_neg "34n5: dropping the changed-files read from the example fails the group" " k_cf_api " ct \
+    "    $G34_CF \\" '    --argjson cf "[]" \'
+  g34_neg "34n5b: reading the fragment's notes from somewhere other than the file fails the group" " s_frag " ct \
+    '--slurpfile oc "${CLAUDE_PROJECT_DIR:-.}/.stride/.outcomes-<IDENTIFIER>.json" \' '--slurpfile oc notes.json \'
+  g34_neg "34n6: restoring the two-key-only Step 8 shape fails the group" " w_old " wf \
+    'a JSON object whose string keys `completion_notes` and `completion_summary` hold' 'a JSON object with exactly two string keys, `completion_notes` and `completion_summary`, hold'
+  g34_neg "34n7: restoring the word-splitting after_goal PATCH fails the group" " a_old " wf \
+    '--arg out "$OUTPUT" --argjson ec' '--arg out \"$OUTPUT\" --argjson ec'
+  g34_neg "34n8: restoring the swap-the-lines Step 6.5 paragraph fails the group" " r_old " ct \
+    'The file above is the same file `stride-workflow` Step 8 checks' 'Then replace `--arg notes …` and `--arg summary …` above with the file Step 8 checks'
+  g34_neg "34n9: finding the root another way than Step 8's block fails the group" " s_same " ct \
+    'ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"' 'ROOT="${CLAUDE_PROJECT_DIR:-.}"'
+  g34_neg "34n10: dropping the malformed-file check fails the group" " s_valid " ct \
+    "$G34_VALID" '   || false; then'
+  g34_neg "34n11: building the body without the file merge fails the group" " s_merge_api " ct \
+    "$G34_MERGE" "    '{"
+  g34_neg "34n12: writing a string literal into the jq filter fails the group" " n_literal " ct \
+    '       agent_name: $agent_name,' '       agent_name: "Codex CLI",'
+  g34_neg "34n13: dropping the stated rule fails the group" " p_rule " ct \
+    '**Write the free text to a file first — never into a shell literal (D406).**' '**Write the free text first.**'
+  g34_neg "34n14: dropping the keep-it-off-the-filter sentence fails the group" " p_keep " ct \
+    'never move a free-text field back onto one, or into the jq filter' 'keep them as they are'
+  g34_neg "34n15: dropping the why-one-file sentence from the rationale fails the group" " t_rat " rat \
+    'Since D406 it is the file every completion reads its free text from' 'Since D406 it is a file'
+  g34_neg "34n16: dropping the other free-text fields from Step 8's file shape fails the group" " w_shape " wf \
+    $'and the body\'s other free-text fields, as `stride-completing-tasks` § API Request Format lists them' 'and'
+  g34_neg "34n17: restoring the word-splitting after_goal PATCH in stride-completing-tasks fails the group" " a_ct " ct \
+    '--arg out "$OUTPUT" --argjson ec' '--arg out \"$OUTPUT\" --argjson ec'
+  g34_neg "34n20: a fragment fenced as bash again fails the group" " s_frag_text " ct \
+    '```text' '```bash'
+  g34_neg "34n21: a runnable completion curl with a literal body anywhere in the skill fails the sweep" " x_no_slurpfile " ct \
+    '   # with your file-editing tool and send the guarded block in § API Request Format' \
+    "   curl -X PATCH /api/tasks/W47/complete -d '{...both results...}'"
+  g34_neg "34n22: a quoted --arg name for the notes fails the sweep" ' x_arg_"notes" ' ct \
+    "    --arg complexity 'small' \\" "    --arg \"notes\" 'All tests passing.' \\"
+  g34_neg "34n23: a quoted free-text key in the jq filter fails the sweep" " x_free_text_key " ct \
+    '       time_spent_minutes: 45,' '       "completion_summary": $complexity,'
+  g34_neg "34n24: reading the notes with --rawfile fails the sweep" " x_forbidden_option " ct \
+    '    --slurpfile oc "$OC" \' '    --rawfile notes "$OC" \'
+  g34_neg "34n25: dropping Step 8's file-first pointer fails the group" " p_s8 " wf \
+    '**Every completion builds its body from the outcomes file, whether or not Step 6.5 fired**' '**Every completion**'
+  g34_neg "34n26: reading a free-text value from the environment fails the sweep" " x_env_read " ct \
+    '       time_spent_minutes: 45,' '       time_spent_minutes: $ENV.T,'
+  g34_neg "34n27: dropping the subshell's closing paren fails the group" " k_close " ct \
+    "  $G34_TEE )" "  $G34_TEE"
+  G34_CLM="$G34_TMP/cl.md"
+  if [ "$(g27_mut "$G34_CL" "$G34_CLM" ' never a shell literal (D406)' ' never a shell literal')" = "MISSING" ]; then
+    assert_eq "34c2 (mutation target present)" "present" "MISSING"
+  else
+    assert_eq "34c2: break-it -- a changelog copy without the D406 heading fails 34c's count between [Unreleased] and [1.43.0]" "0" \
+      "$(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.0\]/{exit} f' "$G34_CLM" | grep -c '^### Fixed — .*(D406)$')"
+  fi
+  assert_eq "34z: the break-it cases left the real files untouched" "$G34_SUM_BEFORE" \
+    "$(cksum < "$G34_CT") $(cksum < "$G34_WF") $(cksum < "$G34_RAT") $(cksum < "$G34_RM") $(cksum < "$G34_AG") $(cksum < "$G34_CL")"
+else
+  echo "  SKIP: Test Group 34 (a skill, the rationale, README, AGENTS.md or the changelog is missing)"
+fi
+
+# ============================================================================
+# Test Group 35: W2687 -- the [1.43.1] entry accounts for every 1.43.0 Known
+# issue
+# ============================================================================
+# The 1.43.1 release entry lists how each 1.43.0 Known issue stands. 35a pins
+# one status bullet per 1.43.0 Known-issues bullet, so a list that drops or
+# adds one fails; 35b pins that every status bullet opens, after its bold
+# lead, with "— fixed" or "— partly fixed", so a partial fix cannot be worded
+# around the label; 35c pins that the entry's first sentence ("fixes <full>
+# of the <total> 1.43.0 Known issues in full and <part> in part") matches the
+# bullets. They check labels and counts, never whether a "fixed" is true.
+# 35n1-35n4 mutate copies of the changelog and show each check can fail; 35z
+# checks the real file is left untouched.
+echo ""
+echo "=== Test Group 35: the [1.43.1] entry accounts for every 1.43.0 Known issue (W2687) ==="
+
+G35_CL="$PORT_ROOT/CHANGELOG.md"
+# g35_counts <changelog>: "<bullets> <1.43.0 issues> <labelled> <fixed> <partly> <intro full> <intro total> <intro part>"
+g35_counts() {
+  awk '
+    function num(w) { return (w in N) ? N[w] : -1 }
+    BEGIN { split("one two three four five six seven eight nine", W, " "); for (i in W) N[W[i]] = i }
+    /^## \[1\.43\.1\]/ { e = 1; next }
+    /^## \[1\.43\.0\]/ { e = 0; o = 1; next }
+    /^## \[/ { e = 0; o = 0 }
+    e && !intro && NF {
+      intro = 1; f = -1; t = -1; q = -1
+      if (match($0, /fixes [a-z]+ of the [a-z]+ 1\.43\.0 Known issues in full and [a-z]+ in part/)) {
+        split(substr($0, RSTART, RLENGTH), w, " "); f = num(w[2]); t = num(w[5]); q = num(w[12])
+      }
+      next
+    }
+    e && $0 == "How each 1.43.0 Known issue stands:" { l = 1; next }
+    e && l && /^- / {
+      s++
+      if ($0 ~ /^- \*\*[^*]+\*\* — partly fixed /) { p++; lab++ }
+      else if ($0 ~ /^- \*\*[^*]+\*\* — fixed /) { x++; lab++ }
+      next
+    }
+    e && l && NF { l = 0 }
+    o && /^### / { k = ($0 == "### Known issues"); next }
+    o && k && /^- / { n++ }
+    END { printf "%d %d %d %d %d %d %d %d\n", s, n, lab, x, p, f, t, q }' "$1"
+}
+g35_a() { awk '{ print ($1 > 0 && $1 == $2) ? "yes" : "no" }'; }
+g35_b() { awk '{ print ($1 > 0 && $3 == $1) ? "yes" : "no" }'; }
+g35_c() { awk '{ print ($6 == $4 && $7 == $2 && $8 == $5) ? "yes" : "no" }'; }
+if [ -f "$G35_CL" ]; then
+  G35_SUM_BEFORE=$(cksum < "$G35_CL")
+  G35_REAL=$(g35_counts "$G35_CL")
+  assert_eq "35a: the [1.43.1] status list has one bullet per 1.43.0 Known issue" "yes" "$(printf '%s\n' "$G35_REAL" | g35_a)"
+  assert_eq "35b: every status bullet opens with fixed or partly fixed" "yes" "$(printf '%s\n' "$G35_REAL" | g35_b)"
+  assert_eq "35c: the entry's first sentence counts the fixed and partly fixed bullets" "yes" "$(printf '%s\n' "$G35_REAL" | g35_c)"
+  G35_TMP="$TMPDIR_TEST/g35"; mkdir -p "$G35_TMP"; G35_M="$G35_TMP/cl.md"
+  # g35_neg <label> <check fn> <old> <new>: the mutated copy must fail the check
+  g35_neg() {
+    if [ "$(g27_mut "$G35_CL" "$G35_M" "$3" "$4")" = "MISSING" ]; then
+      assert_eq "$1 (mutation target present)" "present" "MISSING"
+    else
+      assert_eq "$1" "no" "$(g35_counts "$G35_M" | "$2")"
+    fi
+  }
+  g35_neg "35n1: break-it -- a status list missing one bullet fails 35a" g35_a \
+    '- **The goal-scope trigger and the Step 8 outcomes block resolve paths differently**' \
+    'The goal-scope trigger and the Step 8 outcomes block resolve paths differently'
+  G35_SIB="- **The sibling plugin's text predates this release.**"
+  g35_neg "35n2: break-it -- a sixth 1.43.0 Known issue with no status bullet fails 35a" g35_a \
+    "$G35_SIB" "- **One more 1.43.0 issue.**
+$G35_SIB"
+  g35_neg "35n3: break-it -- a status bullet worded around the label fails 35b" g35_b \
+    '** — partly fixed by D406. ' '** — mostly addressed by D406. '
+  g35_neg "35n4: break-it -- a partial fix relabelled fixed fails 35c" g35_c \
+    '** — partly fixed by D406. ' '** — fixed by D406. '
+  assert_eq "35z: the break-it cases left the real changelog untouched" "$G35_SUM_BEFORE" "$(cksum < "$G35_CL")"
+else
+  echo "  SKIP: Test Group 35 (the changelog is missing)"
 fi
 
 echo ""

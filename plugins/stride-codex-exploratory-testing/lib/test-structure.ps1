@@ -55,7 +55,12 @@
     catalog, the read, search and glob tools line, an unchanged
     no-change-context worked example, the chartering skill's change
     section and the fixture's worked change-context example checked
-    against that contract. JSON is parsed
+    against that contract. Last, the charter and nightmare-headline
+    command-skills: each lists the change-risk source, names the
+    change-risk lenses only by pointing at the heuristics skill (no lens
+    restated), and renders surface and edge_cases_covered; neither suite
+    writes a fixed temporary path, and an invalid manifest reports the
+    parser's own error text. JSON is parsed
     with ConvertFrom-Json — no network, no jq. Mirrors
     lib/test-structure.sh.
 
@@ -86,21 +91,38 @@ Write-Host ""
 
 # --- Manifest --------------------------------------------------------------
 
-$Manifest = Join-Path $PluginRoot '.codex-plugin/plugin.json'
-if (Test-Path -LiteralPath $Manifest -PathType Leaf) {
-    $parsed = $null
-    $jsonOk = $false
+# Parses manifest JSON text. Returns an object whose Error is '' when it
+# parsed, else the parser's own error text, so a failure reports why. The
+# error stays in memory: this twin writes no temporary file for it. The result
+# is wrapped so a top-level JSON array is never enumerated on return.
+function ConvertFrom-ManifestText([AllowNull()][string]$raw) {
+    $parsedJson = $null
+    $err = ''
     try {
-        $raw = Get-Content -LiteralPath $Manifest -Raw
-        $parsed = $raw | ConvertFrom-Json
+        $parsedJson = $raw | ConvertFrom-Json
         # ConvertFrom-Json returns $null WITHOUT throwing for empty / whitespace /
         # literal `null` content — treat that as invalid so this twin agrees with the
         # bash python3 json.load check instead of silently skipping the key check.
-        if ($null -ne $parsed) { $jsonOk = $true }
+        if ($null -eq $parsedJson) { $err = 'empty or literal null content' }
     }
     catch {
-        $jsonOk = $false
+        $err = [string]$_.Exception.Message
+        if (-not $err) { $err = 'ConvertFrom-Json failed' }
     }
+    return [pscustomobject]@{ Parsed = $parsedJson; Error = $err }
+}
+function Read-ManifestJson([string]$path) {
+    $raw = $null
+    try { $raw = Get-Content -LiteralPath $path -Raw }
+    catch { return [pscustomobject]@{ Parsed = $null; Error = [string]$_.Exception.Message } }
+    return ConvertFrom-ManifestText $raw
+}
+
+$Manifest = Join-Path $PluginRoot '.codex-plugin/plugin.json'
+if (Test-Path -LiteralPath $Manifest -PathType Leaf) {
+    $mj = Read-ManifestJson $Manifest
+    $parsed = $mj.Parsed
+    $jsonOk = ($mj.Error -eq '')
 
     if ($jsonOk) {
         Test-Ok ".codex-plugin/plugin.json exists and is valid JSON"
@@ -123,12 +145,34 @@ if (Test-Path -LiteralPath $Manifest -PathType Leaf) {
         }
     }
     else {
-        Test-Nope "plugin.json is not valid JSON (empty, null, or malformed)"
+        Test-Nope "plugin.json is not valid JSON (empty, null, or malformed)" $mj.Error
     }
 }
 else {
     Test-Nope ".codex-plugin/plugin.json not found" $Manifest
 }
+
+# The error path: invalid manifest text still reports the parser's error
+# text. Then the real manifest read with TMPDIR unset, restored when the check
+# ends. Neither check makes a temporary file, so an interrupt leaves nothing
+# behind (this twin's manifest reader never needs one).
+$badRead = ConvertFrom-ManifestText '{"name": '
+if ($badRead.Error -ne '' -and $null -eq $badRead.Parsed) {
+    Test-Ok 'an invalid plugin.json still reports its error text'
+} else {
+    Test-Nope 'an invalid plugin.json still reports its error text' "parsed: $($null -ne $badRead.Parsed); text: $($badRead.Error)"
+}
+
+$savedTmpDir = $env:TMPDIR
+$goodRead = $null
+try {
+    Remove-Item Env:TMPDIR -ErrorAction SilentlyContinue
+    $goodRead = Read-ManifestJson $Manifest
+} finally {
+    if ($null -ne $savedTmpDir) { $env:TMPDIR = $savedTmpDir }
+}
+if ($null -ne $goodRead -and $goodRead.Error -eq '') { Test-Ok 'the manifest check works with TMPDIR unset' }
+else { Test-Nope 'the manifest check works with TMPDIR unset' "$(if ($null -ne $goodRead) { $goodRead.Error } else { 'not run' })" }
 
 # --- Command-skills (Codex has no commands/; entry is skill activation) -----
 
@@ -2870,6 +2914,125 @@ if ((Test-Path -LiteralPath $CharterGen -PathType Leaf) -and (Test-Path -Literal
 } else {
     Test-Nope 'change-context checks need agents/charter-generator.md, skills/chartering/SKILL.md, fixtures/example-charters.md and skills/heuristics/SKILL.md'
 }
+
+# --- Command-skills render change mode ----------------------------------------
+# The charter and nightmare-headline command-skills consume the
+# charter-generator's JSON, so each lists the change-risk source, names the
+# change-risk lenses only by pointing at the heuristics skill (no lens name, no
+# catalog header and no trigger copied), and renders surface and
+# edge_cases_covered with the plain-text, data-not-instructions framing. Then
+# neither structure suite writes a fixed temporary path: the system default is
+# allowed only as the TMPDIR fallback of a mktemp template. The needles that
+# name that path are built from pieces, so these checks cannot match their own
+# source. The files are only read. Mirrors lib/test-structure.sh.
+Write-Host ''
+$cmdCharterRel = 'skills/stride-exploratory-testing-charter/SKILL.md'
+$cmdNightmareRel = 'skills/stride-exploratory-testing-nightmare-headline/SKILL.md'
+
+# Returns the body of the "### Step N: <title>" section of $text whose heading
+# contains $title, up to the next ### heading.
+function Get-StepSection([string]$text, [string]$title) {
+    $out = New-Object 'System.Collections.Generic.List[string]'
+    $in = $false
+    foreach ($line in ($text -split "`n")) {
+        if ($line -cmatch '^### Step [0-9]+: ' -and $line.Contains($title)) { $in = $true; continue }
+        if ($line.StartsWith('### ', [StringComparison]::Ordinal)) { $in = $false }
+        if ($in) { $out.Add($line) }
+    }
+    return ($out -join "`n")
+}
+
+if ((Test-Path -LiteralPath (Join-Path $PluginRoot $cmdCharterRel) -PathType Leaf) -and
+    (Test-Path -LiteralPath (Join-Path $PluginRoot $cmdNightmareRel) -PathType Leaf)) {
+    $cmdTexts = @{ $cmdCharterRel = (Get-TdFile $cmdCharterRel); $cmdNightmareRel = (Get-TdFile $cmdNightmareRel) }
+
+    $l = 'both command-skills reference the heuristics skill for change-risk lenses'
+    $m = ''
+    foreach ($rel in @($cmdCharterRel, $cmdNightmareRel)) {
+        $m += Get-AbsentNeedles $cmdTexts[$rel] $rel @('skills/heuristics/SKILL.md', '*General change-risk lenses*', '*Web change-risk lenses*', '`change-risk`')
+    }
+    if ($m -eq '') { Test-Ok $l } else { Test-Nope $l "missing:$m" }
+
+    $l = 'both command-skills name lenses without restating the catalog'
+    $m = ''
+    foreach ($rel in @($cmdCharterRel, $cmdNightmareRel)) {
+        foreach ($needle in @('| Heuristic | What to try |', 'When a change ',
+                'Change the Rights', 'Shadow Decision', 'Who Else Is Watching', 'Pull the Rug', 'Every Surface',
+                'Every Locale', 'Developer Guidebook', 'Leave No Trace', 'Telemetry Semantics',
+                'Other Verbs', 'After the Headers', 'Response Hardening')) {
+            if ($cmdTexts[$rel].Contains($needle)) { $m += " [${rel}: $needle]" }
+        }
+    }
+    if ($m -eq '') { Test-Ok $l } else { Test-Nope $l "copied:$m" }
+
+    $l = 'both command-skills render surface and edge_cases_covered'
+    $m = ''
+    foreach ($pair in @(@($cmdCharterRel, "Parse the agent's JSON output"), @($cmdNightmareRel, 'Refine the causes into charters'))) {
+        $m += Get-AbsentNeedles (Get-StepSection $cmdTexts[$pair[0]] $pair[1]) "$($pair[0]) $($pair[1])" @(
+            '`change-risk`', '`surface`', '`edge_cases_covered`', '`http`, `harness`, `browser` or `source`')
+    }
+    foreach ($rel in @($cmdCharterRel, $cmdNightmareRel)) {
+        $m += Get-AbsentNeedles (Get-StepSection $cmdTexts[$rel] 'Render the ranked charter list') "$rel render" @(
+            '`surface`', '`edge_cases_covered`', '**"Edge cases covered"**',
+            'the `charter_rank` that explores it or the `unit_test` that covers it',
+            'An empty array means the change listed no edge cases',
+            'no `edge_cases_covered` key', 'plain text')
+    }
+    if ($m -eq '') { Test-Ok $l } else { Test-Nope $l "missing:$m" }
+
+    foreach ($rel in @($cmdCharterRel, $cmdNightmareRel)) {
+        $lines = $cmdTexts[$rel] -split "`n"
+        $leaks = @($lines | Where-Object { $_ -cmatch '(^|[^A-Za-z0-9])[GWD][0-9]{3,}([^0-9]|$)' }).Count
+        $project = @($lines | Where-Object { $_ -match 'kanban|PlansHelpers|ConnCase|register_and_log_in_user' }).Count
+        if ($leaks -eq 0 -and $project -eq 0) { Test-Ok "$rel names no task identifier or project name" }
+        else { Test-Nope "$rel leaks a task identifier or project name" "identifier lines: $leaks, project lines: $project" }
+    }
+} else {
+    Test-Nope 'command-skill change-mode checks need skills/stride-exploratory-testing-charter/SKILL.md and skills/stride-exploratory-testing-nightmare-headline/SKILL.md'
+}
+
+$bareTmp = '/t' + 'mp'
+$tmpFallback = '${TMPDIR:-/t' + 'mp}'
+foreach ($rel in @('lib/test-structure.sh', 'lib/test-structure.ps1')) {
+    $l = "$rel contains no fixed $bareTmp/scet- path"
+    if (Test-Path -LiteralPath (Join-Path $PluginRoot $rel) -PathType Leaf) {
+        $fixed = @((Get-TdFile $rel) -split "`n" | Where-Object { $_.Replace($tmpFallback, '').Contains($bareTmp) }).Count
+        if ($fixed -eq 0) { Test-Ok $l } else { Test-Nope $l "lines naming $bareTmp outside a TMPDIR fallback: $fixed" }
+    } else { Test-Nope $l 'file missing' }
+}
+
+# The bash suite keeps every temporary file in one scratch directory that an
+# EXIT trap removes, with INT and TERM routed through it, so an interrupted run
+# leaves nothing behind. (This twin removes its files in finally blocks, which
+# also run on Ctrl-C.)
+# Whole lines only: the bash twin's own needles sit inside longer lines, so a
+# substring match would find them there and pass on a suite with no trap.
+$l = 'lib/test-structure.sh removes its scratch directory on exit or interrupt'
+$m = ''
+$shSelf = @((Get-TdFile 'lib/test-structure.sh') -split "`n")
+$scratchStart = 'SCET_SCRATCH=$(mktemp -d "${TMPDIR:-/t' + 'mp}/scet-run.XXXXXX") || '
+if (@($shSelf | Where-Object { $_.StartsWith($scratchStart, [StringComparison]::Ordinal) }).Count -eq 0) { $m += ' [SCET_SCRATCH made by mktemp -d at the start of a line]' }
+foreach ($needle in @('trap ''rm -rf -- "$SCET_SCRATCH"'' EXIT', 'trap ''exit 130'' INT', 'trap ''exit 143'' TERM', 'export TMPDIR="$SCET_SCRATCH"')) {
+    if (@($shSelf | Where-Object { $_ -ceq $needle }).Count -eq 0) { $m += " [$needle]" }
+}
+if ($m -eq '') { Test-Ok $l } else { Test-Nope $l "missing whole line:$m" }
+
+# The reader-facing docs must not go on saying the command-skills skip change
+# mode now that they render it. The needles are the wordings such a stale claim
+# would use (the 0.4.0 changelog's known issue among them); the CHANGELOG
+# itself is history and is not scanned.
+$l = 'no README, AGENTS.md or docs page says the command-skills skip change mode'
+$m = ''
+$staleDocs = @('README.md', 'AGENTS.md') + @(Get-ChildItem -LiteralPath (Join-Path $PluginRoot 'docs') -Filter '*.md' -File -ErrorAction SilentlyContinue | ForEach-Object { "docs/$($_.Name)" })
+foreach ($rel in $staleDocs) {
+    if (-not (Test-Path -LiteralPath (Join-Path $PluginRoot $rel) -PathType Leaf)) { continue }
+    $docText = Get-TdFile $rel
+    foreach ($needle in @('were not changed for change mode', 'neither renders `surface`',
+            'omit change-risk', 'omit the change-risk', 'do not render `surface`', 'does not render `surface`')) {
+        if ($docText.Contains($needle)) { $m += " [${rel}: $needle]" }
+    }
+}
+if ($m -eq '') { Test-Ok $l } else { Test-Nope $l "stale:$m" }
 
 # --- summary ----------------------------------------------------------------
 

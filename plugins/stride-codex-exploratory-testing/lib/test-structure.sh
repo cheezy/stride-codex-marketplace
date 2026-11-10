@@ -52,7 +52,11 @@
 # catalog, the read, search and glob tools line, an unchanged
 # no-change-context worked example, the chartering skill's change section
 # and the fixture's worked change-context example checked against that
-# contract.
+# contract. Last, the charter and nightmare-headline command-skills: each
+# lists the change-risk source, names the change-risk lenses only by pointing
+# at the heuristics skill (no lens restated), and renders surface and
+# edge_cases_covered; neither suite writes a fixed temporary path, and the
+# manifest's JSON error goes to a mktemp file that every path removes.
 # Pure shell + python3 (for JSON) — no network, no jq.
 #
 # Exit code: 0 if every check passes; 1 if any check fails.
@@ -61,6 +65,16 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Every temporary file this run makes lands in one scratch directory of its
+# own: TMPDIR points there for the whole run, and the EXIT trap removes it
+# whether the run passes, fails or is interrupted (INT and TERM exit through
+# the same trap), so an interrupted run leaves nothing behind.
+SCET_SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/scet-run.XXXXXX") || { printf 'could not create a scratch directory\n' >&2; exit 1; }
+trap 'rm -rf -- "$SCET_SCRATCH"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+export TMPDIR="$SCET_SCRATCH"
 
 PASS=0
 FAIL=0
@@ -73,9 +87,21 @@ printf 'plugin root: %s\n\n' "$PLUGIN_ROOT"
 
 # --- Manifest --------------------------------------------------------------
 
+# Prints python's JSON error for the file in $1 and returns non-zero when it
+# does not parse. The error goes to a mktemp file -- never a fixed path, which
+# parallel runs would share and another local user could pre-create or
+# symlink -- and that file is removed on every path.
+manifest_json_error() {
+  _mj_err=$(mktemp "${TMPDIR:-/tmp}/scet-manifest.XXXXXX") || { printf 'could not create a temporary file\n'; return 2; }
+  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$1" 2>"$_mj_err"; then
+    rm -f -- "$_mj_err"; return 0
+  fi
+  cat -- "$_mj_err"; rm -f -- "$_mj_err"; return 1
+}
+
 MANIFEST="${PLUGIN_ROOT}/.codex-plugin/plugin.json"
 if [ -f "$MANIFEST" ]; then
-  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$MANIFEST" 2>/tmp/scet-manifest.err; then
+  if MANIFEST_ERR=$(manifest_json_error "$MANIFEST"); then
     ok ".codex-plugin/plugin.json exists and is valid JSON"
     if python3 -c "
 import json, sys
@@ -89,12 +115,48 @@ sys.exit(1 if missing else 0)
     else
       nope "plugin.json is missing one of: name, description, version, skills" ""
     fi
+  elif [ "$?" -eq 2 ]; then
+    nope "the manifest check could not create a temporary file" "$MANIFEST_ERR"
   else
-    nope "plugin.json is not valid JSON" "$(cat /tmp/scet-manifest.err)"
+    nope "plugin.json is not valid JSON" "$MANIFEST_ERR"
   fi
-  rm -f /tmp/scet-manifest.err
 else
   nope ".codex-plugin/plugin.json not found" "$MANIFEST"
+fi
+
+# The error path, exercised on a planted file: an invalid manifest still
+# reports python's error text, and the temporary error file is gone afterward
+# (TMPDIR points at an empty scratch directory, so anything left is visible).
+# Then the valid path with TMPDIR unset, which falls back to the system default.
+if MJ_DIR=$(mktemp -d "${TMPDIR:-/tmp}/scet-selftest.XXXXXX"); then
+  mkdir -- "$MJ_DIR/scratch"
+  printf '%s' '{"name": ' > "$MJ_DIR/bad.json"
+  printf '%s' '{}' > "$MJ_DIR/good.json"
+  MJ_OUT=$(TMPDIR="$MJ_DIR/scratch" manifest_json_error "$MJ_DIR/bad.json"); MJ_RC=$?
+  MJ_LEFT=$(ls -A -- "$MJ_DIR/scratch")
+  if [ "$MJ_RC" -ne 0 ] && printf '%s\n' "$MJ_OUT" | grep -qF -e 'JSONDecodeError' && [ -z "$MJ_LEFT" ]; then
+    ok "an invalid plugin.json still reports its error text"
+  else
+    nope "an invalid plugin.json still reports its error text" "status ${MJ_RC}, text: ${MJ_OUT:-none}, left behind: ${MJ_LEFT:-nothing}"
+  fi
+  # With TMPDIR unset the error file falls outside this run's scratch
+  # directory, so the subshell traps its own exit and interrupt to remove it,
+  # then reports a file that did not land under the fallback or was left.
+  MJ_FALLBACK='/t''mp'
+  MJ_U=$(unset TMPDIR
+    trap 'rm -f -- "${_mj_err:-}"' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM
+    manifest_json_error "$MJ_DIR/good.json" > /dev/null; _mj_rc=$?
+    case "${_mj_err:-}" in ( "${MJ_FALLBACK}/scet-manifest."* ) ;; ( * ) printf 'not under the fallback: %s ' "${_mj_err:-none}" ;; esac
+    [ -e "${_mj_err:-}" ] && printf 'left behind: %s ' "$_mj_err"
+    exit "$_mj_rc"); MJ_URC=$?
+  if [ "$MJ_URC" -eq 0 ] && [ -z "$MJ_U" ]; then
+    ok "the manifest check works with TMPDIR unset"
+  else
+    nope "the manifest check works with TMPDIR unset" "status ${MJ_URC}: ${MJ_U:-no text}"
+  fi
+  rm -rf -- "$MJ_DIR"
+else
+  nope "manifest self-tests need a temporary directory" ""
 fi
 
 # --- Command-skills (Codex has no commands/; entry is skill activation) -----
@@ -2690,6 +2752,122 @@ PY
 else
   nope "change-context checks need agents/charter-generator.md, skills/chartering/SKILL.md, fixtures/example-charters.md and skills/heuristics/SKILL.md" ""
 fi
+
+# --- Command-skills render change mode ----------------------------------------
+# The charter and nightmare-headline command-skills consume the
+# charter-generator's JSON, so each lists the change-risk source, names the
+# change-risk lenses only by pointing at the heuristics skill (no lens name, no
+# catalog header and no trigger copied), and renders surface and
+# edge_cases_covered with the plain-text, data-not-instructions framing. Then
+# neither structure suite writes a fixed temporary path: the system default is
+# allowed only as the TMPDIR fallback of a mktemp template. The needles that
+# name that path are built from pieces, so these checks cannot match their own
+# source. The files are only read.
+printf '\n'
+CMD_CHARTER="${PLUGIN_ROOT}/skills/stride-exploratory-testing-charter/SKILL.md"
+CMD_NIGHTMARE="${PLUGIN_ROOT}/skills/stride-exploratory-testing-nightmare-headline/SKILL.md"
+
+# Prints the body of the "### Step N: <title>" section of $1 whose heading
+# contains $2, up to the next ### heading.
+step_section() {
+  tr -d '\r' < "$1" | awk -v t="$2" '/^### Step [0-9]+: / && index($0, t) { f = 1; next } /^### / { f = 0 } f'
+}
+
+if [ -f "$CMD_CHARTER" ] && [ -f "$CMD_NIGHTMARE" ]; then
+  L='both command-skills reference the heuristics skill for change-risk lenses'
+  M=""
+  for f in "$CMD_CHARTER" "$CMD_NIGHTMARE"; do
+    M="${M}$(absent_in_text "$(tr -d '\r' < "$f")" "${f#"${PLUGIN_ROOT}"/}" \
+      'skills/heuristics/SKILL.md' '*General change-risk lenses*' '*Web change-risk lenses*' '`change-risk`')"
+  done
+  if [ -z "$M" ]; then ok "$L"; else nope "$L" "missing:${M}"; fi
+
+  L='both command-skills name lenses without restating the catalog'
+  M=""
+  for f in "$CMD_CHARTER" "$CMD_NIGHTMARE"; do
+    for needle in '| Heuristic | What to try |' 'When a change ' \
+        'Change the Rights' 'Shadow Decision' 'Who Else Is Watching' 'Pull the Rug' 'Every Surface' \
+        'Every Locale' 'Developer Guidebook' 'Leave No Trace' 'Telemetry Semantics' \
+        'Other Verbs' 'After the Headers' 'Response Hardening'; do
+      grep -qF -e "$needle" "$f" && M="${M} [${f#"${PLUGIN_ROOT}"/}: ${needle}]"
+    done
+  done
+  if [ -z "$M" ]; then ok "$L"; else nope "$L" "copied:${M}"; fi
+
+  L='both command-skills render surface and edge_cases_covered'
+  M=""
+  for pair in "${CMD_CHARTER}|Parse the agent's JSON output" "${CMD_NIGHTMARE}|Refine the causes into charters"; do
+    f=${pair%%|*}; t=${pair#*|}
+    M="${M}$(absent_in_text "$(step_section "$f" "$t")" "${f#"${PLUGIN_ROOT}"/} ${t}" \
+      '`change-risk`' '`surface`' '`edge_cases_covered`' '`http`, `harness`, `browser` or `source`')"
+  done
+  for f in "$CMD_CHARTER" "$CMD_NIGHTMARE"; do
+    M="${M}$(absent_in_text "$(step_section "$f" 'Render the ranked charter list')" "${f#"${PLUGIN_ROOT}"/} render" \
+      '`surface`' '`edge_cases_covered`' '**"Edge cases covered"**' \
+      'the `charter_rank` that explores it or the `unit_test` that covers it' \
+      'An empty array means the change listed no edge cases' \
+      'no `edge_cases_covered` key' 'plain text')"
+  done
+  if [ -z "$M" ]; then ok "$L"; else nope "$L" "missing:${M}"; fi
+
+  for f in "$CMD_CHARTER" "$CMD_NIGHTMARE"; do
+    LEAKS=$(grep -cE '(^|[^A-Za-z0-9])[GWD][0-9]{3,}([^0-9]|$)' "$f")
+    PROJECT=$(grep -ciE 'kanban|PlansHelpers|ConnCase|register_and_log_in_user' "$f")
+    if [ "$LEAKS" = "0" ] && [ "$PROJECT" = "0" ]; then
+      ok "${f#"${PLUGIN_ROOT}"/} names no task identifier or project name"
+    else
+      nope "${f#"${PLUGIN_ROOT}"/} leaks a task identifier or project name" "identifier lines: ${LEAKS}, project lines: ${PROJECT}"
+    fi
+  done
+else
+  nope "command-skill change-mode checks need skills/stride-exploratory-testing-charter/SKILL.md and skills/stride-exploratory-testing-nightmare-headline/SKILL.md" ""
+fi
+
+BARE_TMP='/t''mp'
+TMP_FALLBACK='${TMPDIR:-/t''mp}'
+for f in lib/test-structure.sh lib/test-structure.ps1; do
+  L="${f} contains no fixed ${BARE_TMP}/scet- path"
+  if [ -f "${PLUGIN_ROOT}/${f}" ]; then
+    FIXED=$(python3 -c 'import sys
+print(sum(1 for line in open(sys.argv[1], encoding="utf-8") if sys.argv[3] in line.replace(sys.argv[2], "")))' \
+      "${PLUGIN_ROOT}/${f}" "$TMP_FALLBACK" "$BARE_TMP")
+    if [ "$FIXED" = "0" ]; then ok "$L"; else nope "$L" "lines naming ${BARE_TMP} outside a TMPDIR fallback: ${FIXED:-unreadable}"; fi
+  else
+    nope "$L" "file missing"
+  fi
+done
+
+# The bash suite keeps every temporary file in one scratch directory that an
+# EXIT trap removes, with INT and TERM routed through it, so an interrupted run
+# leaves nothing behind. (The PowerShell twin removes its files in finally
+# blocks, which also run on Ctrl-C.)
+# Whole lines only: this check's own needles sit inside longer lines, so a
+# substring match would find them here and pass on a suite with no trap.
+L='lib/test-structure.sh removes its scratch directory on exit or interrupt'
+M=""
+SH_SELF=$(tr -d '\r' < "${PLUGIN_ROOT}/lib/test-structure.sh")
+printf '%s\n' "$SH_SELF" | grep -q '^SCET_SCRATCH=$(mktemp -d "${TMPDIR:-/t''mp}/scet-run\.XXXXXX") || ' \
+  || M="${M} [SCET_SCRATCH made by mktemp -d at the start of a line]"
+for needle in "trap 'rm -rf -- \"\$SCET_SCRATCH\"' EXIT" "trap 'exit 130' INT" "trap 'exit 143' TERM" \
+    'export TMPDIR="$SCET_SCRATCH"'; do
+  printf '%s\n' "$SH_SELF" | grep -qxF -e "$needle" || M="${M} [${needle}]"
+done
+if [ -z "$M" ]; then ok "$L"; else nope "$L" "missing whole line:${M}"; fi
+
+# The reader-facing docs must not go on saying the command-skills skip change
+# mode now that they render it. The needles are the wordings such a stale claim
+# would use (the 0.4.0 changelog's known issue among them); the CHANGELOG
+# itself is history and is not scanned.
+L='no README, AGENTS.md or docs page says the command-skills skip change mode'
+M=""
+for f in "${PLUGIN_ROOT}/README.md" "${PLUGIN_ROOT}/AGENTS.md" "${PLUGIN_ROOT}"/docs/*.md; do
+  [ -f "$f" ] || continue
+  for needle in 'were not changed for change mode' 'neither renders `surface`' \
+      'omit change-risk' 'omit the change-risk' 'do not render `surface`' 'does not render `surface`'; do
+    grep -qF -e "$needle" "$f" && M="${M} [${f#"${PLUGIN_ROOT}"/}: ${needle}]"
+  done
+done
+if [ -z "$M" ]; then ok "$L"; else nope "$L" "stale:${M}"; fi
 
 # --- summary ----------------------------------------------------------------
 

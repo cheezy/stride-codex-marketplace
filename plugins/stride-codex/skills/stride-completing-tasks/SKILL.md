@@ -122,7 +122,7 @@ Run this **before every** `PATCH /api/tasks/:id/complete`. If ANY check fails, *
 - [ ] **Nested `security_considerations.considerations[]` present & consistent when a deep review ran.** When the stride-codex-security-review considerations-mode dispatch ran (see the `stride-workflow` Step 6 "Deep security-considerations review" sub-step), `reviewer_result.security_considerations.considerations[]` MUST be present (it rides through automatically on the verbatim whole-object copy — never trim it) and consistent with the section status: any entry with status `partial` or `unmitigated` REQUIRES `security_considerations.status: "failed"` and a matching `category: "security"` issue in `issues[]`. A `passed` status alongside a `partial`/`unmitigated` nested entry is a hard fail — do not submit; fix the escalation. When **no** deep review ran (plugin absent, or the task's `security_considerations` was empty), the nested array is simply absent and is **not** required — its absence never fails this gate.
 - [ ] **Review rounds are within the cap.** Two review rounds is the ceiling (see the `stride-workflow` Step 6 round-cap block). A **round** is a reviewer invocation whose response yielded a fenced ```json block that parsed into a JSON object — an invocation that crashed, returned no fence, or returned one that would not parse is re-invoked and consumes no round; this port writes no per-round block or report file, so the parsed block is the only artifact there is to count. The count lives in `.stride/.review-rounds-<IDENTIFIER>.json`. A count of 1 always passes; a count of 2 needs round one to have earned it under the Step 6 triggers (a fix that touched a code path, a round-one `critical`, or a round-one `category: "security"` issue of any severity). When none applies, each fixed finding goes into `completion_notes` as severity, category, `file:line` and what changed — in your own words — never the reviewer's prose, a diff line or code, and redacted on the same terms as any other session text — `completion_summary` gets a line saying so, and the block you submit is round one's. An unearned round two is not submitted either: note its findings by severity, category and `file:line` only and submit round one's — **unless it raised a `critical` or a `category: "security"` issue, which is never dropped**: fix it, then re-review it under the `critical` exemption when it is a `critical`, and otherwise stop with `review_blocked` / `failure.kind: "review_escalation"`. Beyond 2, a count passes **only** on the previous round's `issue_counts.critical > 0` or a self-certified `critical_cleared` (stride spells the same limit `CRITICAL_CLEARED`), because **a `critical` is exempt from the cap and blocks for however many rounds it takes**. At the cap the remedy is to RECORD the residual `important`/`minor` findings by severity, category and `file:line` in `completion_notes` and one line of `completion_summary` and then submit — never to invoke another round. Recording is never available for a `critical`, **nor for a `category: "security"` issue at ANY severity** (`important` is the reviewer's default severity for one, so this carve-out is what stops the relaxation shipping an unfixed weakness): fix it, or stop with `review_blocked` / `failure.kind: "review_escalation"`. **The mechanical half of this check is the round-cap pin in the orchestrator's extraction self-check** — a failing assert there means do not submit. It reads the triggers as `prior_critical`, `prior_security` and `fix_code_paths`, so a round two with none of them is refused there too. **Its inputs are self-asserted, not result-verified**: never set `critical_cleared`, and never under-count a round, to slip past a cap you reached with only `important`/`minor` findings open. Scoping: a Shape 1 self-reported review skip ran zero rounds, so this check is *inapplicable* there rather than passed — which is never licence to route a review that actually ran through a skip shape to escape the cap.
 - [ ] **`cosmetic` findings are reported, never suppressed.** A `cosmetic: true` entry changes exactly one thing — the re-review disposition in `stride-workflow` Step 6 — so it **stays in `issues[]` with its honest `severity` and `category`, rides through the whole-object copy unchanged, and reaches `completion_notes` like any other finding.** Never drop one, never add it to an enumerated copy list, and never re-label a substantive finding cosmetic to avoid a round: that is a reviewer defect whose remedy is re-running the reviewer, **never** editing `reviewer_result` yourself. An **absent** `cosmetic` key means `false` and is never a gap to back-fill. The **mechanical half** is the cosmetic shape pin in the orchestrator's extraction self-check, which refuses three conditions: a `cosmetic: true` on any severity other than `minor` — **`critical` and `important` alike** — on `category: "security"`, or on a non-boolean value (no coercion: `1`, `"yes"` and `"true"` are all refused). A failing assert there means do not submit. **The limit is stated, not implied:** the pin reaches the flag's type and its co-ordinates only, never its truth — a substantive `minor` relabelled cosmetic passes every boolean, so that half is self-certified and the remedy is a human reading `issues[]`. Definition: `agents/task-reviewer.md`.
-- [ ] **Every Step 6.5 / Phase 3.5 charter has a recorded outcome and an owner.** When Step 6.5 fired, `completion_notes` carries one `Exploratory charter` line per charter and `completion_summary` one `Exploratory coverage:` line, in the formats of § Outcome Lines, Coverage and Hand-Backs below; every `not performed` line names `owner=<follow-up identifier>`, or `owner=HANDED BACK` beside its `HANDED BACK:` line — every line but the coverage one in `completion_notes`. `exploratory_outcomes_ok` must have printed `true`. It is defined in `stride-workflow` Step 6.5, after step 3; Step 8 runs it, and it reads only the outcomes file and the report paths you sent. On `false`, do not submit: fix the lines, never the reports or the paths. A not-performed charter never fails completion — the gate needs a record and an owner, not coverage. When Step 6.5 did not fire and the task carried `manual_tests` or `edge_cases`, its one `Exploratory testing skipped: <reason>` line is the record, and the checker run on it alone must still print `true`; with neither field this check is inapplicable, not failed. The one stride-codex exception: when a dispatch was sent no report path, `exploratory_outcomes_ok: not run — no report path was sent` stands beside the `exploratory report path: not sent — …` line in place of `true`.
+- [ ] **Every Step 6.5 / Phase 3.5 charter has a recorded outcome and an owner.** When Step 6.5 fired, `completion_notes` carries one `Exploratory charter` line per charter and `completion_summary` one `Exploratory coverage:` line, in the formats of § Outcome Lines, Coverage and Hand-Backs below; every `not performed` line names `owner=<follow-up identifier>`, or `owner=HANDED BACK` beside its `HANDED BACK:` line — every line but the coverage one in `completion_notes`. `exploratory_outcomes_ok` must have printed `true`. It is defined in `stride-workflow` Step 6.5, after step 3; Step 8 runs it, and it reads only the outcomes file and the report paths you sent. On `false`, do not submit: fix the lines, never the reports or the paths. A not-performed charter never fails completion — the gate needs a record and an owner, not coverage. When Step 6.5 did not fire and the task carried `manual_tests` or `edge_cases`, its one `Exploratory testing skipped: <reason>` line is the record, and the checker run on it alone must still print `true`; with neither field this check is inapplicable, not failed. The one stride-codex exception: a dispatch sent no report path gets no charter line and is handed back beside its `exploratory report path: not sent — …` line, while the checker still runs on the other charters; only when every dispatch was sent none and no `u<k>` line exists does `exploratory_outcomes_ok: not run — no report path was sent` stand in place of `true`.
 
 This gate is **not bypassable** by submitting a self-reported skip (`dispatched: false`) when a `task-reviewer` custom agent actually ran — a dispatched review must pass every check above. The self-check compares counts, keys, and status enums only; it never prints task content, diffs, or secrets. (The Kanban server now hard-rejects a report that fails any of these, so a failing self-check is also a failing completion — catch it here, before you submit.)
 
@@ -299,44 +299,53 @@ would read a stale snapshot from a prior task. See the "Why inline?"
 paragraph in the [Per-File Diff Capture (Manual)](#per-file-diff-capture-manual)
 section below.
 
+**Write the free text to a file first — never into a shell literal (D406).** Every field that carries text you did not choose yourself — `completion_notes`, `completion_summary`, `review_report`, the hook `output` inside `after_doing_result` and `before_review_result`, the `summary` inside `explorer_result` and `reviewer_result`, and each skip `reason` inside `workflow_steps` — restates task, reviewer, hook or application text, which the application can influence, so none of it travels through a shell `echo`, `printf`, heredoc, quoted `--arg` or the single-quoted jq filter: a single quote inside a quoted shell argument ends it, and the shell runs what follows. Before the curl, **write `.stride/.outcomes-<IDENTIFIER>.json` with your file-editing tool** — the one file `stride-workflow` Step 8 checks, under the same stem: the identifier when it is a plain 1-64 character `[A-Za-z0-9_-]` token, else the numeric id. It is one JSON object holding those fields exactly as you will send them: `completion_notes` and `completion_summary` as strings; `review_report` when a reviewer ran (leave the key out when the review was skipped, and the body omits the field); and `after_doing_result`, `before_review_result`, `explorer_result`, `reviewer_result` and `workflow_steps` in their documented shapes. The curl merges it with `$oc[0] + { … }`, adding only the values you choose yourself — `agent_name`, `time_spent_minutes`, `actual_complexity`, `actual_files_changed` and `changed_files` — so nothing you wrote into the file is ever parsed by the shell. It is JSON, so a `\n` inside a string is a real newline — which is what a review report's line breaks need — and a literal backslash-n is written `\\n`. Write it only where nothing, or a regular file you wrote for this completion, sits at that path and `.stride/` is a real directory under the project root; a symlink at either means do not write and do not submit. **The block finds the file exactly as Step 8's block does** — the same two placeholder lines, the same stem allow-list and the same root — so the file sent is the file checked, whichever directory the block runs from; the guard refuses to send when the root or the stem is unresolved, when `.stride/` or the file is a symlink or the file is missing, or when the file is not one JSON object with string `completion_notes` and `completion_summary`. The `.stride/` directory is gitignored, and the redaction rules for these fields are unchanged: a secret must not reach the file, because the file's text is what is sent.
+
 ```bash
-curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
+OC_IDENT='<identifier>'
+OC_ID='<numeric id>'
+case "$OC_IDENT" in ''|*[!A-Za-z0-9_-]*) OC_IDENT='' ;; esac
+[ "${#OC_IDENT}" -le 64 ] || OC_IDENT=''
+case "$OC_ID" in ''|*[!0-9]*) OC_ID='' ;; esac
+[ "${#OC_ID}" -le 20 ] || OC_ID=''
+OC_STEM="${OC_IDENT:-$OC_ID}"
+ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  d=$PWD
+  while [ "$d" != "/" ]; do
+    [ -f "$d/.stride.md" ] && { ROOT=$d; break; }
+    d=$(dirname "$d")
+  done
+fi
+OC="$ROOT/.stride/.outcomes-$OC_STEM.json"
+if [ -z "$ROOT" ] || [ -z "$OC_STEM" ] || [ ! -d "$ROOT/.stride" ] || [ -L "$ROOT/.stride" ] \
+   || [ ! -f "$OC" ] || [ -L "$OC" ] \
+   || ! jq -se 'length == 1 and (.[0] | type) == "object" and (.[0].completion_notes | type) == "string" and (.[0].completion_summary | type) == "string"' "$OC" >/dev/null 2>&1; then
+  echo 'completion text file missing, malformed or a symlink: not submitting' >&2; false
+else
+( cd "$ROOT" && curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
   -H "Authorization: Bearer $STRIDE_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d "$(jq -n \
     --argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '[]')" \
+    --slurpfile oc "$OC" \
     --arg agent_name 'Codex CLI' \
-    --arg notes 'All tests passing. PR #123 created.' \
-    --arg summary 'Brief one-line summary for tracking.' \
     --arg complexity 'small' \
     --arg files 'lib/foo.ex, test/foo_test.exs' \
-    --arg report '## Review Summary\n\nApproved — 0 issues found.' \
-    '{
+    '$oc[0] + {
        agent_name: $agent_name,
        time_spent_minutes: 45,
-       completion_notes: $notes,
-       completion_summary: $summary,
        actual_complexity: $complexity,
        actual_files_changed: $files,
-       changed_files: $cf,
-       review_report: $report,
-       after_doing_result: {exit_code: 0, output: "...", duration_ms: 45678},
-       before_review_result: {exit_code: 0, output: "...", duration_ms: 2340},
-       explorer_result: {dispatched: false, reason: "self_reported_exploration", summary: "..."},
-       reviewer_result: {dispatched: false, reason: "self_reported_review", summary: "..."},
-       workflow_steps: [
-         {name: "explorer", dispatched: true, duration_ms: 12450},
-         {name: "planner", dispatched: true, duration_ms: 8200},
-         {name: "implementation", dispatched: true, duration_ms: 1820000},
-         {name: "reviewer", dispatched: true, duration_ms: 15300},
-         {name: "after_doing", dispatched: true, duration_ms: 45678},
-         {name: "before_review", dispatched: true, duration_ms: 2340}
-       ]
+       changed_files: $cf
      }')" \
-  | tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"
+  | tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json" )
+fi
 ```
 
-**After Step 6.5, send the strings you checked.** When you wrote `.stride/.outcomes-<IDENTIFIER>.json` with your file-editing tool at `stride-workflow` Step 8 and `exploratory_outcomes_ok` printed `true`, replace `--arg notes …` and `--arg summary …` above with `--slurpfile oc "<project root>/.stride/.outcomes-<IDENTIFIER>.json"` and set `completion_notes: $oc[0].completion_notes, completion_summary: $oc[0].completion_summary`, so the notes and summary sent are byte for byte the ones the check read. A missing file fails closed: `jq` errors, the body is empty and the server rejects it.
+Write this task's identifier and numeric id into the block's first two lines, inside the single quotes, only when each is already a plain token, exactly as in Step 8's block. The block changes into that root in a subshell before the curl, so the changed-files read and the `| tee` capture land there too when it runs from a subdirectory, and your shell's own directory is left as it was; a refusal prints one line and exits non-zero. `agent_name`, `complexity` and `files` stay on `--arg` because you choose them, not the application; never move a free-text field back onto one, or into the jq filter.
+
+**After Step 6.5, send the strings you checked.** The file above is the same file `stride-workflow` Step 8 checks — one file, one stem, one cleanup line — so there is nothing to reconcile and nothing to swap: write it once, with your file-editing tool, before Step 8's block runs, and make the call above only after `exploratory_outcomes_ok` printed `true`, so the notes and summary sent are byte for byte the ones the check read. The checker reads only `completion_notes` and `completion_summary`, so the other keys in the same file change no verdict. If you fix a line after a `false`, fix it in that file, never in a second copy. A missing or malformed file fails closed: the guard refuses to send.
 
 **Capture the response to the canonical file.** The `| tee` above writes the
 full, untruncated `/complete` response to
@@ -381,7 +390,7 @@ changed-files snapshot `.stride-changed-files.json` is a separate project-root
 dotfile — give it its own `.gitignore` entry too.)
 
 The resulting request body has this shape (illustrative — populated values
-match the `--arg` / `--argjson` substitutions above):
+match the `--arg` / `--argjson` / `--slurpfile` substitutions above):
 
 ```json
 {
@@ -531,21 +540,22 @@ JUST ran — reading it in an earlier shell turn (before you ran
 the absolute `$CLAUDE_PROJECT_DIR` path guards against the agent's CWD
 being something other than the project root.
 
-```bash
+A fragment, not a command — the `text` fence is deliberate:
+
+```text
 curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
   -H "Authorization: Bearer $STRIDE_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d "$(jq -n \
     --argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '[]')" \
-    --arg summary 'completion summary text' \
-    --arg notes 'completion notes text' \
-    '{
-       completion_summary: $summary,
-       completion_notes: $notes,
+    --slurpfile oc "${CLAUDE_PROJECT_DIR:-.}/.stride/.outcomes-<IDENTIFIER>.json" \
+    '$oc[0] + {
        changed_files: $cf,
        actual_complexity: "small"
      }')"
 ```
+
+This fragment shows only where `changed_files` sits. Every free-text field comes from the file you wrote with your file-editing tool, exactly as in [API Request Format](#api-request-format) — send the full block from there, with its root and stem lines, its missing-file, malformed-file and symlink guard and its `| tee`, never this fragment.
 
 If `.stride-changed-files.json` is absent — capture script not vendored,
 non-git project, jq or git missing — the inlined `|| echo '[]'` fallback
@@ -840,9 +850,10 @@ Exploratory testing skipped: <why Step 6.5 did not fire>
 - **Copy, never judge, the three counted fields.** `stop_reason` is the report's `session_sheet.stop_reason` — `unrecognized` for a value outside the six, `unreadable` when no report and no fence could be read; `probes` is `session_sheet.probes_attempted` (`0` when unreadable); `surfaces` is `session_sheet.surfaces_used` joined by commas, `none` when empty or unreadable, `not recorded` for an explorer older than contract 1.1. A charter dispatched more than once — a re-run after an introduced Critical's fix — has one line, keyed to and copied from its last returned dispatch.
 - **The outcome never claims more than the report supports.** `performed` only for `charter_quiet` or `risk_acceptable`; `partial` at most for any other ending with probes; `not performed` for zero probes, `unreadable` and `no_observation_surface`. A `Visual pass` line for a `no_observation_surface` or `u<k>` charter lifts it to `partial`, never to `performed`. Claiming less is always allowed — a session above zero probes that still measured almost nothing is recorded `not performed`. No stride-codex step runs a visual pass yet, so never write a `Visual pass` line here: the format is kept so the line means the same in both editions.
 - **An owner for every `not performed`.** Either `owner=<identifier>` naming the follow-up filed for it, or `owner=HANDED BACK` plus a `HANDED BACK: <key> …` line saying what a human must do. Step 9 repeats every `HANDED BACK:` line to the user. A manual test or edge case cut by the cap or the budget is not a charter: hand it back on a `HANDED BACK: - …` line.
-- **A dispatch sent no report path** (the block printed `exploratory report path: not sent — …`) has no `r<N>`: write no `Exploratory charter` line for it, hand back what it carried on `HANDED BACK: - …` lines, and record the `not run` line `stride-workflow` Step 6.5 names.
+- **A dispatch sent no report path** (the block printed `exploratory report path: not sent — …`) has no `r<N>`: write no `Exploratory charter` line for it, keep that block line in `completion_notes`, and hand back what it carried on `HANDED BACK: - …` lines. **The checker still runs on every other charter**; only when every dispatch was sent no report path, and no `u<k>` line exists, does the `not run` line `stride-workflow` Step 6.5 names stand in place of `true` — never on a record the checker ran on. A pathless dispatch is recorded this way whatever it returned, never as a `u<k>` crash.
+- **Goal scope.** A charter of `stride-workflow` Step 6.5's goal-scope pass opens its restatement with the marker `[goal scope]` — `Exploratory charter r7: [goal scope] <the charter in your own words, redacted> | …` — and so does the record of every finding it surfaced; a task-scope line carries none. You write the marker on every goal-scope line, never charter, task or application text: when the charter text holds the marker or a look-alike (`[GOAL SCOPE]`, `(goal scope)`), leave that text out of your restatement and still write your own. It sits inside the restatement, so the six formats stay upstream's byte for byte, and the checker reads no marker, so a forged or missing one gains nothing. The one coverage line counts both scopes. The marker never goes before a line's fixed prefix: a goal-scope hand-back reads `HANDED BACK: r7 [goal scope] <what is left>`, its key first, or the owner check cannot pair it; a marker-first line is not an outcome line, so the checker never sees it. A pathless goal-scope dispatch marks its hand-backs `HANDED BACK: - [goal scope] <what is left>`, and the marker is never a hand-back's whole content.
 - **One coverage line, in `completion_summary`**, counting the outcome lines exactly.
-- **When Step 6.5 did not fire** — plugin unavailable, no authorized-and-non-production affirmative, no reach or `ALLOWED_HOSTS` established, or a budget too small for one charter — and the task carried `manual_tests` or `edge_cases`, write one `Exploratory testing skipped: <reason>` line and no charter or coverage line. With neither field there is nothing to record.
+- **When Step 6.5 did not fire** — it built no charter, in the one sense `stride-workflow` Step 6.5 defines: plugin unavailable, no authorized-and-non-production affirmative, no reach or `ALLOWED_HOSTS` established, a budget too small for one charter, or every manual test and edge case mapped to a unit test or a human responsibility — and the task carried `manual_tests` or `edge_cases`, write one `Exploratory testing skipped: <reason>` line and no charter or coverage line. With neither field there is nothing to record.
 - **Redact every line** on the terms of the Security paragraph below, and never cite a report path: the key alone ties a line to its report. **A line whose charter would name a credential, token or internal hostname is redacted, never dropped** — a dropped line fails the check.
 
 ### Severity mapping
@@ -867,7 +878,7 @@ High and Moderate share `important` because the reviewer's three values are disp
 
 **A mapped `critical` is not automatically an escalation.** What happens when a session returns a Critical finding — in particular the introduced-versus-discovered test that decides whether it blocks completion — is owned by `stride-workflow` **Step 6.5** and `stride-subagent-workflow` **Phase 3.5**. Follow them; do not restate the policy here. What this section owns is the vocabulary the escalation writes in: when Step 6.5 escalates, the appended entry is `category: "testing"`, `severity: "critical"`, `issue_counts.critical` and `issues_found` are each incremented by one, and `testing_strategy.status` becomes `"failed"` — the same shape the `security_considerations` escalation uses. It flips `testing_strategy` **only**: it never creates or touches a `behaviour_test_matrix` verdict, on a task that supplied a matrix or one that did not. Like the `security_considerations` escalation, it is a named, bounded exception to the whole-object-copy rule — the orchestrator writes those fields and nothing else; it is not licence to hand-type or sub-select the rest of `reviewer_result`. **Note what does *not* enforce it here:** this port's self-check carries fail-closed verdict/issue consistency for `behaviour_test_matrix` rows and for the nested `security_considerations.considerations[]` only — there is no general bidirectional rule tying a `testing_strategy` verdict to an `issues[]` entry, and the server does not backstop one. What actually stops the task is the Step 6 review gate acting on the Critical issue itself, so the pairing is an instruction you keep rather than a check that catches you. When the payload carries no structured review block at all — review skipped, or its JSON would not parse — there is nothing to escalate into and **nothing may be synthesized**; see Step 6.5 for what is recorded instead.
 
-**Fallback (plugin not used) — completion is unchanged.** When the stride-codex-exploratory-testing plugin was not used — it is absent from the session, the task had neither `manual_tests` nor `edge_cases`, or the app was not running — record nothing beyond the one `Exploratory testing skipped: <reason>` line of § Outcome Lines, Coverage and Hand-Backs, and that only when the task carried `manual_tests` or `edge_cases`. No field is added, removed, or made required. This is a graceful no-op, never a failure, and it never blocks completion.
+**Fallback (plugin not used) — completion is unchanged.** When the stride-codex-exploratory-testing plugin was not used — it is absent from the session, the task had neither `manual_tests` nor `edge_cases`, or the app was not running before any charter was built — record nothing beyond the one `Exploratory testing skipped: <reason>` line of § Outcome Lines, Coverage and Hand-Backs, and that only when the task carried `manual_tests` or `edge_cases`. No field is added, removed, or made required. This is a graceful no-op, never a failure, and it never blocks completion.
 
 **Security — redact before recording.** Findings written into `completion_notes`, the `testing_strategy.note`, **or `completion_summary`** must NOT include real credentials, tokens, private user data, or internal hostnames captured during exploration — redact them first. That list now covers this section's own additions: the stakeholder-impact text is observed application output like any other finding text, and an artifact **path** can itself disclose a username, a home directory, or an environment name. Note that restating a finding in your own words is **not** redaction — a faithful paraphrase carries an email address, an account name or a hostname through untouched; redact the values, then paraphrase. The outcome lines are covered on the same terms: redact the value, keep the line. Recording findings must never weaken the strict-completion-validation contract or add fields the server would reject.
 
@@ -989,7 +1000,8 @@ DURATION_MS=$((END_TIME - START_TIME))
 curl -X PATCH "$STRIDE_API_URL/api/tasks/$GOAL_ID/after_goal" \
   -H "Authorization: Bearer $STRIDE_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$(jq -n --arg out \"$OUTPUT\" \"{exit_code: $EXIT_CODE, output: \\\$out, duration_ms: $DURATION_MS}\")"
+  -d "$(jq -n --arg out "$OUTPUT" --argjson ec "$EXIT_CODE" --argjson ms "$DURATION_MS" \
+    '{exit_code: $ec, output: $out, duration_ms: $ms}')"
 ```
 
 A `2xx` with `exit_code == 0` transitions the goal to Done. A `2xx` with `exit_code != 0` records the failure on the goal's `after_goal_attempts` audit log and leaves the goal In Progress for the user to investigate. Do NOT silently retry on non-zero exit — surface the failure and let the operator decide.
@@ -1036,8 +1048,8 @@ See `stride-workflow` SKILL.md Step 7 for the full hooks reference and Step 9 fo
    EXIT_CODE=$?
    # ...capture results
 
-   # Then call complete WITH both results
-   curl -X PATCH /api/tasks/W47/complete -d '{...both results...}'
+   # Then call complete WITH both results: write them into .stride/.outcomes-W47.json
+   # with your file-editing tool and send the guarded block in § API Request Format
 ```
 
 ### Mistake 2: Only including after_doing result

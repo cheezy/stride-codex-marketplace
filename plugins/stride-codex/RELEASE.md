@@ -21,8 +21,11 @@ and is repeated once by hand, in the catalog README's Plugins table.
   commit itself, which was tagged later.
 - **Since 1.38.0, appended.** Work commits add entries under
   `## [Unreleased]` and leave the manifest alone, which means the next release
-  commit stamps that heading and bumps `.codex-plugin/plugin.json`. Not every
-  work commit has written an entry, so check the log.
+  commit gives those entries their version heading and bumps
+  `.codex-plugin/plugin.json`. Not every work commit has written an entry, so
+  check the log. Through 1.40.0 the release commit renamed `[Unreleased]`;
+  since 1.41.0 it keeps an empty `## [Unreleased]` first and inserts the
+  version heading directly under it (step 2).
 
 The repository has no written rule choosing between them; the current file is
 set up for the appended shape.
@@ -66,9 +69,23 @@ had to move the entries; this is the check that catches it.)
 
 2. Run the top-heading check. Make sure every commit since the last tag
    (`git log --oneline "$(git describe --tags --abbrev=0)"..HEAD`) has an
-   entry, then rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and set
-   `"version"` in `.codex-plugin/plugin.json` to `X.Y.Z` in one commit on
-   `main`. Push `main`.
+   entry. Then, in one commit on `main`, keep `## [Unreleased]` as the first
+   section, left empty, and insert `## [X.Y.Z] - YYYY-MM-DD` directly under
+   it, so the entries that sat under `[Unreleased]` now sit under the new
+   heading; set `"version"` in `.codex-plugin/plugin.json` to `X.Y.Z`. Do not
+   rename `[Unreleased]`: Groups 23h and 24j of `hooks/test-stride-hook.sh`
+   pin it as the changelog's first section. A suite check that reads its entry
+   from `[Unreleased]` up to the next `## [` heading finds nothing once the
+   entry moves, so widen it to end at the previous release's heading, as the
+   1.43.0 and 1.43.1 release commits did, and run the suite again. Push
+   `main`.
+
+   This repository's steps run no secret scan of their own. The history-wide
+   secret scan is step 5 of `stride-codex-marketplace`'s `RELEASE.md`, run
+   in the catalog after the re-vendor in step 5 below. As written there it
+   reads committed history only (`git grep … $(git rev-list --all)`), so the
+   files a re-vendor has just copied in are not scanned before that step
+   commits and pushes them.
 
 3. Tag the release commit (annotated) and push the tag:
 

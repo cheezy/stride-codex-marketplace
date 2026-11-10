@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-11-10
+
+A fix to the bash structure suite and two command-skill changes, from W2686 (`955f6c3`), the one commit since 0.4.1. No agent, installer or other skill changed. Both structure suites now run 415 checks each, with identical labels in bash and PowerShell. The release commit bumps `.codex-plugin/plugin.json` to 0.4.2 and renames the `[Unreleased]` heading W2686 added to this one, so the newest version is the first heading, as at 0.4.1 and 0.4.0.
+
+### Fixed
+
+- **The bash structure suite no longer writes the manifest's JSON error to a fixed path** (W2686). `lib/test-structure.sh` sent python's error to a fixed file in the system temporary directory, which two runs at once shared and which another local user could pre-create or symlink. It now writes it to a file made by `mktemp "${TMPDIR:-/tmp}/scet-manifest.XXXXXX"` inside a small `manifest_json_error` function, which removes the file on every path; the `:-` fallback covers an unset `TMPDIR`, and a `mktemp` failure is reported as its own failure rather than as invalid JSON. The bash suite also now keeps every temporary file of a run in one `mktemp -d` scratch directory, points `TMPDIR` there for the run, and removes it from an `EXIT` trap that `INT` and `TERM` exit through, so an interrupted run no longer leaves its change-risk lens scratch directory (or any other temporary file) behind. The one call made with `TMPDIR` unset, the self-test of the fallback, runs in a subshell that traps its own exit and interrupt, removes its error file, and fails if that file did not land under the fallback or was left behind. The PowerShell twin's manifest self-tests now make no temporary file at all: the invalid case parses planted text, and the *TMPDIR unset* case reads the real manifest with `TMPDIR` removed. `lib/test-structure.ps1` never used a fixed path, since `ConvertFrom-Json` reports its error in memory, but its failure line now carries that error text, as the bash one does.
+
+### Changed
+
+- **The charter and nightmare-headline command-skills now show what the charter-generator returns in change mode** (W2686). This resolves the first of 0.4.0's *Known issues*. Both list the `change-risk` source, say that a `change-risk` charter's `lens` is one of the *General change-risk lenses* or *Web change-risk lenses* in the `heuristics` skill (`skills/heuristics/SKILL.md`) and point there rather than restating any lens, and render each charter's `surface` and the root `edge_cases_covered` (under an *Edge cases covered* heading, each edge case against its `charter_rank` or `unit_test`) whenever they are present, as plain text, and an `--output` document carries the same fields. The nightmare-headline backlog bullet now reads `source: …` like the charter skill's, since its replies can carry `sfdpot` or `change-risk` charters too; the bullet format is otherwise unchanged.
+- **Both structure suites pin the two changes**, with identical labels in bash and PowerShell: an invalid planted `plugin.json` still reports its error text (and, in bash, leaves no temporary file behind), the manifest check works with `TMPDIR` unset, neither suite names a fixed temporary path outside a `TMPDIR` fallback, both command-skills point at the heuristics skill for the change-risk lenses without naming any of the twelve, both render `surface` and `edge_cases_covered`, both name no task identifier or project name, no `README.md`, `AGENTS.md` or `docs/` page says the command-skills skip change mode, and the bash suite carries its scratch directory, `EXIT` trap and `INT`/`TERM` routing as whole lines. Each suite now runs 415 checks.
+
+### Not verified in a live Codex CLI
+
+- **Nothing here has been run in a live Codex CLI session.** The command-skill edits were checked by the two structure suites only; no charter-generator was dispatched from either skill.
+
+### Not carried to upstream
+
+- **Upstream's commands keep the same gap.** The Claude Code plugin's `commands/charter.md` and `commands/nightmare-headline.md` still list no `change-risk` source and render neither `surface` nor `edge_cases_covered`. It is recorded here rather than fixed upstream. Upstream's recon and explore commands also read the charter-generator's output; their backlog bullets carry `source: …`, but neither renders `surface` or `edge_cases_covered`. None of the four upstream commands passes a `change context`, as neither command-skill here does, so those fields reach none of them today; recon and explore are left as they are.
+
+### Known issues
+
+- **Neither command-skill passes a `change context`**, so the charter-generator does not run in change mode from them and, today, `surface` and `edge_cases_covered` do not reach them. The skills say so, and render both fields whenever a reply carries them; adding a change-context input to either skill is left for later.
+- **`lib/test-structure.ps1` exits 0 when it is interrupted with `SIGINT`**, even after a check has failed: `pwsh -File` treats the signal as a normal exit and the suite has no code that turns an interrupt into a non-zero status. The bash suite exits 130. This predates the release and is not fixed here.
+- 0.3.1's two *Known issues* are still open: the installers overwrite an existing `AGENTS.md`, and no live install has checked whether Codex picks up agents copied as Markdown into `~/.agents/agents/`.
+
 ## [0.4.1] - 2026-11-10
 
 A documentation-only release. No skill, agent or installer changed.
