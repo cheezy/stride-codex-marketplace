@@ -145,7 +145,7 @@ Every decomposed task MUST include all fields required by stride-creating-tasks:
 | `key_files` | Yes | Files THIS task modifies (no overlap with sibling tasks) |
 | `dependencies` | Yes | Array indices [0, 1, 2] within the goal |
 | `verification_steps` | Yes | Array of objects with step_type, step_text, position |
-| `testing_strategy` | Yes | Object with unit_tests, integration_tests, etc. |
+| `testing_strategy` | Yes | Object with unit_tests, integration_tests, etc.; manual tests as charters and lens-driven edge cases (below) |
 | `security_considerations` | Yes | Array of strings (security implications to address, or an explicit "None — …" reason) |
 | `acceptance_criteria` | Yes | Newline-separated string |
 | `patterns_to_follow` | Yes | Newline-separated string |
@@ -168,6 +168,14 @@ Every child task gets a `behaviour_test_matrix` on the same terms as a task `age
 **The server has not changed.** An absent, `null` or empty matrix is still accepted and is never an empty pill, since no review_queue score reads the matrix, and a non-empty matrix missing a category is still rejected. Writing it by default is how tasks are authored here, not something the API enforces.
 
 **No secrets in row text, and none taken from the code.** Row text is stored and later rendered, so `behaviour`, `test_name` and `na_reason` never hold a secret or credential. Decomposing means reading the project's files, so never copy a credential-shaped string from one of them (a token, key, password, connection string or anything that looks like one) into a row. Describe the behaviour in your own words instead.
+
+**Write every child's `manual_tests` and `edge_cases` by these two rules**, the same ones `stride-creating-tasks` states:
+
+**Charter-ready manual tests (the default).** Write each `manual_tests` entry as a risk charter: a **target** plus the **information to discover** ("Explore <target> to discover <information>"), not a click script of steps, tools, browsers or modes. When the **stride-codex-exploratory-testing plugin is available** in the session, each entry is run as an exploratory **charter** (see `stride-workflow` Step 6.5), and a script such as "open the devtools Network tab" or "check it in light and dark mode" becomes a visual charter that is handed back rather than explored. This is authoring guidance only: the `testing_strategy` shape, the API's validation and the review_queue empty-pill gate are unchanged, `manual_tests` entries are not longer-required, and terse entries still validate. A task with no manual tests needs none; a docs-only or backend-only task charters its own target (a document, a function, an endpoint).
+
+**Lens-driven edge cases (UI or HTTP features).** For a UI or HTTP feature, write `edge_cases` after considering each change-risk lens whose *When it applies* trigger matches the change, and name the lens in the entry: **Change the Rights** (rights changed mid-session), **Shadow Decision** (client and server deciding the same thing), **Who Else Is Watching** (which views refresh), **Pull the Rug** (the parent deleted underneath), **Every Surface** (every surface that renders the entity), **Every Locale** (every shipped locale) and **Developer Guidebook** (docs drift), plus, for web/HTTP targets only, **Other Verbs** (other HTTP verbs) and **After the Headers** (failure after the headers are sent). Skip a lens whose trigger does not match; a backend-only or docs-only task keeps its ordinary edge cases, though Developer Guidebook may still match its docs drift. The lenses live in the stride-codex-exploratory-testing plugin's `heuristics` skill (`stride-codex-exploratory-testing/skills/heuristics/SKILL.md`), which is their only catalog: name them, never copy their text. The rights and failure lenses mean testing your own system under authorization, on test data you created, and none of this changes who may authorize an exploratory target.
+
+A goal description that asks for checks in a browser or a mode is a request for coverage, not a script to copy: turn each into a charter for the child whose change it covers. Task 1 of the worked example below (*Example: Goal Decomposed into Tasks*) has a before/after.
 
 ### Step 6: Output Assembly
 
@@ -399,8 +407,8 @@ Migration → Context → LiveView → Template
           "testing_strategy": {
             "unit_tests": ["Test comment form renders", "Test comment submission creates comment", "Test comment list displays existing comments"],
             "integration_tests": ["Test full comment flow: open task, submit comment, see it appear"],
-            "manual_tests": ["Verify comment UI in both light and dark mode"],
-            "edge_cases": ["Long comment text wrapping", "Many comments scrolling"],
+            "manual_tests": ["Explore the task comments section as a board member and as a read-only viewer to discover whether posting, the live list and the shown author honour each user's rights"],
+            "edge_cases": ["Long comment text wrapping", "Many comments scrolling", "Change the Rights: the commenter loses access to the board while the task is open, then posts", "Who Else Is Watching: a second user's open task view shows the new comment without a reload", "Pull the Rug: the task is deleted while its comment form is open", "Every Surface: the comment count on the board card and in the task history", "Every Locale: comment timestamps and labels in each shipped locale"],
             "coverage_target": "100% for comment LiveView handlers"
           },
           "security_considerations": [
@@ -494,6 +502,13 @@ Migration → Context → LiveView → Template
 - No key_file overlap between tasks — each modifies different files
 
 The example leaves `behaviour_test_matrix` out to stay short. A real child whose `testing_strategy` names tests, as each of these does, carries all seven rows.
+
+**Before/after for Task 1's manual test** (an example, not a rule; the rule is in Step 5 above). The goal asked for a working comment UI, and a first draft wrote the check as a browser script:
+
+- Before: `"manual_tests": ["Verify comment UI in both light and dark mode"]`, with edge cases about wrapping and scrolling only
+- After: the charter above, a **target** (the comments section, as two kinds of user) plus the **information to discover** (whether posting, the live list and the author honour each user's rights), and edge cases that name the matching change-risk lenses
+
+The script yields a visual charter, which an unattended session hands back because it has nothing to judge but colours. The charter gives the session a risk it can probe and an oracle to judge it by. Other Verbs and After the Headers are left out because the comment UI adds no route or streamed response.
 
 ## Important Constraints
 

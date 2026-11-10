@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-10
+
+A documentation-only release. No skill, agent or installer changed.
+
+### Changed
+
+- **`docs/project-environment.md` now says `stride-codex` reads `.exploratory.md`.** Since `stride-codex` 1.43.0, its Step 0 reads a user-confirmed `.exploratory.md` and its Step 6.5 sends the explorer `PROBE_HARNESS`, `PROBE_SERVICES` and `PROBE_DIR`, so the consumer change the 0.4.0 entry asked for has landed. The 0.4.0 entry is left as it was written.
+
 ## [0.4.0] - 2026-11-09
 
 The G503 batch from the Claude Code plugin, carried over to Codex CLI in this edition's own words. The heuristics catalog gains twelve change-risk lenses, the oracles skill and the explorer card gain two oracles, a project can describe its test environment once in `.exploratory.md`, the explorer can sign fixture users in through a probe harness, and the charter-generator can charter a code change from its edge cases.

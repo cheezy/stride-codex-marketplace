@@ -4,8 +4,9 @@
 the exploratory-testing entry points how to reach the running system, once, so you do
 not have to answer the same questions every session. The user writes it. The
 `stride-exploratory-testing-explore` skill reads it in Step 3. The Claude Code `stride`
-plugin's Step 0 (1.87.0 and later) reads it too when it dispatches the explorer;
-`stride-codex` does not read it yet. The `stride-exploratory-testing-recon` and
+plugin's Step 0 (1.87.0 and later) reads it too when it dispatches the explorer, and
+so does `stride-codex`'s Step 0 (1.43.0 and later), which sends its probe harness to
+the explorer as `PROBE_` lines. The `stride-exploratory-testing-recon` and
 `stride-exploratory-testing-pair` skills may read it later.
 
 It is made of `## ` sections, and because it holds no secrets you may commit it.
