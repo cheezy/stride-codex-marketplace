@@ -166,7 +166,7 @@ git push origin main
 
 **`after_goal` (v1.11.0+):** the Stride server bundles an `after_goal` entry in the `hooks` array of the response of `/complete` or `/mark_reviewed` when the completing task is the final child of a parent goal. Codex CLI's plugin hook script never executes a `.stride.md` section, so the agent remains responsible for the entire after_goal lifecycle: detect the entry by reading the **canonical capture file** (below) rather than truncatable context, read `## after_goal` from `.stride.md`, export `GOAL_ID` / `GOAL_IDENTIFIER` / `GOAL_TITLE` / `GOAL_DESCRIPTION` from the entry's `hook.env` block, execute the section's commands via shell, capture `{exit_code, output, duration_ms}`, and POST the result to `PATCH /api/tasks/:goal_id/after_goal` to flip the goal to Done. A missing `## after_goal` section is a clean no-op (back-compat — the server's grace-window worker covers the goal transition, flipping only the goal's status; it never runs `## after_goal` or performs any push). The hook is general-purpose — Slack notifications, artifact archival, release pipelines, project-level smoke tests are all valid uses.
 
-**Truncation-proof detection (v1.23.0+):** the `/complete` and `/mark_reviewed` curls capture the full response to `${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` (via `tee`; there is **no** `curl --output` fallback as of 1.38.0 — the `PreToolUse` guard refuses it, because taking the response off stdout is what loses the loop-state record), and the detect step reads the after_goal entry and `GOAL_*` env from that file with `jq` — not from the agent's truncatable context. If the file is absent, empty, or invalid JSON, a fresh, self-contained `GET /api/tasks/:id/after_goal_status` re-confirms whether after_goal is armed, sourcing the URL/token durably from `.stride_auth.md` and `TASK_ID` from the captured file rather than a prior turn's export. The two detection paths are mutually exclusive, so `## after_goal` runs at most once. The `.stride/` directory holds this agent-local state and must be gitignored. See `stride-workflow` SKILL.md Step 7+9 for the full procedure.
+**Truncation-proof detection (v1.23.0+):** the `/complete` and `/mark_reviewed` curls capture the full response to `.stride/.last-api-response.json` under the project root — `CODEX_PROJECT_DIR`, then `CLAUDE_PROJECT_DIR`, then the nearest `.stride.md` above, made absolute, the same root for the curl and the detect step whichever directory each runs from (D411) — (via `tee`; there is **no** `curl --output` fallback as of 1.38.0 — the `PreToolUse` guard refuses it, because taking the response off stdout is what loses the loop-state record), and the detect step reads the after_goal entry and `GOAL_*` env from that file with `jq` — not from the agent's truncatable context. If the file is absent, empty, or invalid JSON, a fresh, self-contained `GET /api/tasks/:id/after_goal_status` re-confirms whether after_goal is armed, sourcing the URL/token durably from `.stride_auth.md` and `TASK_ID` from the captured file rather than a prior turn's export. The two detection paths are mutually exclusive, so `## after_goal` runs at most once. The `.stride/` directory holds this agent-local state and must be gitignored. See `stride-workflow` SKILL.md Step 7+9 for the full procedure.
 
 ## Mandatory Skill Chain
 
@@ -340,6 +340,32 @@ stderr, or the block reason — and the call is bounded by
 
 `.stride/` must be gitignored — see step 1 of the installer's next steps; it
 holds the block counter as well as the loop-state record.
+
+#### Where the hooks look — the project root
+
+Both hooks find the project root the way the skills do, so the records they
+write and read are the ones the skills write and read:
+
+1. `CODEX_PROJECT_DIR`, when set;
+2. otherwise `CLAUDE_PROJECT_DIR`, when set;
+3. otherwise the nearest directory at or above the event's `.cwd` (or, on an
+   event without one, the hook's own working directory) that holds a
+   `.stride.md`. The walk stops at that nearest `.stride.md`, so a nested
+   project's records, and the `.stride_auth.md` they read, are never a parent
+   project's. The start is folded first, so a `..` in it never walks below an existing
+   directory, and the root found is canonicalised with `CDPATH` cleared.
+
+With no `.stride.md` anywhere above, the root is the event's `.cwd`, then `.`
+— the hook's behaviour before the walk existed. The skills have no root at all
+in that case and do nothing, but the recorder must still write its record, and
+it never writes above the event's working directory. The two hooks carry one
+copy of this block, byte for byte.
+
+Two limits remain. The hook walks the event's `.cwd` as given and the skills
+walk their shell's `$PWD`, so when one sees a symlinked path and the other the
+physical one, they can still pick different roots. And a relative
+`CODEX_PROJECT_DIR` or `CLAUDE_PROJECT_DIR` is resolved against each process's
+own working directory, so set either variable to an absolute path.
 
 ### Where Codex sits in the stop-hook capability matrix
 

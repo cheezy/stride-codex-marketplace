@@ -591,7 +591,9 @@ b' "$G_CMD" "$G_OK")"
   assert_contains "1z7: that refusal is announced too" "symlink" "$(cat "$G_ERR")"
 
   # 1z3: PROJECT_DIR resolution. Codex sets no *_PROJECT_DIR of its own, so
-  # the event's own `.cwd` is the fallback that makes the hook work at all.
+  # the event's own `.cwd` is what makes the hook work at all: the walk to the
+  # nearest .stride.md starts there, and with none above it (as here) the cwd
+  # itself is the root (Group 38 covers the walk, D410).
   D=$(g_proj)
   printf '%s' "$(jq -nc --arg s 'sess-cwd' --arg c "$G_CMD" --arg r "$G_OK" --arg d "$D" \
     '{session_id:$s,cwd:$d,tool_input:{command:$c},tool_response:{stdout:$r}}')" \
@@ -1713,9 +1715,10 @@ if [ -f "$G4_WF" ] && [ -f "$G4_CT" ] && [ -f "$G4_REV" ]; then
     "$(g4_has 'COUNTER="$ROOT/.stride/.review-rounds-$IDENT.json"' "$G4_WF")"
   # The TASK_ID fallback is allow-listed too -- an unchecked one would sidestep
   # the guard by using the field it skips.
-  # Four: the counter and the fix-path classifier (W2593) each carry the pair.
-  assert_eq "4q4: the identifier fallback is allow-listed, not trusted" "4" \
-    "$(grep -cF 'case "$IDENT" in *[!A-Za-z0-9_-]*|"")' "$G4_WF" || true)"
+  # Two each: the counter and the fix-path classifier (W2593) both allow-list
+  # the identifier and the digits-only id before the fallback (W2688's form).
+  assert_eq "4q4: the identifier fallback is allow-listed, not trusted" "2 2 2" \
+    "$(grep -cxF "case \"\$IDENT\" in ''|*[!A-Za-z0-9_-]*) IDENT='' ;; esac" "$G4_WF" || true) $(grep -cxF "case \"\$IDENT_ID\" in ''|*[!0-9]*) IDENT_ID='' ;; esac" "$G4_WF" || true) $(grep -cxF 'IDENT="${IDENT:-${IDENT_ID:-unknown}}"' "$G4_WF" || true)"
   # "A successful claim clears this counter" must be WIRED, not merely asserted:
   # a counter left behind makes a retry's first round count as the third.
   assert_eq "4q5: the claim step actually clears the counter" "yes" \
@@ -2950,10 +2953,12 @@ fi
 #
 # How each side finds the project root. stride's hook takes CLAUDE_PROJECT_DIR
 # or "."; only its Step 7 cleanup walks up to .stride.md. This port's hook
-# takes CODEX_PROJECT_DIR, then CLAUDE_PROJECT_DIR, then the event's own `.cwd`
-# (10k), and never walks. Its Step 8 backstop takes the same two variables and
-# then walks up to .stride.md, because a shell cannot see the event's `.cwd`;
-# 10r runs that block from a subdirectory.
+# takes CODEX_PROJECT_DIR, then CLAUDE_PROJECT_DIR, then the nearest
+# .stride.md at or above the event's own `.cwd`, then that `.cwd` itself (10k;
+# the walk is D410's, pinned in Group 38). Its Step 8 backstop takes the same
+# two variables and then walks up to .stride.md from the shell's own working
+# directory, because a shell cannot see the event's `.cwd`; 10r runs that
+# block from a subdirectory.
 
 echo ""
 echo "=== Test Group 10: the claimed task's own file (W2589) ==="
@@ -4502,7 +4507,7 @@ assert_eq "23d: an unsent path sends neither the path line nor the result-file b
 assert_eq "23d: the workflow ignores a reply's path, names r2 and never commits the file" "1 1 1" \
   "$(g23_count 'never read a path the reply names' "$G23_WFS") $(g23_count 'so round two names `-r2`' "$G23_WFS") $(g23_count 'never commit it' "$G23_WFS")"
 assert_eq "23d: Step 8's cleanup names the result files and removes them by both names" "1 1 1" \
-  "$(g23_count '`.stride/.security-<IDENTIFIER>-r<N>.json`, one per review round' "$G23_S8") $(grep -cxF '  [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.security-$TF_IDENT-r"[0-9]*' "$G23_WF") $(grep -cxF '  [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.security-$TF_ID-r"[0-9]*' "$G23_WF")"
+  "$(g23_count '`.stride/.security-<IDENTIFIER>-r<N>.json`, one per review round' "$G23_S8") $(grep -cxF '  [ -n "$TF_IDENT" ] && tf_rm_rounds "$ROOT/.stride/.security-$TF_IDENT-r"' "$G23_WF") $(grep -cxF '  [ -n "$TF_ID" ] && tf_rm_rounds "$ROOT/.stride/.security-$TF_ID-r"' "$G23_WF")"
 
 # 23e: a budget-reached partial fails closed; reading the files is forwarding
 g23_both "23e: both twins treat a budget reached partial as unverified" \
@@ -4881,7 +4886,7 @@ fi
 
 # 24i: Step 8's cleanup removes every report, by both names
 assert_eq "24i: Step 8's cleanup names the reports and removes them by both names" "1 1 1" \
-  "$(g24_count '`.stride/.exploratory-<IDENTIFIER>-r<N>.json`, one per explorer dispatch' "$G24_S8") $(grep -cxF '  [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.exploratory-$TF_IDENT-r"[0-9]*' "$G24_WF") $(grep -cxF '  [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.exploratory-$TF_ID-r"[0-9]*' "$G24_WF")"
+  "$(g24_count '`.stride/.exploratory-<IDENTIFIER>-r<N>.json`, one per explorer dispatch' "$G24_S8") $(grep -cxF '  [ -n "$TF_IDENT" ] && tf_rm_rounds "$ROOT/.stride/.exploratory-$TF_IDENT-r"' "$G24_WF") $(grep -cxF '  [ -n "$TF_ID" ] && tf_rm_rounds "$ROOT/.stride/.exploratory-$TF_ID-r"' "$G24_WF")"
 if command -v jq >/dev/null 2>&1; then
   G24_CB=$(printf '%s\n' "$G24_S8" | awk '/^\*\*Artifact cleanup/{f=1} f&&/^```bash/{b=1;next} b&&/^```/{exit} b')
   g24_cb() {
@@ -6285,8 +6290,21 @@ HANDED BACK: <r<N> | u<k> | -> <what is left for a human to do, in your own word
 Visual pass <r<N> | u<k>>: <what the main-loop visual pass observed>
 Exploratory coverage: <p> performed, <q> partial, <r> not performed
 Exploratory testing skipped: <why Step 6.5 did not fire>'
-# cksum of the checker function as stride ships it (fe5de2e)
-G29_FN_SUM='4029618644 5171'
+# cksum of the checker function as this port ships it: stride's (fe5de2e)
+# with D407's six edits (see g29_d407)
+G29_FN_SUM='3714869502 5161'
+# g29_d407: stdin, upstream's checker -> stdout, that checker with exactly the
+# six D407 edits: the verify field gone from the three report objects, the
+# select(.verify | not) filter replaced by $reports itself, and the skip
+# branch refusing a record that holds an `exploratory report path: not sent`
+# line (counted as $nosent; pathless dispatches exist in this port only)
+g29_d407() {
+  sed -e 's/ verify: ((\$o | type) == "object" and (\$o | has("verify"))),$//' \
+      -e 's/verify: \.verify, //' -e 's/verify: false, //' \
+      -e 's/\[\$reports\[\] | select(\.verify | not)\] as \$charters/$reports as $charters/' \
+      -e 's/| length) as \$skips$/| length) as $skips | ([$notes[] | select(startswith("exploratory report path: not sent"))] | length) as $nosent/' \
+      -e 's/and (\$cov | length) == 0 and \$skips >= 1$/and ($cov | length) == 0 and $nosent == 0 and $skips >= 1/'
+}
 
 g29_once() {
   [ "$(g27_count "$2" "$3")" = "1" ] || G29_FAILS="$G29_FAILS $1"
@@ -6442,7 +6460,7 @@ if [ -f "$G29_WF" ] && [ -f "$G29_SW" ] && [ -f "$G29_CT" ] && [ -f "$G29_DOC" ]
   g29_ok "29a: each outcome-line prefix matches upstream byte for byte, in completion_notes but for coverage" p_
   g29_ok "29b: completion_summary carries exactly one Exploratory coverage: line" c_
   g29_ok "29c: the Exploratory testing skipped reason line is documented and replaces 'record nothing extra'" s_
-  g29_ok "29d: exploratory_outcomes_ok is defined in Step 6.5, byte-identical, prints only a boolean" k_
+  g29_ok "29d: exploratory_outcomes_ok is defined in Step 6.5, pinned by its checksum, prints only a boolean" k_
   g29_ok "29e: Step 8 runs exploratory_outcomes_ok before the complete call and sends what it checked" g_
   g29_ok "29f: the hard gate carries the outcome box after the cosmetic box" b_
   g29_ok "29g: Phase 3.5 mirrors the check before the complete call" m_
@@ -6476,8 +6494,8 @@ if [ -f "$G29_WF" ] && [ -f "$G29_SW" ] && [ -f "$G29_CT" ] && [ -f "$G29_DOC" ]
       "$(printf '%s\n' "$G29_UB" | sed 's/<.*//')" "$(printf '%s\n' "$G29_CB" | sed 's/<.*//')"
     assert_eq "29k2: the whole block is upstream's but for the step number" \
       "$(printf '%s\n' "$G29_UB" | sed 's/Step 5\.5/Step 6.5/')" "$G29_CB"
-    assert_eq "29k3: the checker function is byte-identical to upstream's" \
-      "$(g29_fn "$G29_UOET" | cksum)" "$(g29_fn "$G29_WF" | cksum)"
+    assert_eq "29k3: the checker function is upstream's but for D407's six edits" \
+      "$(g29_fn "$G29_UOET" | g29_d407 | cksum)" "$(g29_fn "$G29_WF" | cksum)"
   else
     echo "  SKIP: 29k: stride not found at $G29_UP -- the cross-repo compare runs only when the upstream repo is present"
   fi
@@ -7110,8 +7128,8 @@ g30_check() {
   g30_once h_s9 $'**Step 6.5\'s goal-scope pass is not this lifecycle.**' "$s9"
   g30_once h_push9 'it never pushes and never runs `## after_goal`' "$s9"
   # c_: Step 8 removes the pass's files
-  g30_once c_id '[ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.goal-scope-$TF_IDENT-"*.json' "$s8"
-  g30_once c_num '[ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.goal-scope-$TF_ID-"*.json' "$s8"
+  g30_once c_id '[ -n "$TF_IDENT" ] && tf_rm_goal_scope "$ROOT/.stride/.goal-scope-$TF_IDENT-"' "$s8"
+  g30_once c_num '[ -n "$TF_ID" ] && tf_rm_goal_scope "$ROOT/.stride/.goal-scope-$TF_ID-"' "$s8"
   # fl_: flowcharts and quick references
   g30_lines fl_wf_main 1 $'Goal\'s last open child? --> one goal-scope pass' "$wf"
   g30_lines fl_wf_ref 1 $'Goal\'s last open child → one goal-scope pass' "$wf"
@@ -7720,7 +7738,7 @@ g32_check() {
   g32_once o_out 'OUT="$ROOT/.stride/.outcomes-$OC_STEM.json"' "$ob"
   g32_once o_prose 'named by the same stem as the task file: the identifier when it is a plain 1-64 character `[A-Za-z0-9_-]` token, else the numeric id' "$s8"
   # c_: the cleanup paragraph names the files its globs remove
-  g32_once c_prose $'and Step 6.5\'s goal-scope tree and sibling files (`.stride/.goal-scope-<IDENTIFIER>-*.json`)' "$s8"
+  g32_once c_prose $'and Step 6.5\'s goal-scope tree and sibling files (`.stride/.goal-scope-<IDENTIFIER>-tree.json` and `.stride/.goal-scope-<IDENTIFIER>-<id>.json`)' "$s8"
   g32_once c_sib '`.stride/.goal-scope-<STEM>-<id>.json`, `<STEM>` being the trigger block'"'"'s' "$gs"
   # p_: Step 6.5 and Phase 3.5 state the same rules, once each in their own section
   for p in \
@@ -7911,6 +7929,23 @@ if [ -f "$G32_WF" ] && [ -f "$G32_SW" ] && [ -f "$G32_CL" ]; then
       fi
       return 0
     }
+    # g32_mut_after <label> <anchor> <old> <new>: as g32_mut on wf, but replace
+    # the first <old> AFTER the first line holding <anchor> (W2688 cleared
+    # CDPATH in earlier blocks too, so the first match is no longer this one)
+    g32_mut_after() {
+      G32_M="$G32_TMP/wf.md"; rm -f "$G32_M"
+      if G32_ANCHOR="$2" G27_OLD="$3" G27_NEW="$4" awk '
+          !a && index($0, ENVIRON["G32_ANCHOR"]) { a = 1 }
+          a && !done && (i = index($0, ENVIRON["G27_OLD"])) > 0 {
+            $0 = substr($0, 1, i - 1) ENVIRON["G27_NEW"] substr($0, i + length(ENVIRON["G27_OLD"])); done = 1
+          }
+          { print }
+          END { exit done ? 0 : 3 }' "$G32_WF" > "$G32_M"; then
+        return 0
+      fi
+      assert_eq "$1 (mutation target present)" "present" "MISSING"
+      return 1
+    }
     # g32_neg <label> <" id "> <wf|sw> <old> <new>: the mutated copy fails the check
     g32_neg() {
       local w="$G32_WF" s="$G32_SW"
@@ -7948,7 +7983,7 @@ if [ -f "$G32_WF" ] && [ -f "$G32_SW" ] && [ -f "$G32_CL" ]; then
       assert_eq "32n10: and the outcomes block without the check reads the non-digit file" \
         "exploratory_outcomes_ok: true" "$(g32_orun "$G32_M" '' 81a9 "$G32_U/lib")"
     fi
-    if g32_mut "32n11" wf 'ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"' 'ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)"'; then
+    if g32_mut_after "32n11" "GS_IDENT='<identifier>'" 'ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"' 'ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)"'; then
       assert_contains "32n11: canonicalising the root with CDPATH honoured fails the group" " r_cdpath " " $(g32_check "$G32_M" "$G32_SW") "
       assert_eq "32n11: and that block, under CDPATH with a relative root, says no task file" \
         "goal-scope trigger: no task file" "$(CDPATH=. g32_run "$G32_M" W1 '' "$G32_X" "$G32_X/last.json" proj)"
@@ -7966,7 +8001,7 @@ if [ -f "$G32_WF" ] && [ -f "$G32_SW" ] && [ -f "$G32_CL" ]; then
     g32_neg "32n8: dropping the stop-at-the-nearest rule from Step 6.5 fails the group" " p_parent_wf " wf \
       $'so a parent directory\'s `.stride_auth.md` is never read' 'so any directory may be read'
     g32_neg "32n9: dropping the goal-scope files from the cleanup prose fails the group" " c_prose " wf \
-      $', and Step 6.5\'s goal-scope tree and sibling files (`.stride/.goal-scope-<IDENTIFIER>-*.json`)' ''
+      $', and Step 6.5\'s goal-scope tree and sibling files (`.stride/.goal-scope-<IDENTIFIER>-tree.json` and `.stride/.goal-scope-<IDENTIFIER>-<id>.json`)' ''
     rm -rf "$G32_TMP"
   else
     echo "  SKIP: 32d-32n (jq not installed)"
@@ -8346,8 +8381,9 @@ G34_RAT="$PORT_ROOT/docs/orchestrator-rationale.md"
 G34_CL="$PORT_ROOT/CHANGELOG.md"
 G34_RM="$PORT_ROOT/README.md"
 G34_AG="$PORT_ROOT/AGENTS.md"
-G34_CF='--argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '"'"'[]'"'"')"'
-G34_TEE='| tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"'
+# D411: both read the block's absolute $ROOT, never ${CLAUDE_PROJECT_DIR:-.}
+G34_CF='--argjson cf "$CF_JSON"'
+G34_TEE='| tee "$ROOT/.stride/.last-api-response.json"'
 G34_GUARD='if [ -z "$ROOT" ] || [ -z "$OC_STEM" ] || [ ! -d "$ROOT/.stride" ] || [ -L "$ROOT/.stride" ] \'
 G34_GUARD2='   || [ ! -f "$OC" ] || [ -L "$OC" ] \'
 G34_VALID="   || ! jq -se 'length == 1 and (.[0] | type) == \"object\" and (.[0].completion_notes | type) == \"string\" and (.[0].completion_summary | type) == \"string\"' \"\$OC\" >/dev/null 2>&1; then"
@@ -8456,13 +8492,13 @@ $frag")
   [ -n "$s8b" ] && [ "$(printf '%s\n' "$api" | head -15)" = "$(printf '%s\n' "$s8b" | head -15)" ] \
     || G34_FAILS="$G34_FAILS s_same"
   g34_once s_api '--slurpfile oc "$OC" \' "$api"
-  g34_once s_frag '--slurpfile oc "${CLAUDE_PROJECT_DIR:-.}/.stride/.outcomes-<IDENTIFIER>.json" \' "$frag"
+  g34_once s_frag '--slurpfile oc "$ROOT/.stride/.outcomes-$OC_STEM.json" \' "$frag"
   g34_once s_guard "$G34_GUARD" "$api"
   g34_once s_guard2 "$G34_GUARD2" "$api"
   g34_once s_valid "$G34_VALID" "$api"
   g34_once s_merge_api "$G34_MERGE" "$api"
   g34_once s_merge_frag "$G34_MERGE" "$frag"
-  g34_once s_cd '( cd "$ROOT" && curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \' "$api"
+  g34_once s_cd '( CDPATH= cd -- "$ROOT" && curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \' "$api"
   g34_once s_false "  echo 'completion text file missing, malformed or a symlink: not submitting' >&2; false" "$api"
   [ "$(awk 'index($0, "A fragment, not a command — the `text` fence is deliberate:") { f = 1; next } f && NF { print; exit }' "$ct")" = '```text' ] \
     || G34_FAILS="$G34_FAILS s_frag_text"
@@ -8613,14 +8649,23 @@ Approved \n stays two characters.'
     assert_eq "34k12: and it reads the root's changed-files snapshot, tees at the root and leaves the caller's directory alone" \
       'true|present|absent|sub/deep' \
       "$(printf '%s' "$G34_BODY" | jq -c '.changed_files == ["root.ex"]' 2>/dev/null)|$([ -s "$G34_D/.stride/.last-api-response.json" ] && echo present || echo absent)|$([ -e "$G34_D/sub/deep/.stride/.last-api-response.json" ] && echo present || echo absent)|$(sed "s|^$G34_D/||" "$G34_D/PWD_AFTER" 2>/dev/null)"
-    G34_PAT='( cd "$ROOT" && curl'; G34_NEW='( curl'
+    # D411 made the snapshot read and the tee absolute ($ROOT), so the cd alone
+    # no longer decides where they land: the break restores all three
+    G34_PAT='( CDPATH= cd -- "$ROOT" && curl'; G34_NEW='( curl'
     G34_NOCD=${G34_BLK/"$G34_PAT"/"$G34_NEW"}
+    G34_PAT='CF="$ROOT/.stride-changed-files.json"'; G34_NEW='CF="${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json"'
+    G34_NOCD=${G34_NOCD/"$G34_PAT"/"$G34_NEW"}
+    G34_PAT="$G34_TEE"; G34_NEW='| tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"'
+    G34_NOCD=${G34_NOCD/"$G34_PAT"/"$G34_NEW"}
     G34_BODY=$(g34_api "$G34_NOCD" "$G34_D/sub/deep" none)
-    assert_eq "34n18: break-it -- without the cd a subdirectory run reads the wrong changed-files snapshot and tees there" \
+    assert_eq "34n18: break-it -- without the cd and with the snapshot read and tee relative to the caller (pre-D411) a subdirectory run reads the wrong changed-files snapshot and tees there" \
       'false|present' \
       "$(printf '%s' "$G34_BODY" | jq -c '.changed_files == ["root.ex"]' 2>/dev/null)|$([ -e "$G34_D/sub/deep/.stride/.last-api-response.json" ] && echo present || echo absent)"
     rm -rf "$G34_D/.stride-changed-files.json" "$G34_D/sub/deep/.stride" "$G34_D/sub/deep/.stride-changed-files.json" "$G34_D/PWD_AFTER"
-    g34_api "$G34_BLK" "$G34_D/sub" "$G34_D" >/dev/null
+    # Run from OUTSIDE the tree (D411): from $G34_D/sub the walk-up found the
+    # root too, so this passed with the CODEX_PROJECT_DIR term deleted (39k9)
+    mkdir -p "$TMPDIR_TEST/g34-outside"
+    g34_api "$G34_BLK" "$TMPDIR_TEST/g34-outside" "$G34_D" >/dev/null
     assert_eq "34k9: CODEX_PROJECT_DIR alone names the root, as in Step 8's block" "present" "$(g34_sent)"
     mkdir -p "$G34_D/.stride/.outcomes-D9"; cp "$G34_D/elsewhere.json" "$G34_D/.stride/x.json"
     G34_IDENT='D9/../x'; g34_api "$G34_BLK" >/dev/null; unset G34_IDENT
@@ -8685,7 +8730,7 @@ Approved \n stays two characters.'
   g34_neg "34n5: dropping the changed-files read from the example fails the group" " k_cf_api " ct \
     "    $G34_CF \\" '    --argjson cf "[]" \'
   g34_neg "34n5b: reading the fragment's notes from somewhere other than the file fails the group" " s_frag " ct \
-    '--slurpfile oc "${CLAUDE_PROJECT_DIR:-.}/.stride/.outcomes-<IDENTIFIER>.json" \' '--slurpfile oc notes.json \'
+    '--slurpfile oc "$ROOT/.stride/.outcomes-$OC_STEM.json" \' '--slurpfile oc notes.json \'
   g34_neg "34n6: restoring the two-key-only Step 8 shape fails the group" " w_old " wf \
     'a JSON object whose string keys `completion_notes` and `completion_summary` hold' 'a JSON object with exactly two string keys, `completion_notes` and `completion_summary`, hold'
   g34_neg "34n7: restoring the word-splitting after_goal PATCH fails the group" " a_old " wf \
@@ -8757,22 +8802,26 @@ echo ""
 echo "=== Test Group 35: the [1.43.1] entry accounts for every 1.43.0 Known issue (W2687) ==="
 
 G35_CL="$PORT_ROOT/CHANGELOG.md"
-# g35_counts <changelog>: "<bullets> <1.43.0 issues> <labelled> <fixed> <partly> <intro full> <intro total> <intro part>"
+# g35_counts <changelog> [<new> <old>]: "<bullets> <old issues> <labelled> <fixed> <partly> <intro full> <intro total> <intro part>"
+# for the [<new>] entry's status list of the [<old>] Known issues; the versions
+# default to 1.43.1 and 1.43.0 (Group 42 passes 1.43.2 and 1.43.1).
 g35_counts() {
-  awk '
+  awk -v nv="${2:-1.43.1}" -v ov="${3:-1.43.0}" '
     function num(w) { return (w in N) ? N[w] : -1 }
-    BEGIN { split("one two three four five six seven eight nine", W, " "); for (i in W) N[W[i]] = i }
-    /^## \[1\.43\.1\]/ { e = 1; next }
-    /^## \[1\.43\.0\]/ { e = 0; o = 1; next }
+    BEGIN { split("one two three four five six seven eight nine", W, " "); for (i in W) N[W[i]] = i
+            ore = ov; gsub(/\./, "\\.", ore)
+            ire = "fixes [a-z]+ of the [a-z]+ " ore " Known issues in full and [a-z]+ in part" }
+    index($0, "## [" nv "]") == 1 { e = 1; next }
+    index($0, "## [" ov "]") == 1 { e = 0; o = 1; next }
     /^## \[/ { e = 0; o = 0 }
     e && !intro && NF {
       intro = 1; f = -1; t = -1; q = -1
-      if (match($0, /fixes [a-z]+ of the [a-z]+ 1\.43\.0 Known issues in full and [a-z]+ in part/)) {
+      if (match($0, ire)) {
         split(substr($0, RSTART, RLENGTH), w, " "); f = num(w[2]); t = num(w[5]); q = num(w[12])
       }
       next
     }
-    e && $0 == "How each 1.43.0 Known issue stands:" { l = 1; next }
+    e && $0 == "How each " ov " Known issue stands:" { l = 1; next }
     e && l && /^- / {
       s++
       if ($0 ~ /^- \*\*[^*]+\*\* — partly fixed /) { p++; lab++ }
@@ -8816,6 +8865,1777 @@ $G35_SIB"
   assert_eq "35z: the break-it cases left the real changelog untouched" "$G35_SUM_BEFORE" "$(cksum < "$G35_CL")"
 else
   echo "  SKIP: Test Group 35 (the changelog is missing)"
+fi
+
+# ============================================================================
+# Test Group 36: D407 -- no report key exempts a report from
+# exploratory_outcomes_ok
+# ============================================================================
+# The checker skipped every passed report that carried a root `verify` key,
+# a filter ported from upstream, where a verify-mode re-check writes one. This
+# port never sends EXPLORATORY_MODE, so the key can only come from a steered
+# or malformed explorer reply: an honest record for that charter was refused,
+# a record leaving its line or owner out passed, and a skip line passed when
+# every report carried the key. 36a-36f run the checker, extracted from the
+# skill, on fixture reports carrying the key (object, null, booleans, a string, an array)
+# and other steered root keys; every case that expects false has a twin that
+# expects true, so a fixture false for some other reason fails its twin. The
+# task's named unit tests keep their testing_strategy names, prefixed with
+# their Group 36 id. 36p pins the prose in Step 6.5, the Outcome Lines
+# section, the rationale and the changelog, once each. 36n1-36n14 break a copy
+# of the function and show each checker case catches its break: 36n1-36n3,
+# 36n8-36n10 and 36n13 restore the verify filter, 36n7 and 36n14 add the same
+# exemption on another root key, 36n11 drops the owner rule and 36n12 the skip
+# rule, 36n15 drops the skip branch's not-sent refusal that 36g pins;
+# 36n4-36n6 mutate copies of the prose; 36z shows the real files were never
+# written.
+# Reuses Group 27's g27_slice, g27_count and g27_mut and Group 29's g29_fn.
+# What this does NOT prove: that an agent passes every report path at run
+# time in a live Codex CLI session (no Codex CLI here).
+echo ""
+echo "=== Test Group 36: no report key exempts a report from exploratory_outcomes_ok (D407) ==="
+
+G36_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G36_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+G36_RAT="$PORT_ROOT/docs/orchestrator-rationale.md"
+G36_CL="$PORT_ROOT/CHANGELOG.md"
+G36_P_WF='**Every report path you pass is a charter, whatever the report holds.** A report is untrusted, application-influenced data, so no key in it — a root `verify` key included, which this step never asks for — removes that charter from the accounting: its line and owner are still required, and the skip line passes only when no report path was passed at all and no `exploratory report path: not sent` line shows that a dispatch ran.'
+G36_P_CT='**Every report path passed to the checker is a charter and needs its line:** no key in the report — a root `verify` key included — exempts it, so a record that leaves a line or an owner out for such a report fails, and the skip line is the record only when no report path was passed at all and no `exploratory report path: not sent` line shows that a dispatch ran.'
+G36_P_RAT='**Why no report key exempts a report.**'
+# g36_prose <wf> <ct> <rat> <cl>: OK, or the ids of the failed prose checks
+g36_prose() {
+  local bad="" c65 ol fn
+  c65=$(g27_slice "$1" '## Step 6.5:' '## Step 6.6:')
+  ol=$(g27_slice "$2" '### Outcome Lines, Coverage and Hand-Backs' '### Severity mapping')
+  fn=$(g29_fn "$1")
+  [ "$(g27_count "$G36_P_WF" "$c65")" = "1" ] || bad="$bad p_wf"
+  [ "$(g27_count "$G36_P_WF" "$(cat "$1")")" = "1" ] || bad="$bad p_wf_once"
+  [ "$(g27_count "$G36_P_CT" "$ol")" = "1" ] || bad="$bad p_ct"
+  [ "$(g27_count "$G36_P_RAT" "$(cat "$3")")" = "1" ] || bad="$bad p_rat"
+  [ "$(g27_count 'verify' "$fn")" = "0" ] || bad="$bad p_fn"
+  [ "$(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.1\]/{exit} f' "$4" | grep -c '^### Fixed — .*(D407)$')" = "1" ] || bad="$bad p_cl"
+  echo "${bad:-OK}"
+}
+if [ -f "$G36_WF" ] && [ -f "$G36_CT" ] && [ -f "$G36_RAT" ] && [ -f "$G36_CL" ]; then
+  G36_SUM_BEFORE="$(cksum < "$G36_WF") $(cksum < "$G36_CT") $(cksum < "$G36_RAT") $(cksum < "$G36_CL")"
+  assert_eq "36p: the no-exemption rule is stated once each in Step 6.5, Outcome Lines, the rationale and the changelog, and the checker reads no verify key" \
+    "OK" "$(g36_prose "$G36_WF" "$G36_CT" "$G36_RAT" "$G36_CL")"
+
+  # --- 36a-36f: the checker, extracted from the skill and run ---
+  if command -v jq >/dev/null 2>&1; then
+    G36_FN=$(g29_fn "$G36_WF")
+    eval "$G36_FN"
+    G36_D="$TMPDIR_TEST/g36"; G36_S="$G36_D/.stride"; mkdir -p "$G36_S"
+    G36_OK='exploratory_outcomes_ok: true'
+    G36_NO='exploratory_outcomes_ok: false'
+    g36_rep() { # $1=N $2=stop_reason $3=probes $4=surfaces JSON $5=extra root keys JSON object
+      local x=${5-}
+      [ -n "$x" ] || x='{}'
+      jq -nc --arg s "$2" --argjson p "$3" --argjson u "$4" --argjson x "$x" \
+        '{contract_version: "1.1", charter: "x", status: "completed", bugs: [],
+          session_sheet: {probe_budget: 12, probes_attempted: $p, stop_reason: $s, surfaces_used: $u}} + $x' \
+        > "$G36_S/.exploratory-D9-r$1.json"
+    }
+    g36_pay() { # $1=notes $2=summary
+      jq -n --arg n "$1" --arg s "$2" '{completion_notes: $n, completion_summary: $s}' > "$G36_D/p.json"
+    }
+    g36() { exploratory_outcomes_ok "$G36_D/p.json" "$@" 2>&1; }
+    G36_R1="$G36_S/.exploratory-D9-r1.json"; G36_R2="$G36_S/.exploratory-D9-r2.json"
+    G36_L1='Exploratory charter r1: the board filter by label | stop_reason=charter_quiet | probes=5 | surfaces=http | outcome=performed'
+    G36_L2='Exploratory charter r2: the CSV export of a filtered board | stop_reason=probe_budget_exhausted | probes=12 | surfaces=http,source | outcome=partial'
+    G36_L2N='Exploratory charter r2: the CSV export of a filtered board | stop_reason=blocked | probes=0 | surfaces=none | outcome=not performed'
+    G36_HB2='HANDED BACK: r2 run the CSV export manual test against a running app'
+    G36_SKIP='Exploratory testing skipped: x'
+    G36_COV2='Exploratory coverage: 1 performed, 1 partial, 0 not performed'
+    G36_COV1='Exploratory coverage: 1 performed, 0 partial, 0 not performed'
+    g36_rep 1 charter_quiet 5 '["http"]'
+    g36_rep 2 probe_budget_exhausted 12 '["http","source"]' '{"verify": {"result": "pass"}}'
+
+    g36_pay "Done.
+$G36_L1
+$G36_L2" "Did it.
+$G36_COV2"
+    assert_eq "36a: Group 29: an honest record with one verify-keyed report among normal ones prints true" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+    g36_pay "Done.
+$G36_L1" "Did it.
+$G36_COV1"
+    assert_eq "36b: Group 29: a record missing the line for a verify-keyed report prints false" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+    assert_eq "36b-twin: the same record with the verify-keyed report not passed prints true" "$G36_OK" "$(g36 "$G36_R1")"
+
+    # owner: a verify-keyed charter not performed still needs one
+    g36_rep 2 blocked 0 '[]' '{"verify": {"result": "not_verified"}}'
+    g36_pay "Done.
+$G36_L1
+$G36_L2N" "Exploratory coverage: 1 performed, 0 partial, 1 not performed"
+    assert_eq "36b2: a verify-keyed charter not performed with no owner prints false" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+    g36_pay "Done.
+$G36_L1
+$G36_L2N | owner=HANDED BACK
+$G36_HB2" "Exploratory coverage: 1 performed, 0 partial, 1 not performed"
+    assert_eq "36b2-twin: the same record with its owner and hand-back prints true" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+
+    # the skip branch opens only when no report path was passed
+    g36_rep 1 charter_quiet 5 '["http"]' '{"verify": {"result": "pass"}}'
+    g36_rep 2 probe_budget_exhausted 12 '["http","source"]' '{"verify": null}'
+    g36_pay "$G36_SKIP" "Did it."
+    assert_eq "36c: Group 29: a skip line with every passed report verify-keyed prints false" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+    assert_eq "36c-twin: the same skip line with no report path passed prints true" "$G36_OK" "$(g36)"
+    g36_pay "Done.
+$G36_L1
+$G36_L2" "Did it.
+$G36_COV2"
+    assert_eq "36c2: the honest lines for those two verify-keyed reports print true" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+    G36_NS='exploratory report path: not sent — no project root'
+    g36_pay "$G36_SKIP
+$G36_NS
+HANDED BACK: - run the CSV export manual test against a running app" "Did it."
+    assert_eq "36g: a skip line beside a pathless dispatch's not-sent line prints false" "$G36_NO" "$(g36)"
+    g36_pay "$G36_SKIP
+HANDED BACK: - run the CSV export manual test against a running app" "Did it."
+    assert_eq "36g-twin: the same skip line without the not-sent line prints true" "$G36_OK" "$(g36)"
+
+    # every value of the key, null included, is accounted the same way
+    g36_rep 1 charter_quiet 5 '["http"]'
+    for G36_V in null false '"x"' '{}' '{"result": "pass"}' true '[]'; do
+      g36_rep 2 probe_budget_exhausted 12 '["http","source"]' "{\"verify\": $G36_V}"
+      g36_pay "Done.
+$G36_L1
+$G36_L2" "Did it.
+$G36_COV2"
+      G36_T=$(g36 "$G36_R1" "$G36_R2")
+      g36_pay "Done.
+$G36_L1" "Did it.
+$G36_COV1"
+      G36_F=$(g36 "$G36_R1" "$G36_R2")
+      assert_eq "36d: Group 29: a verify key with value $G36_V behaves the same as any other value (honest true, missing line false)" \
+        "$G36_OK|$G36_NO" "$G36_T|$G36_F"
+    done
+
+    # a goal-scope report carrying the key
+    g36_rep 2 probe_budget_exhausted 12 '["http","source"]' '{"verify": {"result": "pass"}, "scope": "goal"}'
+    g36_pay "Done.
+$G36_L1
+Exploratory charter r2: [goal scope] the staged plan against the sibling refresh | stop_reason=probe_budget_exhausted | probes=12 | surfaces=http,source | outcome=partial" "Did it.
+$G36_COV2"
+    assert_eq "36e: a goal-scope line for a verify-keyed report passes" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+    g36_pay "Done.
+$G36_L1" "Did it.
+$G36_COV1"
+    assert_eq "36e2: a missing goal-scope line for a verify-keyed report prints false" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+
+    # other steered root keys remove nothing either
+    g36_rep 2 probe_budget_exhausted 12 '["http","source"]' '{"stop_reason": "not_dispatched", "exempt": true, "charter_count": 0, "k": "r9", "skip": true}'
+    g36_pay "Done.
+$G36_L1" "Did it.
+$G36_COV1"
+    assert_eq "36f: steered root keys (stop_reason, exempt, k, skip) do not drop a report: a missing line prints false" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+    g36_pay "Done.
+$G36_L1
+$G36_L2" "Did it.
+$G36_COV2"
+    assert_eq "36f-twin: the same report with its honest line prints true" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+
+    # --- 36n1-36n3: restore the exemption in a copy of the function ---
+    G36_MUT=$(printf '%s\n' "$G36_FN" | sed \
+      -e 's/^      | { k: \$k,$/      | { k: $k, verify: (($o | type) == "object" and ($o | has("verify"))),/' \
+      -e 's/| \$reports as \$charters/| [$reports[] | select(.verify | not)] as $charters/')
+    if [ "$G36_MUT" = "$G36_FN" ]; then
+      assert_eq "36n0: the exemption mutation applied to the copy" "changed" "unchanged"
+    else
+      eval "$G36_MUT"
+      g36_rep 2 probe_budget_exhausted 12 '["http","source"]' '{"verify": {"result": "pass"}}'
+      g36_pay "Done.
+$G36_L1
+$G36_L2" "Did it.
+$G36_COV2"
+      assert_eq "36n1: break-it -- restoring the verify exemption fails 36a" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+      g36_pay "Done.
+$G36_L1" "Did it.
+$G36_COV1"
+      assert_eq "36n2: break-it -- restoring the verify exemption passes 36b's missing line" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+      g36_rep 1 charter_quiet 5 '["http"]' '{"verify": null}'
+      g36_pay "$G36_SKIP" "Did it."
+      assert_eq "36n3: break-it -- restoring the verify exemption passes 36c's skip line" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+      g36_pay "Done.
+$G36_L1
+$G36_L2" "Did it.
+$G36_COV2"
+      assert_eq "36n9: break-it -- restoring the verify exemption fails 36c2" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+      g36_rep 1 charter_quiet 5 '["http"]'
+      g36_rep 2 blocked 0 '[]' '{"verify": {"result": "not_verified"}}'
+      g36_pay "Done.
+$G36_L1
+$G36_L2N | owner=HANDED BACK
+$G36_HB2" "Exploratory coverage: 1 performed, 0 partial, 1 not performed"
+      assert_eq "36n10: break-it -- restoring the verify exemption fails 36b2-twin" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+      g36_rep 2 probe_budget_exhausted 12 '["http","source"]' '{"verify": {"result": "pass"}, "scope": "goal"}'
+      g36_pay "Done.
+$G36_L1
+Exploratory charter r2: [goal scope] the staged plan against the sibling refresh | stop_reason=probe_budget_exhausted | probes=12 | surfaces=http,source | outcome=partial" "Did it.
+$G36_COV2"
+      assert_eq "36n13: break-it -- restoring the verify exemption fails 36e" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+      g36_pay "Done.
+$G36_L1" "Did it.
+$G36_COV1"
+      assert_eq "36n8: break-it -- restoring the verify exemption passes 36e2's missing goal-scope line" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+      eval "$G36_FN"
+    fi
+
+    # --- 36n7, 36n11, 36n12, 36n14: the other breaks the remaining cases guard ---
+    # g36_meval <label> <sed expr>...: eval a mutated copy of the checker, or
+    # fail <label> when the expression changed nothing
+    g36_meval() {
+      local label=$1 m; shift
+      m=$(printf '%s\n' "$G36_FN" | sed "$@")
+      if [ "$m" = "$G36_FN" ]; then
+        assert_eq "$label (mutation applied to the copy)" "changed" "unchanged"; return 1
+      fi
+      eval "$m"
+    }
+    # A filter on a steered root key other than verify: 36f and its twin catch it
+    if g36_meval "36n7" -e 's/^      | { k: \$k,$/      | { k: $k, exempt: (($o | type) == "object" and ($o | has("exempt"))),/' \
+         -e 's/| \$reports as \$charters/| [$reports[] | select(.exempt | not)] as $charters/'; then
+      g36_rep 2 probe_budget_exhausted 12 '["http","source"]' '{"stop_reason": "not_dispatched", "exempt": true, "charter_count": 0, "k": "r9", "skip": true}'
+      g36_pay "Done.
+$G36_L1" "Did it.
+$G36_COV1"
+      assert_eq "36n7: break-it -- an exemption on a steered root key passes 36f's missing line" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+      g36_pay "Done.
+$G36_L1
+$G36_L2" "Did it.
+$G36_COV2"
+      assert_eq "36n14: break-it -- an exemption on a steered root key fails 36f-twin" "$G36_NO" "$(g36 "$G36_R1" "$G36_R2")"
+    fi
+    # Dropping the owner rule: 36b2 catches it
+    if g36_meval "36n11" -e 's/      and all(\$rows\[\]; owned)$/      and true/'; then
+      g36_rep 2 blocked 0 '[]' '{"verify": {"result": "not_verified"}}'
+      g36_pay "Done.
+$G36_L1
+$G36_L2N" "Exploratory coverage: 1 performed, 0 partial, 1 not performed"
+      assert_eq "36n11: break-it -- dropping the owner rule passes 36b2" "$G36_OK" "$(g36 "$G36_R1" "$G36_R2")"
+    fi
+    # Requiring a second skip line: 36c-twin catches it
+    if g36_meval "36n12" -e 's/and \$skips >= 1$/and $skips >= 2/'; then
+      g36_pay "$G36_SKIP" "Did it."
+      assert_eq "36n12: break-it -- breaking the skip rule fails 36c-twin" "$G36_NO" "$(g36)"
+    fi
+    # Dropping the not-sent refusal from the skip branch: 36g catches it
+    if g36_meval "36n15" -e 's/ and \$nosent == 0 and \$skips >= 1$/ and $skips >= 1/'; then
+      g36_pay "$G36_SKIP
+$G36_NS" "Did it."
+      assert_eq "36n15: break-it -- dropping the not-sent refusal passes 36g" "$G36_OK" "$(g36)"
+    fi
+    eval "$G36_FN"
+  else
+    echo "  SKIP: 36a-36n15: jq is not installed"
+  fi
+
+  # --- 36n4-36n6: mutate copies of the prose ---
+  G36_TMP="$TMPDIR_TEST/g36m"; mkdir -p "$G36_TMP"
+  # g36_neg <label> <id> <which: wf|ct|rat> <old> <new>
+  g36_neg() {
+    local wf="$G36_WF" ct="$G36_CT" rat="$G36_RAT" src m="$G36_TMP/m.md"
+    case "$3" in ( wf ) src=$wf; wf=$m ;; ( ct ) src=$ct; ct=$m ;; ( rat ) src=$rat; rat=$m ;; esac
+    if [ "$(g27_mut "$src" "$m" "$4" "$5")" = "MISSING" ]; then
+      assert_eq "$1 (mutation target present)" "present" "MISSING"
+    else
+      assert_contains "$1" " $2 " " $(g36_prose "$wf" "$ct" "$rat" "$G36_CL") "
+    fi
+  }
+  g36_neg "36n4: break-it -- dropping the Step 6.5 rule fails 36p" p_wf wf "$G36_P_WF" ''
+  g36_neg "36n5: break-it -- dropping the Outcome Lines rule fails 36p" p_ct ct "$G36_P_CT" ''
+  g36_neg "36n6: break-it -- restoring the verify filter in the skill fails 36p" p_fn wf \
+    '| $reports as $charters' '| [$reports[] | select(.verify | not)] as $charters'
+  assert_eq "36z: the break-it cases left the real files untouched" "$G36_SUM_BEFORE" \
+    "$(cksum < "$G36_WF") $(cksum < "$G36_CT") $(cksum < "$G36_RAT") $(cksum < "$G36_CL")"
+else
+  echo "  SKIP: Test Group 36 (a skill, the rationale or the changelog is missing)"
+fi
+
+# ============================================================================
+# Test Group 37: D409 -- Step 8's cleanup removes only this task's own files,
+# and the OC_IDENT/OC_ID sanitisers are pinned
+# ============================================================================
+# Step 8's cleanup removed the security and exploratory reports with
+# `-r"[0-9]*` and the goal-scope files with `-"*.json`, so for stem W47 it also
+# removed W47-r1's reports (.security-W47-r1-r1.json) and W47-b's goal-scope
+# files: in a shared checkout a parallel task lost its review and exploratory
+# record with no error. 37a-37f run the cleanup block, extracted from the
+# skill, on a .stride/ seeded with every file shape for the stems W47, W47-r1,
+# W47-b, W47-1, 47, 47-r1 and 470, and check both directions: this stem's own files,
+# r10 and the .json.tmp leftover included, all go, and every other stem's
+# files all stay. 37g-37h run the stem sanitisers from the completion block
+# in stride-completing-tasks (and its twin in stride-workflow) on hostile
+# values, and 37i runs the cleanup block's own sanitisers, which gained the
+# same 64-character and 20-digit limits; every case that expects a blank has
+# a twin that expects the value. 37n1-37n18 break a copy of a block and show
+# the case that catches it.
+# 37p pins the prose and this changelog entry; 37z shows the real files were
+# never written. The task's named unit tests keep their testing_strategy
+# names, prefixed with their Group 37 id.
+# What this does NOT prove: that an agent fills the placeholders from the
+# claim response in a live Codex CLI session (no Codex CLI here).
+echo ""
+echo "=== Test Group 37: Step 8 cleanup matches only this stem's file shapes; the OC sanitisers blank hostile stems (D409) ==="
+
+G37_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G37_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+G37_CL="$PORT_ROOT/CHANGELOG.md"
+G37_P_WF='**Each of those names is matched by its exact shape, never by a trailing wildcard:**'
+if [ -f "$G37_WF" ] && [ -f "$G37_CT" ] && [ -f "$G37_CL" ] && command -v jq >/dev/null 2>&1; then
+  G37_SUM_BEFORE="$(cksum < "$G37_WF") $(cksum < "$G37_CT") $(cksum < "$G37_CL")"
+  G37_S8=$(awk '/^## Step 8:/{f=1} /^## Step 9:/{f=0} f' "$G37_WF")
+  G37_CB=$(printf '%s\n' "$G37_S8" | awk '/^\*\*Artifact cleanup/{f=1} f&&/^```bash/{b=1;next} b&&/^```/{exit} b')
+  G37_STEMS="W47 W47-r1 W47-b W47-1 47 47-r1 470"
+  G37_D="$TMPDIR_TEST/g37"
+  # g37_fill <block> <ident> <id>: the block with its two placeholder lines filled
+  g37_fill() {
+    local _i _n
+    _i=$(jq -rn --arg v "$2" '$v | @sh'); _n=$(jq -rn --arg v "$3" '$v | @sh')
+    printf '%s\n' "$1" | awk -v i="$_i" -v n="$_n" '
+      /^TF_IDENT=\047<identifier>\047$/ {print "TF_IDENT=" i; next}
+      /^TF_ID=\047<numeric id>\047$/ {print "TF_ID=" n; next} {print}'
+  }
+  # g37_names <stem>: every file shape the workflow writes under that stem
+  g37_names() {
+    printf '%s\n' ".task-$1.json" ".review-rounds-$1.json" ".review-fixbase-$1.txt" \
+      ".security-$1-r1.json" ".security-$1-r2.json" ".security-$1-r10.json" ".security-$1-r2.json.tmp" \
+      ".exploratory-$1-r1.json" ".exploratory-$1-r2.json" ".exploratory-$1-r10.json" \
+      ".outcomes-$1.json" ".goal-scope-$1-tree.json" ".goal-scope-$1-8190.json" "attachments/$1"
+  }
+  G37_ALL=$(g37_names W47 | wc -l | tr -d ' ')
+  # g37_run <block> <ident> <id>: seed a fresh .stride/ for every stem, run the block
+  g37_run() {
+    local s f
+    rm -rf "$G37_D"; mkdir -p "$G37_D/.stride/attachments"; : > "$G37_D/.stride.md"
+    for s in $G37_STEMS; do
+      for f in $(g37_names "$s"); do
+        case "$f" in attachments/*) mkdir -p "$G37_D/.stride/$f"; : > "$G37_D/.stride/$f/a.png" ;; *) : > "$G37_D/.stride/$f" ;; esac
+      done
+    done
+    ( cd "$G37_D" && env -u CLAUDE_PROJECT_DIR CODEX_PROJECT_DIR="$G37_D" bash -c "$(g37_fill "$1" "$2" "$3")" ) >/dev/null 2>&1
+  }
+  # g37_left <stem>: how many of that stem's files are still present
+  g37_left() {
+    local f c=0
+    for f in $(g37_names "$1"); do [ -e "$G37_D/.stride/$f" ] && c=$((c + 1)); done
+    echo "$c"
+  }
+  # g37_gone <file>: record id $2 unless the file is absent
+  g37_gone() { [ -e "$G37_D/.stride/$1" ] && G37_FAILS="$G37_FAILS $2"; return 0; }
+  # g37_keep <id> <stem...>: record id unless every named stem kept all its files
+  g37_keep() {
+    local id=$1 s; shift
+    for s in "$@"; do [ "$(g37_left "$s")" = "$G37_ALL" ] || G37_FAILS="$G37_FAILS $id"; done
+  }
+  # g37_check <cleanup block>: OK, or the sorted ids of the failed cases
+  g37_check() {
+    local b="$1"
+    G37_FAILS=""
+    [ "$(printf '%s\n' "$b" | grep -c -e "^TF_IDENT='<identifier>'\$" -e "^TF_ID='<numeric id>'\$")" = "2" ] || G37_FAILS="$G37_FAILS scope"
+    # a_: stem W47 by identifier, with an id that owns nothing
+    g37_run "$b" W47 9
+    [ "$(g37_left W47)" = "0" ] || G37_FAILS="$G37_FAILS a_own"
+    g37_gone .security-W47-r10.json a_r10; g37_gone .exploratory-W47-r10.json a_r10
+    g37_gone .security-W47-r2.json.tmp a_tmp
+    g37_gone .goal-scope-W47-tree.json a_gs; g37_gone .goal-scope-W47-8190.json a_gs
+    g37_keep b_r1 W47-r1
+    g37_keep b_b W47-b
+    g37_keep b_1 W47-1
+    g37_keep b_num 47 47-r1 470
+    # c_: a numeric id alone
+    g37_run "$b" '' 47
+    [ "$(g37_left 47)" = "0" ] || G37_FAILS="$G37_FAILS c_own"
+    g37_keep c_long 470
+    g37_keep c_r1 47-r1
+    g37_keep c_ident W47 W47-r1 W47-b W47-1
+    # d_: an empty stem removes nothing
+    g37_run "$b" '' ''
+    g37_keep d_empty $G37_STEMS
+    # e_: the longer stem removes its own files and leaves the shorter one's
+    g37_run "$b" W47-r1 470
+    [ "$(g37_left W47-r1)$(g37_left 470)" = "00" ] || G37_FAILS="$G37_FAILS e_own"
+    g37_keep e_short W47 W47-b W47-1 47 47-r1
+    # f_: an identifier or id that is not a plain token removes nothing
+    for v in '*' 'W47*' '../W47' 'W47 W47-b' '?47' '../attachments/W47-b'; do
+      g37_run "$b" "$v" '../attachments/470'
+      g37_keep f_hostile $G37_STEMS
+    done
+    if [ -z "$G37_FAILS" ]; then echo OK; else printf '%s\n' $G37_FAILS | sort -u | tr '\n' ' ' | sed 's/ $//'; fi
+  }
+  G37_REAL=$(g37_check "$G37_CB")
+  # g37_ok <label> <prefix...>: no failing id on the real block starts with a prefix
+  g37_ok() {
+    local label=$1 bad="" id p; shift
+    for id in $G37_REAL; do
+      for p in "$@" scope; do case "$id" in "$p"*) bad="$bad $id" ;; esac; done
+    done
+    assert_eq "$label" "" "$bad"
+  }
+  assert_eq "37a: the cleanup block's two placeholders are where g37_fill expects them" "2" \
+    "$(printf '%s\n' "$G37_CB" | grep -c -e "^TF_IDENT='<identifier>'\$" -e "^TF_ID='<numeric id>'\$")"
+  g37_ok "37b: Group 37: Step 8 cleanup for stem W47 still removes W47's own r1, r2 and r10 security/exploratory reports and its goal-scope files" a_
+  g37_ok "37c: Group 37: Step 8 cleanup for stem W47 leaves .stride/ files of stem W47-r1 and W47-b in place" b_
+  g37_ok "37d: Group 37: Step 8 cleanup with a numeric TF_ID removes only that id's files, never a longer id sharing its prefix" c_
+  g37_ok "37e: Group 37: Step 8 cleanup with empty TF_IDENT and TF_ID removes nothing" d_
+  g37_ok "37f: the longer stem W47-r1 removes its own files and leaves W47's; a hostile stem removes nothing" e_ f_
+
+  # --- 37g-37h: the stem sanitisers, extracted and run ---
+  G37_OB=$(awk "/^OC_IDENT='<identifier>'\$/{f=1} f; f&&/^OC_STEM=/{exit}" "$G37_CT")
+  G37_OBW=$(awk "/^OC_IDENT='<identifier>'\$/{f=1} f; f&&/^OC_STEM=/{exit}" "$G37_WF")
+  # g37_stem <block> <ident> <id>: the OC_STEM the block resolves, in brackets
+  g37_stem() {
+    local _i _n
+    _i=$(jq -rn --arg v "$2" '$v | @sh'); _n=$(jq -rn --arg v "$3" '$v | @sh')
+    printf '[%s]' "$(printf '%s\nprintf %%s "$OC_STEM"\n' "$1" | awk -v i="$_i" -v n="$_n" '
+      /^OC_IDENT=\047<identifier>\047$/ {print "OC_IDENT=" i; next}
+      /^OC_ID=\047<numeric id>\047$/ {print "OC_ID=" n; next} {print}' | bash 2>/dev/null)"
+  }
+  G37_A64=$(printf 'a%.0s' $(seq 1 64)); G37_D20=$(printf '1%.0s' $(seq 1 20))
+  # g37_ocheck <block>: OK, or the sorted ids of the failed cases
+  g37_ocheck() {
+    local b="$1" bad=""
+    [ "$(printf '%s\n' "$b" | grep -c -e "^OC_IDENT='<identifier>'\$" -e "^OC_ID='<numeric id>'\$" -e '^OC_STEM=')" = "3" ] || bad="$bad scope"
+    [ "$(g37_stem "$b" 'W47/x' '')" = "[]" ] || bad="$bad o_slash"
+    [ "$(g37_stem "$b" '..' '')" = "[]" ] || bad="$bad o_dotdot"
+    [ "$(g37_stem "$b" 'W47 x' '')" = "[]" ] || bad="$bad o_space"
+    [ "$(g37_stem "$b" "${G37_A64}a" '')" = "[]" ] || bad="$bad o_long"
+    [ "$(g37_stem "$b" "$G37_A64" '')" = "[$G37_A64]" ] || bad="$bad o_64"
+    [ "$(g37_stem "$b" 'W47-b_1' '9')" = "[W47-b_1]" ] || bad="$bad o_plain"
+    [ "$(g37_stem "$b" '../x' '9')" = "[9]" ] || bad="$bad o_fallback"
+    [ "$(g37_stem "$b" '' '9x')" = "[]" ] || bad="$bad o_iddigit"
+    [ "$(g37_stem "$b" '' "${G37_D20}1")" = "[]" ] || bad="$bad o_idlong"
+    [ "$(g37_stem "$b" '' "$G37_D20")" = "[$G37_D20]" ] || bad="$bad o_id20"
+    echo "${bad:-OK}"
+  }
+  assert_eq "37g: Group 37: OC_IDENT sanitiser blanks a value with a slash, a dot-dot, a space or over 64 chars; OC_ID blanks non-digits and over 20 digits" \
+    "OK" "$(g37_ocheck "$G37_OB")"
+  assert_eq "37h: the stride-workflow twin of the outcomes block blanks the same values" "OK" "$(g37_ocheck "$G37_OBW")"
+  # 37i: the cleanup block's own sanitisers, everything above its ROOT= line
+  G37_TB=$(printf '%s\n' "$G37_CB" | awk '/^ROOT=/{exit} {print}')
+  # g37_tstem <sanitiser lines> <ident> <id>: [TF_IDENT|TF_ID] after the sanitisers
+  g37_tstem() {
+    local _i _n
+    _i=$(jq -rn --arg v "$2" '$v | @sh'); _n=$(jq -rn --arg v "$3" '$v | @sh')
+    printf '[%s]' "$(printf '%s\nprintf %%s "$TF_IDENT|$TF_ID"\n' "$1" | awk -v i="$_i" -v n="$_n" '
+      /^TF_IDENT=\047<identifier>\047$/ {print "TF_IDENT=" i; next}
+      /^TF_ID=\047<numeric id>\047$/ {print "TF_ID=" n; next} {print}' | bash 2>/dev/null)"
+  }
+  # g37_tcheck <sanitiser lines>: OK, or the ids of the failed cases
+  g37_tcheck() {
+    local b="$1" bad=""
+    [ "$(printf '%s\n' "$b" | grep -c -e "^TF_IDENT='<identifier>'\$" -e "^TF_ID='<numeric id>'\$")" = "2" ] || bad="$bad scope"
+    [ "$(g37_tstem "$b" "${G37_A64}a" '')" = "[|]" ] || bad="$bad t_long"
+    [ "$(g37_tstem "$b" "$G37_A64" '')" = "[$G37_A64|]" ] || bad="$bad t_64"
+    [ "$(g37_tstem "$b" '' "${G37_D20}1")" = "[|]" ] || bad="$bad t_idlong"
+    [ "$(g37_tstem "$b" '' "$G37_D20")" = "[|$G37_D20]" ] || bad="$bad t_id20"
+    [ "$(g37_tstem "$b" 'W47/x' '9x')" = "[|]" ] || bad="$bad t_chars"
+    [ "$(g37_tstem "$b" 'W47-b_1' '9')" = "[W47-b_1|9]" ] || bad="$bad t_plain"
+    echo "${bad:-OK}"
+  }
+  assert_eq "37i: the cleanup block blanks an identifier over 64 characters or an id over 20 digits, as the outcomes block does, and keeps 64 and 20" \
+    "OK" "$(g37_tcheck "$G37_TB")"
+
+  # --- 37n1-37n18: break a copy of a block, see the case that catches it ---
+  # g37_neg <label> <id> <block> <old> <new>: replace the first <old> in a copy
+  g37_neg() {
+    local m
+    case "$3" in
+      ( *"$4"* ) m=${3/"$4"/"$5"}
+        case "$2" in
+          ( o_* ) assert_contains "$1" " $2 " " $(g37_ocheck "$m") " ;;
+          ( t_* ) assert_contains "$1" " $2 " " $(g37_tcheck "$m") " ;;
+          ( * ) assert_contains "$1" " $2 " " $(g37_check "$m") " ;;
+        esac ;;
+      ( * ) assert_eq "$1 (mutation target present)" "present" "MISSING" ;;
+    esac
+  }
+  g37_neg "37n1: Group 37: break-it - restoring the old trailing-star glob makes the W47-r1 survival test fail" b_r1 "$G37_CB" \
+    '  [ -n "$TF_IDENT" ] && tf_rm_rounds "$ROOT/.stride/.security-$TF_IDENT-r"' '  [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.security-$TF_IDENT-r"[0-9]*'
+  g37_neg "37n2: break-it - restoring the old exploratory glob fails 37c" b_r1 "$G37_CB" \
+    '  [ -n "$TF_IDENT" ] && tf_rm_rounds "$ROOT/.stride/.exploratory-$TF_IDENT-r"' '  [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.exploratory-$TF_IDENT-r"[0-9]*'
+  g37_neg "37n3: break-it - restoring the old goal-scope glob fails the W47-b survival case" b_b "$G37_CB" \
+    '  [ -n "$TF_IDENT" ] && tf_rm_goal_scope "$ROOT/.stride/.goal-scope-$TF_IDENT-"' '  [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.goal-scope-$TF_IDENT-"*.json'
+  g37_neg "37n4: break-it - restoring the old numeric security glob fails 37d" c_r1 "$G37_CB" \
+    '  [ -n "$TF_ID" ] && tf_rm_rounds "$ROOT/.stride/.security-$TF_ID-r"' '  [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.security-$TF_ID-r"[0-9]*'
+  g37_neg "37n5: break-it - restoring the old numeric goal-scope glob fails 37d" c_r1 "$G37_CB" \
+    '  [ -n "$TF_ID" ] && tf_rm_goal_scope "$ROOT/.stride/.goal-scope-$TF_ID-"' '  [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.goal-scope-$TF_ID-"*.json'
+  g37_neg "37n6: break-it - dropping the round filter fails 37c" b_r1 "$G37_CB" \
+    "      case \"\$tf_n\" in ''|*[!0-9]*) ;; *) rm -f \"\$tf_f\" ;; esac" '      rm -f "$tf_f"'
+  g37_neg "37n7: break-it - dropping the sibling-id filter fails the W47-1 survival case" b_1 "$G37_CB" \
+    $'tf_n=${tf_n%.json}\n      case "$tf_n" in \'\'|*[!0-9]*) ;; *) rm -f "$tf_f" ;; esac' $'tf_n=${tf_n%.json}\n      rm -f "$tf_f"'
+  g37_neg "37n8: break-it - deleting less (one-digit rounds only) fails the r10 case" a_r10 "$G37_CB" \
+    'for tf_f in "$1"[0-9]*.*; do' 'for tf_f in "$1"[0-9].*; do'
+  g37_neg "37n9: break-it - deleting less (no .tmp leftover) fails the leftover case" a_tmp "$G37_CB" \
+    'tf_n=${tf_f#"$1"}; tf_n=${tf_n%%.*}' 'tf_n=${tf_f#"$1"}; tf_n=${tf_n%.json}'
+  g37_neg "37n10: break-it - dropping the tree file fails the goal-scope case" a_gs "$G37_CB" \
+    '    rm -f "${1}tree.json"' '    :'
+  g37_neg "37n11: break-it - dropping the empty-stem guard on the attachments line fails 37e" d_empty "$G37_CB" \
+    '  [ -n "$TF_IDENT" ] && [ ! -L "$ROOT/.stride/attachments" ]' '  [ ! -L "$ROOT/.stride/attachments" ]'
+  g37_neg "37n12: break-it - dropping the TF_IDENT allow-list fails the hostile-stem case" f_hostile "$G37_CB" \
+    "case \"\$TF_IDENT\" in ''|*[!A-Za-z0-9_-]*) TF_IDENT='' ;; esac" ':'
+  g37_neg "37n13: break-it - dropping the OC_IDENT allow-list fails the slash case" o_slash "$G37_OB" \
+    "case \"\$OC_IDENT\" in ''|*[!A-Za-z0-9_-]*) OC_IDENT='' ;; esac" ':'
+  g37_neg "37n14: break-it - dropping the OC_IDENT length cap fails the 65-character case" o_long "$G37_OB" \
+    "[ \"\${#OC_IDENT}\" -le 64 ] || OC_IDENT=''" ':'
+  g37_neg "37n15: break-it - dropping the OC_ID length cap fails the 21-digit case" o_idlong "$G37_OB" \
+    "[ \"\${#OC_ID}\" -le 20 ] || OC_ID=''" ':'
+  g37_neg "37n16: break-it - dropping the OC_ID allow-list fails the non-digit case" o_iddigit "$G37_OB" \
+    "case \"\$OC_ID\" in ''|*[!0-9]*) OC_ID='' ;; esac" ':'
+  g37_neg "37n17: break-it - dropping the TF_IDENT length limit fails 37i" t_long "$G37_TB" \
+    "[ \"\${#TF_IDENT}\" -le 64 ] || TF_IDENT=''" ':'
+  g37_neg "37n18: break-it - dropping the TF_ID length limit fails 37i" t_idlong "$G37_TB" \
+    "[ \"\${#TF_ID}\" -le 20 ] || TF_ID=''" ':'
+
+  # --- 37p: the prose and the changelog ---
+  assert_eq "37p: the exact-shape rule is stated once in Step 8 and once in the skill, and the changelog carries this entry once between [Unreleased] and [1.43.1]" "1 1 1" \
+    "$(g27_count "$G37_P_WF" "$G37_S8") $(g27_count "$G37_P_WF" "$(cat "$G37_WF")") $(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.1\]/{exit} f' "$G37_CL" | grep -c '^### Fixed — .*(D409)$')"
+  assert_eq "37p2: no cleanup line keeps a trailing wildcard after a stem" "0" \
+    "$(printf '%s\n' "$G37_CB" | grep -c -e '-r"\[0-9\]\*' -e '-"\*\.json')"
+  rm -rf "$G37_D"
+  assert_eq "37z: the break-it cases left the real files untouched" "$G37_SUM_BEFORE" \
+    "$(cksum < "$G37_WF") $(cksum < "$G37_CT") $(cksum < "$G37_CL")"
+else
+  echo "  SKIP: Test Group 37 (a skill, the changelog or jq is missing)"
+fi
+
+# ============================================================================
+# Test Group 38: D410 -- the hooks resolve the project root with the skills'
+# own .stride.md walk-up
+# ============================================================================
+# stride-hook.sh and stride-stop-gate.sh took CODEX_PROJECT_DIR, then
+# CLAUDE_PROJECT_DIR, then the event's .cwd, then ".", while D404 moved the
+# skills to the two variables and then the nearest .stride.md above the
+# working directory. From a nested repo or a subdirectory the recorder wrote
+# .loop-state.json and .claim-state.json into a .stride/ the skills never read,
+# and the gate judged that record. 38a-38j feed the REAL hooks events whose
+# .cwd sits under a scratch project and check where the records land and which
+# .stride_auth.md the gate sends; 38l feeds a non-string .cwd and 38m a .cwd
+# with `..` parts; 38k pins the two copies of the block
+# byte-identical; 38n1-38n2 run copies with the old chain restored and show
+# the nested-subdirectory cases catch it; 38p pins the README section and the
+# changelog entry; 38z shows the real hooks were never written. The task's
+# named unit tests keep their testing_strategy names, prefixed with their
+# Group 38 id.
+# What this does NOT prove: what `.cwd` a live Codex CLI puts on its events
+# (no Codex CLI here).
+echo ""
+echo "=== Test Group 38: the hooks find the project root by the skills' .stride.md walk-up (D410) ==="
+
+G38_GATE="$SCRIPT_DIR/stride-stop-gate.sh"
+G38_README="$PORT_ROOT/README.md"
+G38_CL="$PORT_ROOT/CHANGELOG.md"
+if [ -f "$G38_GATE" ] && [ -f "$G38_README" ] && [ -f "$G38_CL" ] && command -v jq >/dev/null 2>&1; then
+  G38_SUM_BEFORE="$(cksum < "$HOOK_SCRIPT") $(cksum < "$G38_GATE")"
+  G38_X="$TMPDIR_TEST/g38 dir"
+  rm -rf "$G38_X"; mkdir -p "$G38_X"
+  G38_CLAIM='curl -X POST https://stride.invalid/api/tasks/claim'
+  G38_DONE='curl -X PATCH https://stride.invalid/api/tasks/99/complete'
+  G38_CLAIMED='{"data":{"id":1,"identifier":"W38"}}'
+  G38_OK='{"data":{"id":99,"identifier":"W38","needs_review":false}}'
+  # g38_mkproj <dir> [token]: a project root; with a token, its own .stride_auth.md
+  g38_mkproj() {
+    mkdir -p "$1"; : > "$1/.stride.md"
+    [ -z "${2:-}" ] || printf '# fixture\n- **API URL:** `https://api.example.invalid`\n- **API Token:** `%s`\n' "$2" > "$1/.stride_auth.md"
+  }
+  # g38_event <cwd|-> <command> <stdout>: "-" leaves .cwd off the event
+  g38_event() {
+    if [ "$1" = "-" ]; then
+      jq -nc --arg c "$2" --arg r "$3" '{session_id:"g38",tool_input:{command:$c},tool_response:{stdout:$r}}'
+    else
+      jq -nc --arg d "$1" --arg c "$2" --arg r "$3" '{session_id:"g38",cwd:$d,tool_input:{command:$c},tool_response:{stdout:$r}}'
+    fi
+  }
+  # g38_hook <hook script> <run-from dir> <event> [VAR=value...]: no project variable unless given
+  g38_hook() {
+    local h=$1 from=$2 ev=$3; shift 3
+    ( cd "$from" && printf '%s' "$ev" | env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR "$@" bash "$h" post ) >/dev/null 2>&1
+  }
+  # g38_id <dir> <record>: the identifier in <dir>/.stride/<record>, or "absent"
+  g38_id() { jq -r '.identifier' "$1/.stride/$2" 2>/dev/null || echo absent; }
+  g38_has() { [ -e "$1" ] && echo present || echo absent; }
+
+  # 38a/38b: a nested repo inside a project (with a space in its path)
+  G38_P="$G38_X/proj"; g38_mkproj "$G38_P"; mkdir -p "$G38_P/nested/repo/lib"
+  G38_PP=$(cd "$G38_P" && pwd -P)
+  g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_P/nested/repo/lib" "$G38_CLAIM" "$G38_CLAIMED")"
+  assert_eq "38a: Group 38: stride-hook.sh run from a nested subdirectory with no env var writes its loop and claim state under the .stride.md root (claim)" \
+    "W38 absent" "$(g38_id "$G38_P" .claim-state.json) $(g38_has "$G38_P/nested/repo/lib/.stride")"
+  g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_P/nested/repo/lib" "$G38_DONE" "$G38_OK")"
+  assert_eq "38b: Group 38: stride-hook.sh run from a nested subdirectory with no env var writes its loop and claim state under the .stride.md root (loop)" \
+    "W38 absent absent" "$(g38_id "$G38_P" .loop-state.json) $(g38_has "$G38_P/.stride/.claim-state.json") $(g38_has "$G38_P/nested/repo/lib/.stride")"
+
+  # 38c: the variables still win over the walk
+  G38_Q="$G38_X/elsewhere"; mkdir -p "$G38_Q"; G38_P2="$G38_X/proj2"; g38_mkproj "$G38_P2"; mkdir -p "$G38_P2/sub"
+  g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_P2/sub" "$G38_CLAIM" "$G38_CLAIMED")" CODEX_PROJECT_DIR="$G38_Q"
+  assert_eq "38c: Group 38: stride-hook.sh with CODEX_PROJECT_DIR set still uses it first" \
+    "W38 absent" "$(g38_id "$G38_Q" .claim-state.json) $(g38_has "$G38_P2/.stride")"
+  rm -rf "$G38_Q/.stride"
+  g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_P2/sub" "$G38_CLAIM" "$G38_CLAIMED")" CLAUDE_PROJECT_DIR="$G38_Q"
+  assert_eq "38c2: CLAUDE_PROJECT_DIR also wins over the walk" \
+    "W38 absent" "$(g38_id "$G38_Q" .claim-state.json) $(g38_has "$G38_P2/.stride")"
+
+  # 38d: the walk stops at the NEAREST .stride.md
+  G38_O="$G38_X/outer"; g38_mkproj "$G38_O" 'g38outer'
+  G38_I="$G38_O/inner"; g38_mkproj "$G38_I"; mkdir -p "$G38_I/lib"
+  g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_I/lib" "$G38_CLAIM" "$G38_CLAIMED")"
+  assert_eq "38d: Group 38: the walk-up stops at the nearest .stride.md and never reads a parent's .stride_auth.md (recorder)" \
+    "W38 absent" "$(g38_id "$G38_I" .claim-state.json) $(g38_has "$G38_O/.stride")"
+
+  # 38e-38f: the gate, from a nested directory, reads the record the hook wrote
+  # and sends the nearest root's token. g38_gate <cwd> <stub dir>
+  g38_stub() {
+    local d; d=$(mktemp -d "$TMPDIR_TEST/g38stub.XXXXXX")
+    { printf '#!/usr/bin/env bash\n'
+      printf 'printf "ARGS: %%s\\n" "$*" >> "%s/curl.log"\n' "$d"
+      printf 'cat >> "%s/curl.log" 2>/dev/null\n' "$d"
+      printf 'printf "%%s\\n%%s" %s 200\n' "$(printf '%q' '{"data":{"id":2,"identifier":"W39"}}')"
+    } > "$d/curl"
+    chmod +x "$d/curl"; printf '%s' "$d"
+  }
+  # g38_gate <cwd> <stub dir> [gate script]: "block", or "permit" on an empty stdout
+  g38_gate() {
+    local g=${3:-$G38_GATE} out
+    out=$(jq -nc --arg d "$1" '{cwd:$d,session_id:"g38",hook_event_name:"Stop"}' \
+      | env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u STRIDE_ALLOW_STOP -u STRIDE_STOP_GATE_MAX_BLOCKS PATH="$2:$PATH" bash "$g" 2>/dev/null)
+    if [ -n "$out" ]; then printf '%s' "$out" | jq -r '.decision' 2>/dev/null || echo unparsable; else echo permit; fi
+  }
+  # g38_n <needle> <file>: how many lines of <file> hold <needle>; 0 when it is absent
+  g38_n() { local c; c=$(grep -c -- "$1" "$2" 2>/dev/null); echo "${c:-0}"; }
+  g38_state() {
+    mkdir -p "$1/.stride"; rm -f "$1/.stride/.stop-gate-blocks"
+    printf '{"identifier":"W38","needs_review":false,"completed_at":"2026-01-01T00:00:00Z","session_id":"g38"}\n' > "$1/.stride/.loop-state.json"
+  }
+  G38_G="$G38_X/gate"; g38_mkproj "$G38_G" 'g38gate'; mkdir -p "$G38_G/a/b"; g38_state "$G38_G"
+  G38_S=$(g38_stub)
+  assert_eq "38e: the gate run from a nested directory reads the root's loop state and blocks" \
+    "block" "$(g38_gate "$G38_G/a/b" "$G38_S")"
+  G38_GO="$G38_X/gouter"; g38_mkproj "$G38_GO" 'g38outer'
+  G38_GI="$G38_GO/inner"; g38_mkproj "$G38_GI" 'g38inner'; mkdir -p "$G38_GI/lib"; g38_state "$G38_GI"
+  G38_S=$(g38_stub); g38_gate "$G38_GI/lib" "$G38_S" >/dev/null
+  assert_eq "38f: Group 38: the walk-up stops at the nearest .stride.md and never reads a parent's .stride_auth.md (gate)" \
+    "1 0" "$(g38_n g38inner "$G38_S/curl.log") $(g38_n g38outer "$G38_S/curl.log")"
+  rm -f "$G38_GI/.stride_auth.md"; rm -f "$G38_GI/.stride/.stop-gate-blocks"
+  G38_S=$(g38_stub)
+  assert_eq "38f2: an inner root with no .stride_auth.md permits and never falls back to the parent's token" \
+    "permit 0" "$(g38_gate "$G38_GI/lib" "$G38_S") $(g38_n g38outer "$G38_S/curl.log")"
+
+  # 38g: no .stride.md anywhere above the cwd -- the defined fallback
+  G38_N="$G38_X/noproj"; mkdir -p "$G38_N/deep"
+  G38_NONE="no root"; d="$G38_N/deep"; while [ "$d" != "/" ]; do [ -f "$d/.stride.md" ] && G38_NONE="root at $d"; d=$(dirname "$d"); done
+  if [ "$G38_NONE" = "no root" ]; then
+    g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_N/deep" "$G38_CLAIM" "$G38_CLAIMED")"
+    assert_eq "38g: Group 38: stride-hook.sh with no .stride.md anywhere above cwd behaves as documented (the defined fallback) and never writes above the event cwd" \
+      "W38 absent absent" "$(g38_id "$G38_N/deep" .claim-state.json) $(g38_has "$G38_N/.stride") $(g38_has "$G38_X/.stride")"
+    # a relative .cwd with no .stride.md above still ends, rooted at that cwd
+    g38_hook "$HOOK_SCRIPT" "$G38_N" "$(g38_event "deep" "$G38_DONE" "$G38_OK")"
+    assert_eq "38g2: a relative .cwd with no .stride.md above terminates and falls back to that cwd" \
+      "W38" "$(g38_id "$G38_N/deep" .loop-state.json)"
+  else
+    echo "  SKIP: 38g (a .stride.md sits above the temp directory)"
+  fi
+
+  # 38h: an event without .cwd walks up from the hook's own working directory
+  G38_H="$G38_X/nocwd"; g38_mkproj "$G38_H"; mkdir -p "$G38_H/x/y"
+  g38_hook "$HOOK_SCRIPT" "$G38_H/x/y" "$(g38_event - "$G38_CLAIM" "$G38_CLAIMED")"
+  assert_eq "38h: an event without .cwd walks up from the hook's working directory" \
+    "W38 absent" "$(g38_id "$G38_H" .claim-state.json) $(g38_has "$G38_H/x/y/.stride")"
+
+  # 38i: a symlinked cwd inside the project, and CDPATH set
+  G38_L="$G38_X/linkproj"; g38_mkproj "$G38_L"; mkdir -p "$G38_X/target dir"
+  ln -s "$G38_X/target dir" "$G38_L/link"
+  g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_L/link" "$G38_CLAIM" "$G38_CLAIMED")" CDPATH="$G38_X:$G38_L"
+  assert_eq "38i: a symlinked cwd inside the project, with CDPATH set, roots at the project, never at the link's target" \
+    "W38 absent" "$(g38_id "$G38_L" .claim-state.json) $(g38_has "$G38_X/target dir/.stride")"
+  # 38j: a project reached through a symlink lands in the same directory
+  ln -s "$G38_P" "$G38_X/plink"; rm -rf "$G38_P/.stride"
+  g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_X/plink/nested" "$G38_CLAIM" "$G38_CLAIMED")" CDPATH="$G38_X"
+  assert_eq "38j: a project reached through a symlinked path records in the project itself" \
+    "W38" "$(g38_id "$G38_PP" .claim-state.json)"
+
+  # 38l: a .cwd that is not a string is ignored, never made a root. Run where
+  # no .stride.md sits above, so the fallback -- not the walk -- is what decides:
+  # the record lands in the hook's own cwd and no directory is made from the value.
+  G38_R="$G38_X/typed"; mkdir -p "$G38_R"
+  G38_NONE="no root"; d="$G38_R"; while [ "$d" != "/" ]; do [ -f "$d/.stride.md" ] && G38_NONE="root at $d"; d=$(dirname "$d"); done
+  if [ "$G38_NONE" = "no root" ]; then
+    for v in 5 null true '["a"]'; do
+      rm -rf "$G38_R/.stride" "$G38_R/5" "$G38_R/true"
+      ( cd "$G38_R" && jq -nc --argjson v "$v" --arg c "$G38_CLAIM" --arg r "$G38_CLAIMED" \
+          '{session_id:"g38",cwd:$v,tool_input:{command:$c},tool_response:{stdout:$r}}' \
+        | env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR bash "$HOOK_SCRIPT" post ) >/dev/null 2>&1
+      assert_eq "38l: Group 38: a non-string .cwd ($v) is ignored, so no directory is made from it and the record lands in the hook's own cwd" \
+        "W38 absent absent" "$(g38_id "$G38_R" .claim-state.json) $(g38_has "$G38_R/5") $(g38_has "$G38_R/true")"
+    done
+  else
+    echo "  SKIP: 38l (a .stride.md sits above the temp directory)"
+  fi
+
+  # 38m: a .cwd with `..` parts is folded first, so the walk never checks a
+  # directory below the cwd (Y/x/.. is Y: Y/x/.stride.md is not its root)
+  G38_Y="$G38_X/dots"; mkdir -p "$G38_Y/x"; : > "$G38_Y/x/.stride.md"
+  G38_NONE="no root"; d="$G38_Y"; while [ "$d" != "/" ]; do [ -f "$d/.stride.md" ] && G38_NONE="root at $d"; d=$(dirname "$d"); done
+  if [ "$G38_NONE" = "no root" ]; then
+    g38_hook "$HOOK_SCRIPT" "$G38_X" "$(g38_event "$G38_Y/x/.." "$G38_CLAIM" "$G38_CLAIMED")"
+    assert_eq "38m: a .cwd of Y/x/.. never roots at Y/x, a directory below the cwd" \
+      "absent W38" "$(g38_has "$G38_Y/x/.stride") $(g38_id "$G38_Y" .claim-state.json)"
+  else
+    echo "  SKIP: 38m (a .stride.md sits above the temp directory)"
+  fi
+
+  # 38k: the writer and the reader carry one block, byte for byte
+  g38_block() { awk '/^# >>> project root \(D410\)/{f=1} f; /^# <<< project root \(D410\)/{exit}' "$1"; }
+  G38_BH=$(g38_block "$HOOK_SCRIPT"); G38_BG=$(g38_block "$G38_GATE")
+  assert_eq "38k: stride-hook.sh and stride-stop-gate.sh carry the same root block" \
+    "yes yes" "$([ -n "$G38_BH" ] && [ "$G38_BH" = "$G38_BG" ] && echo yes || echo no) $(printf '%s\n' "$G38_BH" | grep -q 'stride\.md' && echo yes || echo no)"
+
+  # 38n: break-it -- the old env/cwd/dot chain restored in a copy
+  G38_OLD='PROJECT_DIR="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
+if [ -z "$PROJECT_DIR" ]; then
+  PROJECT_DIR=$(printf '"'"'%s'"'"' "$INPUT" | jq -r '"'"'.cwd // empty'"'"' 2>/dev/null || echo "")
+fi
+[ -n "$PROJECT_DIR" ] || PROJECT_DIR="."'
+  g38_old() {
+    OLD="$G38_OLD" awk '/^# >>> project root \(D410\)/{skip=1; print ENVIRON["OLD"]; next}
+      skip && /^# <<< project root \(D410\)/{skip=0; next} !skip' "$1" > "$2"
+  }
+  mkdir -p "$G38_X/brk"; g38_old "$HOOK_SCRIPT" "$G38_X/brk/stride-hook.sh"; g38_old "$G38_GATE" "$G38_X/brk/stride-stop-gate.sh"
+  rm -rf "$G38_P/.stride" "$G38_P/nested/repo/lib/.stride"
+  g38_hook "$G38_X/brk/stride-hook.sh" "$G38_X" "$(g38_event "$G38_P/nested/repo/lib" "$G38_CLAIM" "$G38_CLAIMED")"
+  assert_eq "38n1: Group 38: break-it - reverting to the env/cwd/dot chain makes the nested-subdirectory test fail" \
+    "absent present" "$(g38_id "$G38_P" .claim-state.json) $(g38_has "$G38_P/nested/repo/lib/.stride")"
+  g38_state "$G38_G"; G38_S=$(g38_stub)
+  assert_eq "38n2: break-it - the old chain in the gate permits from a nested directory, so 38e catches it" \
+    "permit" "$(g38_gate "$G38_G/a/b" "$G38_S" "$G38_X/brk/stride-stop-gate.sh")"
+
+  # 38n3: break-it -- a walk that does not stop at the first .stride.md reaches the parent
+  awk '!done && /^      break$/ {print "      :"; done=1; next} {print}' "$HOOK_SCRIPT" > "$G38_X/brk/stride-hook-nostop.sh"
+  rm -rf "$G38_I/.stride" "$G38_O/.stride"
+  g38_hook "$G38_X/brk/stride-hook-nostop.sh" "$G38_X" "$(g38_event "$G38_I/lib" "$G38_CLAIM" "$G38_CLAIMED")"
+  assert_eq "38n3: break-it - a walk that does not stop at the nearest .stride.md roots at the parent, so 38d catches it" \
+    "absent W38" "$(g38_id "$G38_I" .claim-state.json) $(g38_id "$G38_O" .claim-state.json)"
+
+  # 38p: the documented root and this changelog entry
+  assert_eq "38p: README states the root order and the no-.stride.md fallback once; the changelog carries this entry once between [Unreleased] and [1.43.1]" \
+    "1 1 1" \
+    "$(grep -c '^#### Where the hooks look — the project root$' "$G38_README") $(grep -c 'With no `.stride.md` anywhere above, the root is the event' "$G38_README") $(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.1\]/{exit} f' "$G38_CL" | grep -c '^### Fixed — .*(D410)$')"
+  rm -rf "$G38_X"
+  assert_eq "38z: the break-it cases left the real hooks untouched" "$G38_SUM_BEFORE" \
+    "$(cksum < "$HOOK_SCRIPT") $(cksum < "$G38_GATE")"
+else
+  echo "  SKIP: Test Group 38 (the gate, the README, the changelog or jq is missing)"
+fi
+
+
+# ============================================================================
+# Test Group 39: D411 -- the completion and after_goal blocks read their files
+# from one absolute project root, and the changed-files snapshot is checked
+# ============================================================================
+# The after_goal Detect block in both skills read
+# ${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json, so with the
+# variable unset it read a file under the caller's cwd while the completion
+# block's `| tee` wrote one under the .stride.md root. The completion block read
+# the changed-files snapshot with `--argjson cf "$(cat ... || echo '[]')"`, so an
+# empty, truncated or non-array file failed jq mid-command (an empty body was
+# sent) or sent the wrong shape; and its root was never made absolute, so a
+# relative project variable named one directory before its `cd` and another
+# after it (D410's runner saw the empty body). 34k5-34k10 had no break-it.
+# 39a runs the EXTRACTED completion block from a nested subdirectory with curl
+# stubbed to answer with an after_goal response, then each skill's EXTRACTED
+# Detect block from the same subdirectory beside a decoy capture; 39b does it
+# with relative variables; 39c-39c2 show a relative CODEX_PROJECT_DIR builds
+# the full body and that the cf read and tee follow the root the cd went to;
+# 39d feeds five broken snapshots and 39d2 two symlinked ones, and 39e a
+# missing and a valid one; 39e3-39e4 run the documented after_doing capture
+# line from a subdirectory, with a working and a missing capture script; 39f-39g
+# run Detect with no capture beside a stale shared-temp response and 1a with no
+# root; 39s sweeps every shell fence in every plugin .md but the changelog for a
+# read of either file that is not "$ROOT/"-rooted; 39p pins the Detect and 1a
+# root lines byte-identical to the completion block's and the changelog entry;
+# 39n1-39n5 break copies of this task's own guards; 39k5-39k10
+# break the guard each of 34k5-34k10 pins and run that check's own scenario
+# (34k9 now runs from outside the tree, since from a subdirectory the walk-up
+# found the root and the CODEX_PROJECT_DIR term could be deleted unnoticed);
+# 39z shows the real files were never written. The task's named unit tests keep
+# their testing_strategy names, prefixed with their Group 39 id. Reuses Group
+# 34's g34_fence and G34_VALID.
+# What this does NOT prove: what directory a live Codex CLI shell starts in, or
+# that an agent runs the blocks unedited (no Codex CLI here).
+echo ""
+echo "=== Test Group 39: completion and after_goal files are read from one absolute project root; the snapshot is checked (D411) ==="
+
+G39_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+G39_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G39_CL="$PORT_ROOT/CHANGELOG.md"
+G39_RM="$PORT_ROOT/README.md"
+G39_AG="$PORT_ROOT/AGENTS.md"
+if [ -f "$G39_CT" ] && [ -f "$G39_WF" ] && [ -f "$G39_CL" ] && [ -f "$G39_RM" ] && [ -f "$G39_AG" ] \
+   && command -v jq >/dev/null 2>&1; then
+  G39_SUM_BEFORE="$(cksum < "$G39_CT") $(cksum < "$G39_WF") $(cksum < "$G39_CL") $(cksum < "$G39_RM") $(cksum < "$G39_AG")"
+  G39_X="$TMPDIR_TEST/g39 dir"
+  rm -rf "$G39_X"; mkdir -p "$G39_X/proj/.stride" "$G39_X/proj/sub/deep" "$G39_X/outside" "$G39_X/tmp"
+  G39_D="$G39_X/proj"; : > "$G39_D/.stride.md"
+  G39_DP=$(cd "$G39_D" && pwd -P)
+  G39_OCF="$G39_D/.stride/.outcomes-D9.json"
+  G39_CFF="$G39_D/.stride-changed-files.json"
+  G39_REFUSE='changed-files snapshot is a symlink or not one JSON array: not submitting (re-run the capture, or delete the file to send [])'
+  G39_RESPONSE='{"data":{"id":9,"identifier":"D9"},"hooks":[{"name":"after_goal","hook":{"timeout":60000,"env":{"GOAL_ID":"77","GOAL_IDENTIFIER":"G77"}}}]}'
+  G39_DECOY='{"data":{"id":9},"hooks":[{"name":"after_goal","hook":{"env":{"GOAL_ID":"11","GOAL_IDENTIFIER":"G11"}}}]}'
+  G39_BLK=$(g34_fence "$G39_CT" '## API Request Format')
+  G39_DCT=$(g34_fence "$G39_CT" '1. **Detect (read the canonical file, not your context)**')
+  G39_DWF=$(g34_fence "$G39_WF" '1. **Detect (read the canonical file, not your context)**')
+  G39_ACT=$(g34_fence "$G39_CT" '**1a. Fresh-GET fallback')
+  G39_AWF=$(g34_fence "$G39_WF" '**1a. Fresh-GET fallback')
+  # g39_cap <fence>: the documented capture command, `bash -c '...` through its closing `true'`
+  g39_cap() { printf '%s\n' "$1" | awk "/^bash -c '/{f=1} f; f && /true'\$/{exit}"; }
+  G39_CAP1=$(g39_cap "$(g34_fence "$G39_CT" 'A minimal Codex-friendly `## after_doing` looks like:')")
+  G39_CAP2=$(g39_cap "$(g34_fence "$G39_CT" '**Copy-pasteable `## after_doing` block.**')")
+  g39_oc() { printf '%s\n' '{"completion_notes":"x","completion_summary":"y"}' > "$G39_OCF"; }
+  # g39_api <block> <cwd> [VAR=value...]: run an example block with its two
+  # placeholder lines filled (D9 / 9), no project variable unless one is given,
+  # curl stubbed to write its -d body to BODY, touch CURLED and answer with
+  # G39_RESPONSE; stderr goes to ERR; returns the block's exit status
+  g39_api() {
+    local b="$1" cwd="$2"; shift 2
+    [ $# -gt 0 ] || set -- G39_NOROOT=1
+    b=${b/"OC_IDENT='<identifier>'"/"OC_IDENT='${G39_IDENT-D9}'"}
+    b=${b/"OC_ID='<numeric id>'"/"OC_ID='9'"}
+    rm -f "$G39_D/CURLED" "$G39_D/BODY" "$G39_D/ERR" "$G39_D/.stride/.last-api-response.json"
+    ( cd "$cwd" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u CDPATH \
+        "$@" G39_D="$G39_D" G39_RESPONSE="$G39_RESPONSE" \
+        STRIDE_API_URL='http://stub.invalid' STRIDE_API_TOKEN='stub' TASK_ID=1 bash -c '
+      curl() { while [ $# -gt 0 ]; do [ "$1" = -d ] && { printf "%s" "$2" > "$G39_D/BODY"; : > "$G39_D/CURLED"; }; shift; done; printf "%s\n" "$G39_RESPONSE"; }
+      '"$b" >/dev/null 2>"$G39_D/ERR" )
+  }
+  g39_sent() { [ -e "$G39_D/CURLED" ] && echo present || echo absent; }
+  # g39_detect <block> <cwd> [VAR=value]: run a Detect block; prints PAYLOAD_SRC|GOAL_ID
+  g39_detect() {
+    ( cd "$2" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u CDPATH \
+        "${3:-G39_NOROOT=1}" TMPDIR="$G39_X/tmp" bash -c "$1"'
+      printf "%s|%s" "$PAYLOAD_SRC" "${GOAL_ID:-none}"' 2>/dev/null )
+  }
+  # g39_mut <block> <old> <new>: the block with the first old replaced, or MISSING
+  g39_mut() {
+    local m=${1/"$2"/"$3"}
+    if [ "$m" = "$1" ]; then echo MISSING; else printf '%s' "$m"; fi
+  }
+  # g39_roots <block>: the root lines, ROOT= through the canonicalise line
+  g39_roots() {
+    printf '%s\n' "$1" | awk 'index($0, "ROOT=\"${CODEX_PROJECT_DIR") == 1 {f=1} f; f && index($0, "[ -n \"$ROOT\" ] && ROOT=") == 1 {exit}'
+  }
+
+  # 39a: completion tee and Detect read, both from a nested subdirectory
+  g39_oc; rm -f "$G39_CFF"
+  for l in "ct|$G39_DCT" "wf|$G39_DWF"; do
+    g39_api "$G39_BLK" "$G39_D/sub/deep"
+    mkdir -p "$G39_D/sub/deep/.stride"; printf '%s\n' "$G39_DECOY" > "$G39_D/sub/deep/.stride/.last-api-response.json"
+    assert_eq "39a (${l%%|*}): Group 39: the after_goal Detect block run from a subdirectory reads .last-api-response.json under the project root" \
+      "present|$G39_DP/.stride/.last-api-response.json|77" \
+      "$(g39_sent)|$(g39_detect "${l#*|}" "$G39_D/sub/deep")"
+    assert_eq "39b (${l%%|*}): Group 39: with a relative CLAUDE_PROJECT_DIR, or CODEX_PROJECT_DIR from outside the tree, Detect still reads the root's file" \
+      "$G39_DP/.stride/.last-api-response.json|77 $G39_DP/.stride/.last-api-response.json|77" \
+      "$(g39_detect "${l#*|}" "$G39_X" CLAUDE_PROJECT_DIR=proj) $(g39_detect "${l#*|}" "$G39_X/outside" "CODEX_PROJECT_DIR=$G39_D")"
+    rm -rf "$G39_D/sub/deep/.stride"
+  done
+
+  # 39c: a relative CODEX_PROJECT_DIR (D410's empty body) builds the full body
+  g39_api "$G39_BLK" "$G39_X" CODEX_PROJECT_DIR=proj
+  assert_eq "39c: Group 39: a relative CODEX_PROJECT_DIR names the same root before and after the cd, so the body carries the file's notes and the tee lands at the root" \
+    "true|present" \
+    "$(jq '.completion_notes == "x" and .changed_files == []' "$G39_D/BODY" 2>/dev/null)|$([ -s "$G39_D/.stride/.last-api-response.json" ] && echo present || echo absent)"
+  # 39c2: the two variables naming different roots: everything follows the cd
+  mkdir -p "$G39_X/other/.stride"; printf '%s\n' '["other.ex"]' > "$G39_X/other/.stride-changed-files.json"
+  printf '%s\n' '["root.ex"]' > "$G39_CFF"
+  g39_api "$G39_BLK" "$G39_X/outside" "CODEX_PROJECT_DIR=$G39_D" "CLAUDE_PROJECT_DIR=$G39_X/other"
+  assert_eq "39c2: Group 39: with CODEX_PROJECT_DIR and CLAUDE_PROJECT_DIR naming different directories, the snapshot read and the tee follow CODEX_PROJECT_DIR's root, where the cd went" \
+    "true|present|absent" \
+    "$(jq -c '.changed_files == ["root.ex"]' "$G39_D/BODY" 2>/dev/null)|$([ -s "$G39_D/.stride/.last-api-response.json" ] && echo present || echo absent)|$([ -e "$G39_X/other/.stride/.last-api-response.json" ] && echo present || echo absent)"
+  rm -rf "$G39_X/other"
+
+  # 39d: a snapshot that is present but not one JSON array
+  for c in 'object|{"path":"a.ex"}' 'empty|' 'truncated|[{"path":"a.ex","diff":"x' 'two|[] []' 'string|"a.ex"'; do
+    printf '%s' "${c#*|}" > "$G39_CFF"
+    g39_api "$G39_BLK" "$G39_D/sub/deep"; G39_RC=$?
+    assert_eq "39d (${c%%|*}): Group 39: the completion block refuses to send when .stride-changed-files.json is not a JSON array and says so on one line" \
+      "absent|nonzero|1|$G39_REFUSE" \
+      "$(g39_sent)|$([ "$G39_RC" -ne 0 ] && echo nonzero || echo zero)|$(wc -l < "$G39_D/ERR" | tr -d ' ')|$(cat "$G39_D/ERR")"
+  done
+
+  # 39e: missing and valid snapshots
+  rm -f "$G39_CFF"
+  g39_api "$G39_BLK" "$G39_D/sub/deep"; G39_RC=$?
+  assert_eq "39e: Group 39: a missing .stride-changed-files.json still sends changed_files as []" \
+    "present|0|true" "$(g39_sent)|$G39_RC|$(jq -c '.changed_files == []' "$G39_D/BODY" 2>/dev/null)"
+  printf '%s\n' '[{"path":"lib/a.ex","diff":"--- a\n+++ b\n"}]' > "$G39_CFF"
+  g39_api "$G39_BLK" "$G39_D/sub/deep"
+  assert_eq "39e2: Group 39: a valid snapshot is sent unchanged, so 39d's refusals could have passed" \
+    "present|true" "$(g39_sent)|$(jq -c --slurpfile cf "$G39_CFF" '.changed_files == $cf[0]' "$G39_D/BODY" 2>/dev/null)"
+  rm -f "$G39_CFF"
+
+  # 39d2: a symlinked snapshot, dangling or pointing outside the tree
+  printf '%s\n' '["outside.ex"]' > "$G39_X/outside/other.json"
+  for c in "dangling|$G39_X/missing.json" "outside|$G39_X/outside/other.json"; do
+    rm -f "$G39_CFF"; ln -s "${c#*|}" "$G39_CFF"
+    g39_api "$G39_BLK" "$G39_D/sub/deep"; G39_RC=$?
+    assert_eq "39d2 (${c%%|*}): Group 39: a symlinked .stride-changed-files.json is refused on the one line, never sent as [] or as a file from outside the tree" \
+      "absent|nonzero|$G39_REFUSE" "$(g39_sent)|$([ "$G39_RC" -ne 0 ] && echo nonzero || echo zero)|$(cat "$G39_D/ERR")"
+  done
+  rm -f "$G39_CFF"
+
+  # 39e3-39e4: the documented after_doing capture command, from a subdirectory
+  printf '%s\n' 'capture_changed_files() { printf "%s\n" "[{\"path\":\"cap.ex\",\"diff\":\"d\"}]"; }' > "$G39_X/cap.sh"
+  g39_runcap() { # <cwd> <CAPTURE_SCRIPT>
+    ( cd "$1" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u CDPATH CAPTURE_SCRIPT="$2" bash -c "$G39_CAP1" >/dev/null 2>&1 )
+  }
+  g39_runcap "$G39_D/sub/deep" "$G39_X/cap.sh"; g39_api "$G39_BLK" "$G39_D/sub/deep"
+  assert_eq "39e3: Group 39: the documented capture command run from a subdirectory writes the snapshot at the root, where the completion block reads it, and leaves no temporary file" \
+    "same|present|true|absent|absent" \
+    "$([ -n "$G39_CAP1" ] && [ "$G39_CAP1" = "$G39_CAP2" ] && echo same || echo differ)|$(g39_sent)|$(jq -c '.changed_files == [{"path":"cap.ex","diff":"d"}]' "$G39_D/BODY" 2>/dev/null)|$([ -e "$G39_D/sub/deep/.stride-changed-files.json" ] && echo present || echo absent)|$([ -e "$G39_CFF.tmp" ] && echo present || echo absent)"
+  g39_runcap "$G39_D/sub/deep" "$G39_X/no-such-capture.sh"; g39_api "$G39_BLK" "$G39_D/sub/deep"
+  assert_eq "39e4: Group 39: with the capture script missing it removes the previous snapshot, so the completion sends [] rather than a stale or empty file" \
+    "absent|present|true" \
+    "$([ -e "$G39_CFF" ] && echo present || echo absent)|$(g39_sent)|$(jq -c '.changed_files == []' "$G39_D/BODY" 2>/dev/null)"
+
+  # 39f: Detect with no capture never adopts a stale shared-temp response
+  rm -f "$G39_D/.stride/.last-api-response.json" "$G39_D/.stride/.in-context-response.json"
+  printf '%s\n' "$G39_DECOY" > "$G39_X/tmp/stride-in-context-response.json"
+  for l in "ct|$G39_DCT" "wf|$G39_DWF"; do
+    G39_DOUT=$(cd "$G39_D/sub/deep" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u CDPATH TMPDIR="$G39_X/tmp" bash -c "${l#*|}"'
+      printf "%s|%s" "$PAYLOAD_SRC" "${GOAL_ID:-none}"' 2>"$G39_X/derr")
+    assert_eq "39f (${l%%|*}): Group 39: with no capture under the root, Detect says so on stderr and reads only the root's own in-context file, never a stale shared-temp response" \
+      "$G39_DP/.stride/.in-context-response.json|none|1" \
+      "$G39_DOUT|$(grep -c 'no usable capture under the project root' "$G39_X/derr")"
+  done
+  # 39g: 1a with no project root makes no request
+  for l in "ct|$G39_ACT" "wf|$G39_AWF"; do
+    rm -f "$G39_X/CURLED1A"
+    ( cd "$G39_X/outside" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u CDPATH G39_X="$G39_X" bash -c '
+      curl() { : > "$G39_X/CURLED1A"; }
+      '"${l#*|}" >/dev/null 2>"$G39_X/aerr" )
+    assert_eq "39g (${l%%|*}): Group 39: the 1a fresh GET with no project root says so and sends no request" \
+      "absent|1" "$([ -e "$G39_X/CURLED1A" ] && echo present || echo absent)|$(grep -c 'no project root found' "$G39_X/aerr")"
+  done
+
+  # 39s: every shell fence in every plugin .md but the changelog reads both files from $ROOT/
+  read -r -d '' G39_SWEEP <<'G39EOF'
+FNR == 1 { inb = 0 }
+inb == 0 && /^[[:space:]]*```/ {
+  lang = $0; sub(/^[[:space:]]*```+/, "", lang); sub(/[[:space:]].*$/, "", lang)
+  inb = 1; shellish = (lang ~ /^(bash|sh|shell|zsh|console)?$/); next
+}
+inb == 1 && /^[[:space:]]*```/ { inb = 0; next }
+inb == 1 && shellish && $0 !~ /^[[:space:]]*#/ {
+  s = $0
+  while (match(s, /[^[:space:]"'(]*\.stride(-changed-files\.json|\/\.last-api-response\.json)/)) {
+    t = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+    if (t !~ /^\$ROOT\/\.stride(-changed-files\.json|\/\.last-api-response\.json)$/) print "BAD " FILENAME ":" FNR
+  }
+}
+G39EOF
+  g39_sweep() { find "$1" -name '*.md' -not -path '*/.git/*' -not -name CHANGELOG.md -print0 | xargs -0 awk "$G39_SWEEP" | grep -c '^BAD '; }
+  mkdir -p "$G39_X/port"; cp -R "$PORT_ROOT/skills" "$PORT_ROOT/README.md" "$PORT_ROOT/AGENTS.md" "$G39_X/port/"
+  [ -d "$PORT_ROOT/docs" ] && cp -R "$PORT_ROOT/docs" "$G39_X/port/"
+  G39_SW_REAL=$(g39_sweep "$PORT_ROOT")
+  printf '\n```bash\ncat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json"\njq . .stride/.last-api-response.json\n```\n' >> "$G39_X/port/skills/stride-workflow/SKILL.md"
+  assert_eq "39s: Group 39: no shell fence in the plugin's markdown reads .last-api-response.json or .stride-changed-files.json from anywhere but \$ROOT/, and a planted relative read in a copy is caught" \
+    "0 2" "$G39_SW_REAL $(g39_sweep "$G39_X/port")"
+
+  # 39p: the Detect root lines are the completion block's, and the changelog entry
+  G39_RB=$(g39_roots "$G39_BLK")
+  assert_eq "39p: Group 39: both Detect blocks and both 1a blocks carry the completion block's root lines byte for byte, and no skill, README or AGENTS line reads .last-api-response.json from \${CLAUDE_PROJECT_DIR:-.}" \
+    "yes yes yes yes yes 0" \
+    "$([ "$(printf '%s\n' "$G39_RB" | wc -l | tr -d ' ')" = 10 ] && echo yes || echo no) $([ "$(g39_roots "$G39_DCT")" = "$G39_RB" ] && echo yes || echo no) $([ "$(g39_roots "$G39_DWF")" = "$G39_RB" ] && echo yes || echo no) $([ "$(g39_roots "$G39_ACT")" = "$G39_RB" ] && echo yes || echo no) $([ "$(g39_roots "$G39_AWF")" = "$G39_RB" ] && echo yes || echo no) $(cat "$PORT_ROOT"/skills/*/SKILL.md "$G39_RM" "$G39_AG" | grep -cF 'CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json')"
+  assert_eq "39p2: Group 39: the completion block states the snapshot refusal once, and the changelog carries this entry once between [Unreleased] and [1.43.1]" \
+    "1 1" \
+    "$(printf '%s\n' "$G39_BLK" | grep -cF "  echo '$G39_REFUSE' >&2; false") $(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.1\]/{exit} f' "$G39_CL" | grep -c '^### Fixed — .*(D411)$')"
+
+  # 39n: break-it on copies of this task's own guards
+  g39_oc
+  printf '%s\n' "$G39_DECOY" > "$G39_X/decoy.json"
+  G39_M=$(g39_mut "$G39_DCT" 'RESP="$ROOT/.stride/.last-api-response.json"' 'RESP="${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"')
+  g39_api "$G39_BLK" "$G39_D/sub/deep"
+  mkdir -p "$G39_D/sub/deep/.stride"; cp "$G39_X/decoy.json" "$G39_D/sub/deep/.stride/.last-api-response.json"
+  assert_eq "39n1: Group 39: break-it - restoring the \${CLAUDE_PROJECT_DIR:-.} read makes Detect read the subdirectory's decoy, so 39a catches it" \
+    "11" "$(g39_detect "$G39_M" "$G39_D/sub/deep" | sed 's/.*|//')"
+  rm -rf "$G39_D/sub/deep/.stride"
+  printf '%s' '{"path":"a.ex"}' > "$G39_CFF"
+  G39_M=$(g39_mut "$G39_BLK" 'elif [ -L "$CF" ] || { [ -e "$CF" ] && ! CF_JSON=' 'elif false && { ! CF_JSON=')
+  g39_api "$G39_M" "$G39_D/sub/deep"
+  assert_eq "39n2: Group 39: break-it - without the snapshot check an object snapshot is sent, so 39d catches it" "present" "$(g39_sent)"
+  rm -f "$G39_CFF"; ln -s "$G39_X/outside/other.json" "$G39_CFF"
+  G39_M=$(g39_mut "$G39_BLK" 'elif [ -L "$CF" ] || {' 'elif {')
+  g39_api "$G39_M" "$G39_D/sub/deep"
+  assert_eq "39n4: Group 39: break-it - without the symlink test a snapshot linked from outside the tree is sent, so 39d2 catches it" \
+    "present|true" "$(g39_sent)|$(jq -c '.changed_files == ["outside.ex"]' "$G39_D/BODY" 2>/dev/null)"
+  rm -f "$G39_CFF"
+  G39_M=$(g39_mut "$G39_DCT" '  [ -n "$ROOT" ] && PAYLOAD_SRC="$ROOT/.stride/.in-context-response.json"' '  PAYLOAD_SRC="${TMPDIR:-/tmp}/stride-in-context-response.json"')
+  rm -f "$G39_D/.stride/.last-api-response.json"
+  assert_eq "39n5: Group 39: break-it - restoring the shared-temp fallback makes Detect adopt the stale response's goal, so 39f catches it" \
+    "11" "$(g39_detect "$G39_M" "$G39_D/sub/deep" | sed 's/.*|//')"
+  G39_M=$(g39_mut "$G39_BLK" '[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"' ':')
+  g39_api "$G39_M" "$G39_X" CODEX_PROJECT_DIR=proj
+  assert_eq "39n3: Group 39: break-it - without the absolute root a relative CODEX_PROJECT_DIR sends a body without the file's notes, so 39c catches it" \
+    "present|false" "$(g39_sent)|$(jq -e '.completion_notes == "x"' "$G39_D/BODY" >/dev/null 2>&1 && echo true || echo false)"
+
+  # 39k: break the guard each of 34k5-34k10 pins, in that check's own scenario.
+  # g39_k <id> <what> <expected real> <expected broken> <block> <cwd> [VAR=value...]
+  g39_k() {
+    local id="$1" what="$2" want="$3" broke="$4" blk="$5" cwd="$6" got; shift 6
+    g39_api "$G39_BLK" "$cwd" "$@"; got="$(g39_sent)"
+    if [ "$blk" = MISSING ]; then got="$got MISSING"; else g39_api "$blk" "$cwd" "$@"; got="$got $(g39_sent)"; fi
+    assert_eq "39$id: Group 39: break-it for each of 34k5-34k10 - mutating the guard it pins makes that check fail (34$id: $what)" "$want $broke" "$got"
+  }
+  : > "$G39_OCF"
+  g39_k k5 "without the malformed-file check an empty notes file is sent" absent present \
+    "$(g39_mut "$G39_BLK" "$G34_VALID" '   || false; then')" "$G39_D"
+  printf '%s\n' '{"completion_notes":5,"completion_summary":"y"}' > "$G39_OCF"
+  g39_k k6 "without the notes type test a numeric notes value is sent" absent present \
+    "$(g39_mut "$G39_BLK" ' and (.[0].completion_notes | type) == "string"' '')" "$G39_D"
+  printf '%s\n%s\n' '{"completion_notes":"x","completion_summary":"y"}' '{"completion_notes":"z","completion_summary":"w"}' > "$G39_OCF"
+  g39_k k7 "without length == 1 a file holding two objects is sent" absent present \
+    "$(g39_mut "$G39_BLK" 'length == 1 and (.[0] | type) == "object"' '(.[0] | type) == "object"')" "$G39_D"
+  g39_oc
+  g39_k k8 "without the .stride.md walk-up a subdirectory run finds no root" present absent \
+    "$(g39_mut "$G39_BLK" '[ -f "$d/.stride.md" ] && { ROOT=$d; break; }' ':')" "$G39_D/sub/deep"
+  g39_k k9 "without the CODEX_PROJECT_DIR term a run from outside the tree finds no root" present absent \
+    "$(g39_mut "$G39_BLK" 'ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"' 'ROOT="${CLAUDE_PROJECT_DIR:-}"')" "$G39_X/outside" "CODEX_PROJECT_DIR=$G39_D"
+  mkdir -p "$G39_D/.stride/.outcomes-D9"; cp "$G39_OCF" "$G39_D/.stride/x.json"
+  G39_IDENT='D9/../x'
+  g39_k k10 "without the identifier sanitiser a dot-dot stem reaches another file" absent present \
+    "$(g39_mut "$G39_BLK" "case \"\$OC_IDENT\" in ''|*[!A-Za-z0-9_-]*) OC_IDENT='' ;; esac" ':')" "$G39_D"
+  unset G39_IDENT
+  rmdir "$G39_D/.stride/.outcomes-D9"; rm -f "$G39_D/.stride/x.json"
+
+  rm -rf "$G39_X"
+  assert_eq "39z: the break-it cases left the real files untouched" "$G39_SUM_BEFORE" \
+    "$(cksum < "$G39_CT") $(cksum < "$G39_WF") $(cksum < "$G39_CL") $(cksum < "$G39_RM") $(cksum < "$G39_AG")"
+else
+  echo "  SKIP: Test Group 39 (a skill, the README, AGENTS.md, the changelog or jq is missing)"
+fi
+
+# ============================================================================
+# Test Group 40: W2688 -- one stem rule in every block, CDPATH cleared before
+# every cd in a shell fence, and Step 8's outcomes block exits 1 on false
+# ============================================================================
+# D404's runner left three hardening follow-ups: the stem blocks checked the
+# identifier and the numeric id with different caps (some had no 64-character
+# cap, some no 20-digit cap, and the env-based ones let TASK_ID through as any
+# [A-Za-z0-9_-] token); seven cds in stride-workflow and the completion cd in
+# stride-completing-tasks ran with CDPATH live, so a relative root could print a
+# CDPATH-resolved path into the capture; and Step 8's outcomes block printed
+# `exploratory_outcomes_ok: false` and exited 0 when the outcomes file was
+# missing. D409's runner added two more on the same lines: the allow-lists
+# accepted accented letters under a UTF-8 locale on bash 3.2.
+# 40a-40b sweep every shell fence of every plugin .md but the changelog, a
+# shell fence nested in a four-backtick fence included: every
+# cd runs as `CDPATH= cd --`, every [A-Za-z0-9_-] allow-list is the one
+# canonical line followed by its 64 cap, every *_ID digit allow-list is
+# followed by its 20 cap, and an `LC_ALL=C` line comes earlier in the same
+# fence. The one exemption is the checker function's report-path parse line:
+# Group 29 pins that function to stride's own by cksum (29d, 29k3), it builds
+# no path, and Step 8's block sets LC_ALL=C before calling it. 40c runs every
+# root block under a CDPATH decoy and under CDPATH=.; 40d runs Step 8's
+# outcomes block standalone and sourced; 40g runs every stem block's sanitisers on the same values, a 64/65
+# character identifier, a 20/21 digit id and an accented identifier among
+# them; 40e and 40n1-40n9 break copies and show the case that catches each;
+# 40p pins the changelog entry; 40z shows the real files were never written.
+# The task's named unit tests keep their testing_strategy names, prefixed
+# with their Group 40 id.
+# What this does NOT prove: that an agent fills the placeholders from the
+# claim response in a live Codex CLI session (no Codex CLI here).
+echo ""
+echo "=== Test Group 40: one stem rule everywhere, CDPATH cleared before every cd, Step 8's outcomes block exits 1 on false (W2688) ==="
+
+G40_WF="$PORT_ROOT/skills/stride-workflow/SKILL.md"
+G40_CT="$PORT_ROOT/skills/stride-completing-tasks/SKILL.md"
+G40_KL="$PORT_ROOT/skills/stride-claiming-tasks/SKILL.md"
+G40_CL="$PORT_ROOT/CHANGELOG.md"
+if [ -f "$G40_WF" ] && [ -f "$G40_CT" ] && [ -f "$G40_KL" ] && [ -f "$G40_CL" ] \
+   && command -v jq >/dev/null 2>&1; then
+  G40_SUM_BEFORE="$(cksum < "$G40_WF") $(cksum < "$G40_CT") $(cksum < "$G40_KL") $(cksum < "$G40_CL")"
+  G40_X="$TMPDIR_TEST/g40 dir"
+  rm -rf "$G40_X"; mkdir -p "$G40_X/work/proj/.stride" "$G40_X/decoy/proj" "$G40_X/port"
+  : > "$G40_X/work/proj/.stride.md"; : > "$G40_X/decoy/proj/.stride.md"
+  G40_PROJ=$(cd "$G40_X/work/proj" && pwd -P)
+  G40_LOC=en_US.UTF-8
+  G40_UTF=$'W\xc3\xa9'
+  # G40_BITES: does this bash's [A-Za-z] match an accented letter under G40_LOC?
+  G40_BITES=$(LC_ALL="$G40_LOC" G40_UTF="$G40_UTF" bash -c 'case "$G40_UTF" in *[!A-Za-z0-9_-]*) echo no ;; *) echo yes ;; esac' 2>/dev/null)
+  G40_EXEMPT="case \"\$id\" in ( '' | *[!A-Za-z0-9_-]* ) bad=1; continue ;; esac"
+
+  # G40_SWEEP: per shell fence, CD / STEM / ID / EXEMPT tallies and one BAD per rule broken
+  read -r -d '' G40_SWEEP <<'G40EOF'
+function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+function closepend() { if (pend != "") { print "BAD " pk "_cap " FILENAME ":" pl; pend = "" } }
+# Fences follow the CommonMark rule: a fence closes only on a run of at least
+# as many backticks with no info string. A fence of four or more backticks is
+# a container, and the shorter fences inside it are swept as fences of their own.
+FNR == 1 { inb = 0; outer = 0; pend = "" }
+/^[[:space:]]*```/ {
+  inf = $0; sub(/^[[:space:]]*/, "", inf); match(inf, /^`+/); n = RLENGTH
+  inf = trim(substr(inf, n + 1)); lang = inf; sub(/[[:space:]].*$/, "", lang)
+  if (outer && n >= outer && inf == "") { closepend(); inb = 0; outer = 0; next }
+  if (inb && n >= bt && inf == "") { closepend(); inb = 0; next }
+  if (!inb && (!outer || n < outer)) {
+    sh = (lang ~ /^(bash|sh|shell|zsh|console)?$/); lc = 0; pend = ""
+    if (!outer && n >= 4) { outer = n; cshell = sh } else { inb = 1; bt = n; shellish = sh }
+    next
+  }
+}
+(inb && shellish) || (outer && !inb && cshell) {
+  t = trim($0)
+  if (pend != "") {
+    want = (pk == "stem") ? "[ \"${#" pend "}\" -le 64 ] || " pend "=''" : "[ \"${#" pend "}\" -le 20 ] || " pend "=''"
+    if (t != want) print "BAD " pk "_cap " FILENAME ":" FNR
+    pend = ""
+  }
+  if (t ~ /^#/) next
+  if (t == "LC_ALL=C") lc = 1
+  s = $0; pre = ""
+  while (match(s, /(^|[^A-Za-z0-9_.\/-])cd[[:space:]]/)) {
+    st = RSTART + (substr(s, RSTART, 2) == "cd" ? 0 : 1)
+    before = pre substr(s, 1, st - 1); after = substr(s, st)
+    print "CD " FILENAME ":" FNR
+    if (substr(before, length(before) - 7) != "CDPATH= " || substr(after, 1, 6) != "cd -- ") print "BAD cd " FILENAME ":" FNR
+    pre = before "cd "; s = substr(s, st + 3)
+  }
+  if ($0 ~ /(^|[^A-Za-z0-9_])pushd[[:space:]]/) print "BAD pushd " FILENAME ":" FNR
+  if (index(t, "[!A-Za-z0-9_-]")) {
+    if (t == ENVIRON["G40_EXEMPT"]) { print "EXEMPT " FILENAME ":" FNR; next }
+    print "STEM " FILENAME ":" FNR
+    if (!match(t, /^case "\$[A-Za-z_][A-Za-z0-9_]*" in /)) { print "BAD stem_shape " FILENAME ":" FNR; next }
+    v = substr(t, 8, RLENGTH - 12)
+    if (t != "case \"$" v "\" in ''|*[!A-Za-z0-9_-]*) " v "='' ;; esac") print "BAD stem_rule " FILENAME ":" FNR
+    if (!lc) print "BAD stem_locale " FILENAME ":" FNR
+    pend = v; pk = "stem"; pl = FNR
+  } else if (match(t, /^case "\$([A-Za-z0-9_]*_)?ID" in /)) {
+    v = substr(t, 8, RLENGTH - 12)
+    print "ID " FILENAME ":" FNR
+    if (t != "case \"$" v "\" in ''|*[!0-9]*) " v "='' ;; esac") print "BAD id_rule " FILENAME ":" FNR
+    if (!lc) print "BAD id_locale " FILENAME ":" FNR
+    pend = v; pk = "id"; pl = FNR
+  }
+}
+G40EOF
+  # g40_sweep <dir>: the sweep's lines over every .md under dir but CHANGELOG.md
+  g40_sweep() { find "$1" -name '*.md' -not -path '*/.git/*' -not -name CHANGELOG.md -print0 | G40_EXEMPT="$G40_EXEMPT" xargs -0 awk "$G40_SWEEP"; }
+  # g40_tally <dir>: "CD n STEM n ID n EXEMPT n BAD n"
+  g40_tally() {
+    local out; out=$(g40_sweep "$1")
+    printf 'CD %s STEM %s ID %s EXEMPT %s BAD %s' \
+      "$(printf '%s\n' "$out" | grep -c '^CD ')" "$(printf '%s\n' "$out" | grep -c '^STEM ')" \
+      "$(printf '%s\n' "$out" | grep -c '^ID ')" "$(printf '%s\n' "$out" | grep -c '^EXEMPT ')" \
+      "$(printf '%s\n' "$out" | grep -c '^BAD ')"
+  }
+  # g40_bad <dir>: the BAD kinds, sorted, space-separated
+  g40_bad() { g40_sweep "$1" | awk '/^BAD /{print $2}' | sort | tr '\n' ' ' | sed 's/ $//'; }
+  # g40_copy: a fresh copy of the plugin's skills under $G40_X/port
+  g40_copy() { rm -rf "$G40_X/port/skills"; cp -R "$PORT_ROOT/skills" "$G40_X/port/"; }
+  # g40_linemut <file> <old trimmed line> <new|__DELETE__>: in place, first match, indent kept; MISSING if absent
+  g40_linemut() {
+    G40_OLD="$2" G40_NEW="$3" awk '
+      function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+      !done && trim($0) == ENVIRON["G40_OLD"] {
+        done = 1; if (ENVIRON["G40_NEW"] == "__DELETE__") next
+        match($0, /^[[:space:]]*/); print substr($0, 1, RLENGTH) ENVIRON["G40_NEW"]; next
+      }
+      { print }
+      END { exit done ? 0 : 3 }' "$1" > "$1.mut" && mv "$1.mut" "$1" || { rm -f "$1.mut"; echo MISSING; }
+  }
+  # g40_range <file> <start> <end> [nth]: trimmed lines from the nth line equal to start through the next equal to end
+  g40_range() {
+    local r
+    if r=$(G40_S="$2" G40_E="$3" awk -v nth="${4:-1}" '
+      function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+      f == 0 && trim($0) == ENVIRON["G40_S"] { if (++seen == nth) f = 1 }
+      f { print trim($0) }
+      f && trim($0) == ENVIRON["G40_E"] { ok = 1; exit }
+      END { exit ok ? 0 : 3 }' "$1"); then printf '%s\n' "$r"; else echo MISSING; fi
+  }
+  # g40_fill: the placeholder lines read G40_I / G40_N instead
+  g40_fill() {
+    awk '
+      /^[A-Z_]*IDENT=\047<identifier>\047$/ { sub(/=.*/, "=\"$G40_I\""); print; next }
+      /^STEM=\047/ { print "STEM=\"$G40_I\""; next }
+      /^[A-Z_]*ID=\047<numeric id>\047$/ { sub(/=.*/, "=\"$G40_N\""); print; next }
+      { print }'
+  }
+  # g40_srun <prog> <ident> <id> <expr>: [value of expr] after running the sanitisers
+  g40_srun() {
+    printf '[%s]' "$( ( cd "$G40_X" && env -u CDPATH LC_ALL="$G40_LOC" G40_I="$2" G40_N="$3" \
+        TASK_IDENTIFIER="$2" TASK_ID="$3" bash -c "$(printf '%s\n' "$1" | g40_fill)"'
+      printf "%s" '"\"$4\""'' ) 2>/dev/null )"
+  }
+  G40_A64=$(printf 'a%.0s' $(seq 1 64)); G40_D20=$(printf '1%.0s' $(seq 1 20))
+  # g40_scheck <class> <prog> <expr>: OK, or the ids of the failed cases
+  #   PAIR: ident, else id; ENV: ident, else id, else unknown; TF: ident|id; STEM: one name
+  g40_scheck() {
+    local class="$1" p="$2" e="$3" bad="" c i n w
+    for c in plain 64 65 slash utf8 id20 id21 idchar; do
+      case "$c" in
+        plain) i='W47-b_1'; n=9 ;; 64) i="$G40_A64"; n='' ;; 65) i="${G40_A64}a"; n=9 ;;
+        slash) i='W47/x'; n=9 ;; utf8) i="$G40_UTF"; n=9 ;; id20) i=''; n="$G40_D20" ;;
+        id21) i=''; n="${G40_D20}1" ;; idchar) i=''; n='9x' ;;
+      esac
+      case "$class:$c" in
+        *:plain) w='W47-b_1' ;; *:64) w="$G40_A64" ;;
+        STEM:*) w='' ;;
+        TF:65|TF:slash|TF:utf8) w='|9' ;; TF:id20) w="|$G40_D20" ;; TF:*) w='|' ;;
+        *:65|*:slash|*:utf8) w=9 ;; *:id20) w="$G40_D20" ;;
+        ENV:*) w=unknown ;; PAIR:*) w='' ;;
+      esac
+      [ "$class:$c" = TF:plain ] && w='W47-b_1|9'
+      [ "$class:$c" = TF:64 ] && w="$G40_A64|"
+      [ "$(g40_srun "$p" "$i" "$n" "$e")" = "[$w]" ] || bad="$bad $c"
+    done
+    echo "${bad:-OK}"
+  }
+  # The stem blocks: name@file@start@end@nth@class@expr (the lines themselves hold "|")
+  G40_BLOCKS="rc_wf@$G40_WF@RC_IDENT=\"\$TASK_IDENTIFIER\"@RC_IDENT=\"\${RC_IDENT:-\${RC_ID:-unknown}}\"@1@ENV@\$RC_IDENT
+rc_claim@$G40_KL@RC_IDENT=\"\$TASK_IDENTIFIER\"@RC_IDENT=\"\${RC_IDENT:-\${RC_ID:-unknown}}\"@1@ENV@\$RC_IDENT
+counter@$G40_WF@IDENT=\"\$TASK_IDENTIFIER\"@IDENT=\"\${IDENT:-\${IDENT_ID:-unknown}}\"@1@ENV@\$IDENT
+fixpath@$G40_WF@IDENT=\"\$TASK_IDENTIFIER\"@IDENT=\"\${IDENT:-\${IDENT_ID:-unknown}}\"@2@ENV@\$IDENT
+window@$G40_WF@STEM='W47'   # change this line only: the name the task file was saved under@[ \"\${#STEM}\" -le 64 ] || STEM=''@1@STEM@\$STEM
+attach@$G40_WF@STEM='<identifier>'   # change this line only: the identifier, or the numeric id when the identifier is not a plain 1-64 character [A-Za-z0-9_-] token@[ \"\${#STEM}\" -le 64 ] || STEM=''@1@STEM@\$STEM
+security@$G40_WF@SR_IDENT='<identifier>'@SR_IDENT=\"\${SR_IDENT:-\$SR_ID}\"@1@PAIR@\$SR_IDENT
+explore@$G40_WF@EX_IDENT='<identifier>'@EX_IDENT=\"\${EX_IDENT:-\$EX_ID}\"@1@PAIR@\$EX_IDENT
+goalscope@$G40_WF@GS_IDENT='<identifier>'@GS_STEM=\"\${GS_IDENT:-\$GS_ID}\"@1@PAIR@\$GS_STEM
+outcomes_wf@$G40_WF@OC_IDENT='<identifier>'@OC_STEM=\"\${OC_IDENT:-\$OC_ID}\"@1@PAIR@\$OC_STEM
+outcomes_ct@$G40_CT@OC_IDENT='<identifier>'@OC_STEM=\"\${OC_IDENT:-\$OC_ID}\"@1@PAIR@\$OC_STEM
+cleanup@$G40_WF@TF_IDENT='<identifier>'@[ \"\${#TF_ID}\" -le 20 ] || TF_ID=''@1@TF@\$TF_IDENT|\$TF_ID"
+  # g40_prog <name>: that block's sanitiser lines from the real files
+  g40_prog() {
+    local l f s e n; l=$(printf '%s\n' "$G40_BLOCKS" | grep "^$1@")
+    IFS='@' read -r _ f s e n _ _ <<EOF_G40
+$l
+EOF_G40
+    g40_range "$f" "$s" "$e" "$n"
+  }
+  # g40_class / g40_expr <name>
+  g40_class() { printf '%s\n' "$G40_BLOCKS" | grep "^$1@" | cut -d'@' -f6; }
+  g40_expr() { printf '%s\n' "$G40_BLOCKS" | grep "^$1@" | cut -d'@' -f7-; }
+
+  # --- 40a-40b: the every-fence sweep on the real files ---
+  G40_REAL=$(g40_tally "$PORT_ROOT")
+  assert_eq "40a: Group 40: every stem-building block in stride-workflow uses the same 1-64 identifier and 1-20 digit caps (every fence of every plugin .md; one exempt, pinned line)" \
+    "CD 19 STEM 12 ID 11 EXEMPT 1 BAD 0" "$G40_REAL"
+  assert_eq "40b: Group 40: every cd in a stride-workflow shell fence runs with CDPATH cleared (and every cd in every other plugin fence)" \
+    "" "$(g40_sweep "$PORT_ROOT" | awk '$1 == "BAD" && ($2 == "cd" || $2 == "pushd")')"
+
+  # --- 40g: every stem block's sanitisers, run on the same values ---
+  G40_ALLB=""
+  for G40_B in $(printf '%s\n' "$G40_BLOCKS" | cut -d'@' -f1); do
+    G40_P=$(g40_prog "$G40_B")
+    if [ "$G40_P" = MISSING ]; then G40_R="MISSING"; else G40_R=$(g40_scheck "$(g40_class "$G40_B")" "$G40_P" "$(g40_expr "$G40_B")"); fi
+    assert_eq "40g ($G40_B): Group 40: the block's sanitisers keep a plain token, 64 characters and 20 digits, and blank a slash, 65 characters, 21 digits, a non-digit id and an accented identifier" \
+      "OK" "$G40_R"
+    G40_ALLB="$G40_ALLB $G40_B"
+  done
+  assert_eq "40g: the table names all twelve stem blocks the sweep counts" "12" "$(printf '%s\n' $G40_ALLB | wc -l | tr -d ' ')"
+
+  # --- 40c: every root block under a CDPATH decoy and under CDPATH=. ---
+  # g40_roots <file>: one line per standalone root block, the line numbers of
+  # its ROOT= line and its canonicalise line (0 when it has none within 12 lines)
+  g40_roots() {
+    awk '
+      function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+      trim($0) == "ROOT=\"${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}\"" { if (s) print s, 0; s = FNR; next }
+      s && index(trim($0), "[ -n \"$ROOT\" ] && ROOT=\"$(") == 1 { print s, FNR; s = 0; next }
+      s && FNR - s > 12 { print s, 0; s = 0 }
+      END { if (s) print s, 0 }' "$1"
+  }
+  # g40_rootrun <file> <from> <to> <CDPATH value>: what the block's ROOT is, one line per line
+  g40_rootrun() {
+    ( cd "$G40_X/work" && env -u CLAUDE_PROJECT_DIR CODEX_PROJECT_DIR=proj CDPATH="$4" \
+        bash -c "$(sed -n "$2,$3p" "$1")"'
+      printf "%s\n" "$ROOT"' 2>/dev/null )
+  }
+  # g40_rootcheck <file> <CDPATH value>: "canonicalising/without" counts, then the failing line numbers
+  g40_rootcheck() {
+    local a b yes=0 no=0 bad=""
+    while read -r a b; do
+      if [ "$b" = 0 ]; then no=$((no + 1)); continue; fi
+      yes=$((yes + 1))
+      [ "$(g40_rootrun "$1" "$a" "$b" "$2")" = "$G40_PROJ" ] || bad="$bad $a"
+    done <<EOF_G40R
+$(g40_roots "$1")
+EOF_G40R
+    echo "$yes/$no${bad:+ FAIL:$bad}"
+  }
+  assert_eq "40c: Group 40: with CDPATH pointing at a decoy dir, the root block still prints exactly one path (every stride-workflow root block, with a relative CODEX_PROJECT_DIR)" \
+    "8/2" "$(g40_rootcheck "$G40_WF" "$G40_X/decoy")"
+  assert_eq "40c: and every stride-completing-tasks root block" "3/0" "$(g40_rootcheck "$G40_CT" "$G40_X/decoy")"
+  assert_eq "40c2: under CDPATH=. too, the edge case where cd prints the path it found" \
+    "8/2 3/0" "$(g40_rootcheck "$G40_WF" .) $(g40_rootcheck "$G40_CT" .)"
+
+  # --- 40d: Step 8's outcomes block, standalone and sourced ---
+  G40_OB=$(awk '/^\*\*Check the exploratory record before the call/{f=1} f&&/^```bash/{g=1;next} g&&/^```/{exit} g' "$G40_WF")
+  G40_STUB_F="exploratory_outcomes_ok() { echo 'exploratory_outcomes_ok: false'; return 1; }"
+  G40_STUB_T="exploratory_outcomes_ok() { echo 'exploratory_outcomes_ok: true'; }"
+  # g40_ofill <block> <stub>: placeholders filled (W40 / 40), the stub pasted in
+  g40_ofill() {
+    local b="$1"
+    b=${b/"OC_IDENT='<identifier>'"/"OC_IDENT='W40'"}
+    b=${b/"OC_ID='<numeric id>'"/"OC_ID='40'"}
+    b=${b/"# <paste exploratory_outcomes_ok from Step 6.5 here>"/"$2"}
+    printf '%s\n' "${b/"'<last returned report path, one per charter>'"/"\"\$G40_RP\""}"
+  }
+  # g40_orun <block> <stub>: "what it printed|exit status", run as a standalone script
+  g40_orun() {
+    local f="$G40_X/ob.sh" out rc
+    g40_ofill "$1" "$2" > "$f"
+    out=$(cd "$G40_PROJ" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u CDPATH G40_RP="$G40_PROJ/.stride/.exploratory-W40-r1.json" bash "$f" 2>/dev/null); rc=$?
+    printf '%s|%s' "$out" "$rc"
+  }
+  # g40_osrc <block> <stub>: "what it printed|survived <status>", sourced into a shell that carries on
+  g40_osrc() {
+    local f="$G40_X/ob.sh"
+    g40_ofill "$1" "$2" > "$f"
+    ( cd "$G40_PROJ" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u CDPATH G40_F="$f" G40_O="$G40_X/ob.out" G40_RP="$G40_PROJ/.stride/.exploratory-W40-r1.json" \
+        bash -c '. "$G40_F" > "$G40_O"; r=$?; printf "%s|survived %s" "$(cat "$G40_O")" "$r"' 2>/dev/null )
+  }
+  G40_OF="$G40_PROJ/.stride/.outcomes-W40.json"
+  rm -f "$G40_OF"
+  assert_eq "40d: Group 40: the extracted exploratory_outcomes_ok guard run as a standalone block exits 1 on a false result (no outcomes file)" \
+    "exploratory_outcomes_ok: false|1" "$(g40_orun "$G40_OB" "$G40_STUB_T")"
+  assert_eq "40d2: and sourced, it returns 1 and the sourcing shell carries on" \
+    "exploratory_outcomes_ok: false|survived 1" "$(g40_osrc "$G40_OB" "$G40_STUB_T")"
+  printf '%s\n' '{"completion_notes":"x","completion_summary":"y"}' > "$G40_OF"
+  assert_eq "40d3: with the outcomes file present, a checker that says false exits 1 and one that says true exits 0" \
+    "exploratory_outcomes_ok: false|1 exploratory_outcomes_ok: true|0" \
+    "$(g40_orun "$G40_OB" "$G40_STUB_F") $(g40_orun "$G40_OB" "$G40_STUB_T")"
+  if declare -F g29_fn >/dev/null 2>&1; then
+    G40_FN=$(g29_fn "$G40_WF")
+    assert_eq "40d4: with the real checker pasted in, a record with no outcome lines and one report path exits 1" \
+      "exploratory_outcomes_ok: false|1" "$(g40_orun "$G40_OB" "$G40_FN")"
+  fi
+  rm -f "$G40_OF"
+
+  # --- 40e, 40n1-40n9: break a copy, see the case that catches it ---
+  G40_PW="$G40_X/port/skills/stride-workflow/SKILL.md"
+  G40_PC="$G40_X/port/skills/stride-completing-tasks/SKILL.md"
+  g40_copy
+  G40_M=$(g40_linemut "$G40_PW" '[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"' '[ -n "$ROOT" ] && ROOT="$(cd -- "$ROOT" 2>/dev/null && pwd -P)"')
+  assert_eq "40e: Group 40: break-it - removing CDPATH= from one block makes the sweep fail" "cd" "${G40_M}$(g40_bad "$G40_X/port")"
+  assert_contains "40e2: and that block's ROOT is no longer one path under the decoy, so 40c catches it too" "FAIL" "$(g40_rootcheck "$G40_PW" "$G40_X/decoy")"
+  g40_copy
+  G40_M=$(g40_linemut "$G40_PC" '( CDPATH= cd -- "$ROOT" && curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \' '( cd "$ROOT" && curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \')
+  assert_eq "40n1: break-it - restoring the completion block's bare cd fails the sweep" "cd" "${G40_M}$(g40_bad "$G40_X/port")"
+  g40_copy
+  G40_M=$(g40_linemut "$G40_PW" 'LC_ALL=C' '__DELETE__')
+  assert_eq "40n2: break-it - deleting a block's LC_ALL=C fails the sweep on both of its allow-lists" "id_locale stem_locale" "${G40_M}$(g40_bad "$G40_X/port")"
+  g40_copy
+  G40_M=$(g40_linemut "$G40_PW" "[ \"\${#SR_ID}\" -le 20 ] || SR_ID=''" '__DELETE__')
+  G40_M2=$(g40_linemut "$G40_PW" "[ \"\${#STEM}\" -le 64 ] || STEM=''" '__DELETE__')
+  assert_eq "40n3: break-it - deleting an id cap and a stem cap fails the sweep on each" "id_cap stem_cap" "${G40_M}${G40_M2}$(g40_bad "$G40_X/port")"
+  assert_contains "40n3b: and the security block without its id cap keeps a 21-digit id, so 40g catches it" " id21" \
+    " $(g40_scheck PAIR "$(g40_range "$G40_PW" "SR_IDENT='<identifier>'" "SR_IDENT=\"\${SR_IDENT:-\$SR_ID}\"")" "\$SR_IDENT") "
+  g40_copy
+  G40_M=$(g40_linemut "$G40_PW" "case \"\$IDENT\" in ''|*[!A-Za-z0-9_-]*) IDENT='' ;; esac" 'case "$IDENT" in *[!A-Za-z0-9_-]*|"") IDENT="$TASK_ID" ;; esac')
+  assert_eq "40n4: break-it - restoring the old identifier fallback line fails the sweep" "stem_rule" "${G40_M}$(g40_bad "$G40_X/port")"
+  g40_copy
+  G40_M=$(g40_linemut "$G40_PW" "$G40_EXEMPT" "case \"\$id\" in ( '' | *[!A-Za-z0-9_-]* ) continue ;; esac")
+  assert_eq "40n5: break-it - the exemption is the checker's exact line, so editing it fails the sweep" "yes" \
+    "$([ -z "$G40_M" ] && [ -n "$(g40_bad "$G40_X/port")" ] && echo yes || echo no)"
+  g40_copy
+  printf '\n```bash\ncd "$ROOT"\nx=$(cd /tmp && pwd)\npushd /tmp\nCDPATH= cd -- /tmp\n```\n\n```text\ncd "$ROOT"\n```\n' >> "$G40_PW"
+  assert_eq "40n6: break-it - a planted fence with a bare cd, a cd in a substitution and a pushd fails the sweep three times; a text fence and a cleared cd do not" \
+    "cd cd pushd" "$(g40_bad "$G40_X/port")"
+  g40_copy
+  G40_PAT="  echo 'exploratory_outcomes_ok: false'; false"; G40_NEW="  echo 'exploratory_outcomes_ok: false'"
+  G40_OBM=${G40_OB/"$G40_PAT"/"$G40_NEW"}
+  assert_eq "40n7: break-it - without the false after the refusal, the standalone block exits 0, so 40d catches it" \
+    "changed exploratory_outcomes_ok: false|0" \
+    "$([ "$G40_OBM" != "$G40_OB" ] && echo changed || echo MISSING) $(g40_orun "$G40_OBM" "$G40_STUB_T")"
+  g40_copy
+  printf '\n````markdown\n## before_review\n\n```bash\ncd "$ROOT"\n```\n\n```text\ncd "$ROOT"\n```\n````\n\n````text\n```bash\ncd /tmp\n```\n````\n' >> "$G40_PW"
+  assert_eq "40n8: break-it - a bare cd in a shell fence nested in a four-backtick fence fails the sweep, once per nested shell fence; a nested text fence does not" \
+    "cd cd" "$(g40_bad "$G40_X/port")"
+  if [ "$G40_BITES" = yes ]; then
+    G40_P=$(g40_prog outcomes_wf)
+    assert_contains "40n9: break-it - without LC_ALL=C, bash under $G40_LOC keeps an accented identifier, so 40g catches it" " utf8" \
+      " $(g40_scheck PAIR "${G40_P/$'\nLC_ALL=C\n'/$'\n:\n'}" "\$OC_STEM") "
+  else
+    echo "  SKIP: 40n9: this bash does not match accented letters in [A-Za-z] under $G40_LOC, so LC_ALL=C cannot be shown to matter here"
+  fi
+
+  # --- 40p: the changelog ---
+  assert_eq "40p: the changelog carries this entry once between [Unreleased] and [1.43.1], above D411's" "1 yes" \
+    "$(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.1\]/{exit} f' "$G40_CL" | grep -c '^### Fixed — .*(W2688)$') $(awk '/^### .*\(W2688\)$/{a=NR} /^### .*\(D411\)$/{b=NR} END{print (a && b && a < b) ? "yes" : "no"}' "$G40_CL")"
+
+  rm -rf "$G40_X"
+  assert_eq "40z: the break-it cases left the real files untouched" "$G40_SUM_BEFORE" \
+    "$(cksum < "$G40_WF") $(cksum < "$G40_CT") $(cksum < "$G40_KL") $(cksum < "$G40_CL")"
+else
+  echo "  SKIP: Test Group 40 (a skill, the changelog or jq is missing)"
+fi
+
+# ============================================================================
+# Test Group 41: D412 -- stride-enriching-tasks' POST and PATCH examples build
+# their body with jq into a file under .stride/ and send it with -d @file
+# ============================================================================
+# D406's runner found that both request examples in stride-enriching-tasks
+# passed the task JSON as a single-quoted `-d '{ ... }'` body. Enriched fields
+# are free text from the task and the codebase, so a single quote in a pitfall
+# or a description ended the shell string: the request broke, or the text after
+# the quote ran as shell. Both examples now read the fields from a file the
+# agent writes with its file-editing tool, build the envelope with
+# `jq --slurpfile` into a body file under .stride/, send it with `-d @file`
+# and remove the body file afterwards.
+# 41a sweeps every shell fence in the skill for a single-quoted -d body; 41b
+# checks both fences' construction; 41c runs both extracted fences against a
+# stub curl with hostile field text and compares what was sent with what was
+# written; 41c5 runs a failing curl; 41d runs the refusals and 41d3 reads
+# their reasons; 41e runs the old single-quoted shape with hostile text to show
+# 41c's checks can fail; 41n1-41n8 break copies and show the case that catches
+# each; 41p pins the changelog entry; 41z shows the real
+# files were never written. The task's named unit tests keep their
+# testing_strategy names, prefixed with their Group 41 id.
+# What this does NOT prove: that an agent writes the fields file with its
+# file-editing tool and fills the id placeholder in a live Codex CLI session
+# (no Codex CLI here), or that the live API accepts the body (a stub curl).
+echo ""
+echo "=== Test Group 41: stride-enriching-tasks builds its POST and PATCH bodies with jq into a file and sends -d @file (D412) ==="
+
+G41_EN="$PORT_ROOT/skills/stride-enriching-tasks/SKILL.md"
+G41_CL="$PORT_ROOT/CHANGELOG.md"
+if [ -f "$G41_EN" ] && [ -f "$G41_CL" ] && command -v jq >/dev/null 2>&1; then
+  G41_SUM_BEFORE="$(cksum < "$G41_EN") $(cksum < "$G41_CL")"
+  G41_X="$TMPDIR_TEST/g41 dir"
+  rm -rf "$G41_X"; mkdir -p "$G41_X/proj/.stride" "$G41_X/proj/sub/dir" "$G41_X/bin" "$G41_X/port"
+  : > "$G41_X/proj/.stride.md"
+  G41_PROJ=$(CDPATH= cd -- "$G41_X/proj" && pwd -P)
+  G41_S="$G41_PROJ/.stride"
+  G41_CAP="$G41_X/sent.json"
+
+  # A stub curl: records its arguments one per line and the -d body, reading
+  # the file when the value is @path, and prints a canned response.
+  cat > "$G41_X/bin/curl" <<'G41CURL'
+#!/bin/bash
+: > "$G41_CAP.args"
+while [ $# -gt 0 ]; do
+  printf '%s\n' "$1" >> "$G41_CAP.args"
+  if [ "$1" = -d ]; then
+    case "$2" in @*) cat -- "${2#@}" > "$G41_CAP" ;; *) printf '%s' "$2" > "$G41_CAP" ;; esac
+  fi
+  shift
+done
+[ -n "${G41_FAIL:-}" ] && exit 7
+printf '%s\n' '{"data":{"identifier":"W41"}}'
+G41CURL
+  chmod +x "$G41_X/bin/curl"
+
+  # g41_sdq <file>: "SHELL n BAD n" -- curl lines in shell fences, then the
+  # single-quoted -d bodies among them (comment lines skipped)
+  g41_sdq() {
+    awk -v q="'" '
+      /^[[:space:]]*```/ {
+        l = $0; sub(/^[[:space:]]*`+/, "", l); sub(/[[:space:]].*$/, "", l)
+        if (inb) { inb = 0; next }
+        inb = 1; sh = (l ~ /^(bash|sh|shell|zsh|console)?$/); next
+      }
+      inb && sh {
+        t = $0; sub(/^[[:space:]]+/, "", t)
+        if (t ~ /^#/) next
+        # curl in command position only, never the word inside an echo
+        if (t ~ /^curl[[:space:]]/ || t ~ /(&&|\|\||;|\(|\|)[[:space:]]*curl[[:space:]]/) c++
+        if (t ~ ("(^|[[:space:]])(-d|--data|--data-raw|--data-binary|--data-ascii)[[:space:]]*" q)) b++
+      }
+      END { printf "SHELL %d BAD %d", c, b }' "$1"
+  }
+  # g41_fence <file> <heading>: the first ```bash fence after that heading line
+  g41_fence() {
+    G41_H="$2" awk '$0 == ENVIRON["G41_H"] { f = 1; next } f && /^```bash$/ { g = 1; next } g && /^```$/ { exit } g' "$1"
+  }
+  # g41_run <prog> <cwd>: "<stdout>|<stderr line count>|<status>", stub curl first on PATH
+  g41_run() {
+    local out rc
+    rm -f "$G41_CAP" "$G41_CAP.args" "$G41_X/err"
+    out=$( ( CDPATH= cd -- "$2" && env -u CODEX_PROJECT_DIR -u CLAUDE_PROJECT_DIR -u CDPATH \
+        PATH="$G41_X/bin:$PATH" G41_CAP="$G41_CAP" STRIDE_API_URL='https://stub.invalid' STRIDE_API_TOKEN='stub' \
+        bash -c "$1" ) 2>"$G41_X/err" ); rc=$?
+    printf '%s|%s|%s' "$out" "$(grep -c . "$G41_X/err")" "$rc"
+  }
+  # g41_ran: RAN when any probe left a PWNED file anywhere in the fixture
+  g41_ran() { [ -n "$(find "$G41_X" -name 'PWNED*' -print)" ] && echo RAN || echo absent; }
+  g41_unran() { find "$G41_X" -name 'PWNED*' -exec rm -f {} +; }
+  G41_POST=$(g41_fence "$G41_EN" '### Submitting the Enriched Task')
+  G41_PATCH_RAW=$(g41_fence "$G41_EN" '### Enriching an Existing Minimal Task')
+  G41_PATCH=${G41_PATCH_RAW/"EN_ID='<numeric id>'"/"EN_ID='9'"}
+
+  # --- 41a: the sweep on the real file ---
+  assert_eq "41a: Group 41: no stride-enriching-tasks shell fence passes a JSON body inside single quotes to -d (both curl fences seen)" \
+    "SHELL 2 BAD 0" "$(g41_sdq "$G41_EN")"
+
+  # --- 41b: both fences build the body with jq into a file and send -d @file ---
+  g41_shape() {
+    local f="$1" ok=yes p
+    for p in 'jq -n ' '--slurpfile t "$EN"' '> "$BODY"' '-d @"$BODY" \' '| tee "$RESP"' 'RESP="$ROOT/.stride/.enrich-response-' \
+             'elif [ -L "$BODY" ] || [ -L "$RESP" ]; then' 'EN_RC=${PIPESTATUS[0]}' 'rm -f "$BODY"' \
+             '[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"' 'BODY="$ROOT/.stride/.enrich-body-'; do
+      case "$f" in *"$p"*) ;; *) ok="no:$p" ;; esac
+    done
+    case "$f" in *" -o "*|*"--output"*) ok=no:output ;; esac
+    printf '%s' "$ok"
+  }
+  assert_eq "41b: Group 41: the enrichment PATCH example builds its body with jq into a file and sends it with -d @file (and the POST example too)" \
+    "PATCH yes POST yes" "PATCH $(g41_shape "$G41_PATCH") POST $(g41_shape "$G41_POST")"
+  assert_contains "41b2: the PATCH example sends to the sanitised id, never a literal :id" \
+    '"$STRIDE_API_URL/api/tasks/$EN_ID"' "$G41_PATCH"
+
+  # --- 41c: hostile field text round-trips byte for byte ---
+  G41_Q="It's the user's board"
+  G41_B='a `touch PWNED1` and $(touch PWNED2) and $HOME'
+  G41_I3="It'\$(touch PWNED3)'s done"
+  G41_NL=$'line one\nline two\n'
+  G41_KF="lib/a'b.ex"
+  g41_fields() {
+    jq -n --arg q "$G41_Q" --arg b "$G41_B" --arg i3 "$G41_I3" --arg nl "$G41_NL" --arg kf "$G41_KF" \
+      '{pitfalls: [$q, $b, $i3], description: $nl, what: "", key_files: [{file_path: $kf, note: "", position: 0}]}' > "$1"
+  }
+  g41_fields "$G41_S/.enrich-9.json"
+  g41_fields "$G41_S/.enrich-new.json"
+  g41_unran
+  G41_R=$(g41_run "$G41_PATCH" "$G41_PROJ/sub/dir")
+  G41_RT=$(jq --slurpfile e "$G41_S/.enrich-9.json" '(keys == ["task"]) and (.task == $e[0])' "$G41_CAP" 2>/dev/null)
+  G41_Q1=$(jq -r '.task.pitfalls[0]' "$G41_CAP" 2>/dev/null)
+  G41_B1=$(jq -j '.task.description' "$G41_CAP" 2>/dev/null; printf x)
+  assert_eq "41c: Group 41: an enriched field containing a single quote survives the example round-trip byte for byte (PATCH, run from a subdirectory)" \
+    "true|$G41_Q|${G41_NL}x|absent" "$G41_RT|$G41_Q1|$G41_B1|$(g41_ran)"
+  assert_eq "41c2: the PATCH went to the sanitised id's URL, printed the response, teed it at the root and left no body file" \
+    "yes|{\"data\":{\"identifier\":\"W41\"}}|0|0|yes|no" \
+    "$(grep -qxF 'https://stub.invalid/api/tasks/9' "$G41_CAP.args" && echo yes || echo no)|$G41_R|$([ -s "$G41_S/.enrich-response-9.json" ] && echo yes || echo no)|$([ -e "$G41_S/.enrich-body-9.json" ] && echo yes || echo no)"
+  G41_R=$(g41_run "$G41_POST" "$G41_PROJ/sub")
+  assert_eq "41c3: the POST example sends agent_name beside the same task object, every hostile value intact, and runs none of it" \
+    "true|$G41_I3|absent|yes|no|0" \
+    "$(jq --slurpfile e "$G41_S/.enrich-new.json" '(keys == ["agent_name", "task"]) and .agent_name == "Codex CLI" and (.task == $e[0])' "$G41_CAP" 2>/dev/null)|$(jq -r '.task.pitfalls[2]' "$G41_CAP" 2>/dev/null)|$(g41_ran)|$(grep -qxF 'https://stub.invalid/api/tasks' "$G41_CAP.args" && echo yes || echo no)|$([ -e "$G41_S/.enrich-body-new.json" ] && echo yes || echo no)|${G41_R##*|}"
+  assert_eq "41c4: the empty field, the backtick text and the quoted path arrive as written" \
+    "|$G41_B|$G41_KF" "$(jq -r '.task.what' "$G41_CAP" 2>/dev/null)|$(jq -r '.task.pitfalls[1]' "$G41_CAP" 2>/dev/null)|$(jq -r '.task.key_files[0].file_path' "$G41_CAP" 2>/dev/null)"
+
+  # --- 41c5: a failing curl exits non-zero, says so, and leaves no body file ---
+  g41_fields "$G41_S/.enrich-9.json"
+  G41_R=$(G41_FAIL=1 g41_run "$G41_PATCH" "$G41_PROJ")
+  assert_eq "41c5: when curl itself fails the PATCH block exits non-zero with one line naming curl's status, and removes the body file" \
+    "|1|1|gone|yes" "$G41_R|$([ -e "$G41_S/.enrich-body-9.json" ] && echo left || echo gone)|$(grep -q '^curl exited 7, ' "$G41_X/err" && echo yes || echo no)"
+
+  # --- 41d: the refusals send nothing and say so on one line ---
+  # g41_refuse <prog> <fields file>: the ids of the cases that sent, printed
+  # anything but one stderr line, exited 0, or wrote through a linked body or
+  # response file. badutf8 runs only where iconv is installed, as the block's
+  # own check does.
+  G41_CASES="missing twodocs array envelope emptyobj zerobyte blank null emptystr symfields symbody symresp"
+  command -v iconv >/dev/null 2>&1 && G41_CASES="$G41_CASES badutf8"
+  g41_refuse() {
+    local p="$1" en="$2" bad="" c r body resp
+    body="${2%/*}/.enrich-body-${2##*/.enrich-}"
+    resp="${2%/*}/.enrich-response-${2##*/.enrich-}"
+    for c in $G41_CASES; do
+      rm -f "$en" "$body" "$resp" "$G41_X/elsewhere.json"
+      case "$c" in
+        missing) ;;
+        twodocs) printf '{}\n{}\n' > "$en" ;;
+        array) printf '[]\n' > "$en" ;;
+        envelope) printf '{"task":{"why":"x"}}\n' > "$en" ;;
+        emptyobj) printf '{}\n' > "$en" ;;
+        zerobyte) : > "$en" ;;
+        blank) printf '  \n\n' > "$en" ;;
+        null) printf 'null\n' > "$en" ;;
+        emptystr) printf '""\n' > "$en" ;;
+        badutf8) printf '{"why":"a\377b"}\n' > "$en" ;;
+        symfields) printf '{"why":"x"}\n' > "$G41_X/elsewhere.json"; ln -s "$G41_X/elsewhere.json" "$en" ;;
+        symbody) printf '{"why":"x"}\n' > "$en"; : > "$G41_X/elsewhere.json"; ln -s "$G41_X/elsewhere.json" "$body" ;;
+        symresp) printf '{"why":"x"}\n' > "$en"; : > "$G41_X/elsewhere.json"; ln -s "$G41_X/elsewhere.json" "$resp" ;;
+      esac
+      r=$(g41_run "$p" "$G41_PROJ")
+      ok=yes
+      [ -e "$G41_CAP" ] && ok=no
+      [ "$r" = "|1|1" ] || ok=no
+      # symfields' link target holds the fields themselves; every other target must stay empty
+      [ "$c" != symfields ] && [ -s "$G41_X/elsewhere.json" ] && ok=no
+      [ "$ok" = yes ] || bad="$bad $c"
+    done
+    rm -f "$en" "$body" "$resp" "$G41_X/elsewhere.json"
+    echo "${bad:-OK}"
+  }
+  assert_eq "41d: Group 41: both blocks refuse, with one line and no request, a missing, two-document, non-object, empty, blank, enveloped, non-UTF-8 or symlinked fields file and a symlinked body or response file" \
+    "PATCH OK POST OK" "PATCH $(g41_refuse "$G41_PATCH" "$G41_S/.enrich-9.json") POST $(g41_refuse "$G41_POST" "$G41_S/.enrich-new.json")"
+  g41_fields "$G41_S/.enrich-9.json"
+  G41_BADID=""
+  for G41_I in '9x' '../9' '' "$(printf '1%.0s' $(seq 1 21))"; do
+    G41_PH="EN_ID='<numeric id>'"; G41_RP="EN_ID='$G41_I'"
+    # an unquoted assignment: bash 3.2 keeps the inner quotes of a quoted ${v/"p"/"r"}
+    G41_P=${G41_PATCH_RAW/"$G41_PH"/"$G41_RP"}
+    G41_R=$(g41_run "$G41_P" "$G41_PROJ")
+    { [ ! -e "$G41_CAP" ] && [ "$G41_R" = "|1|1" ]; } || G41_BADID="$G41_BADID [$G41_I]"
+  done
+  assert_eq "41d2: the PATCH block refuses a non-digit, path-shaped, empty or 21-digit id with one line and no request" "OK" "${G41_BADID:-OK}"
+  G41_I=$(printf '1%.0s' $(seq 1 20)); G41_RP="EN_ID='$G41_I'"
+  G41_P=${G41_PATCH_RAW/"$G41_PH"/"$G41_RP"}
+  g41_fields "$G41_S/.enrich-$G41_I.json"
+  G41_R=$(g41_run "$G41_P" "$G41_PROJ")
+  assert_eq "41d2b: and keeps a 20-digit id, sending to that id's URL" "yes|0" \
+    "$(grep -qxF "https://stub.invalid/api/tasks/$G41_I" "$G41_CAP.args" 2>/dev/null && echo yes || echo no)|${G41_R##*|}"
+  rm -f "$G41_S/.enrich-$G41_I.json" "$G41_S/.enrich-response-$G41_I.json"
+
+  # --- 41d3: each refusal names its reason ---
+  # g41_why <prog> <cwd>: the one stderr line
+  g41_why() { g41_run "$1" "$2" >/dev/null; cat "$G41_X/err"; }
+  G41_W=""
+  rm -f "$G41_S/.enrich-9.json"
+  case "$(g41_why "$G41_PATCH" "$G41_PROJ")" in "not submitting: $G41_S/.enrich-9.json is missing or a symlink") ;; *) G41_W="$G41_W missing" ;; esac
+  printf '{}\n{}\n' > "$G41_S/.enrich-9.json"
+  case "$(g41_why "$G41_PATCH" "$G41_PROJ")" in "not submitting: $G41_S/.enrich-9.json is not exactly one JSON object"*) ;; *) G41_W="$G41_W twodocs" ;; esac
+  G41_RP="EN_ID='9x'"; G41_P=${G41_PATCH_RAW/"$G41_PH"/"$G41_RP"}
+  case "$(g41_why "$G41_P" "$G41_PROJ")" in "not submitting: no usable numeric id"*) ;; *) G41_W="$G41_W badid" ;; esac
+  case "$(g41_why "$G41_POST" "$G41_X")" in "not submitting: no project root"*) ;; *) G41_W="$G41_W noroot" ;; esac
+  rm -f "$G41_S/.enrich-9.json"
+  assert_eq "41d3: each refusal line names its reason, and the path it checked: a missing file, a malformed file, an unusable id, no project root" "OK" "${G41_W:-OK}"
+
+  # --- 41e: the old single-quoted shape, given a hostile pitfall, breaks ---
+  G41_OLD="curl -s -X PATCH -d '{\"task\": {\"pitfalls\": [\"$G41_I3\"]}}' \"\$STRIDE_API_URL/api/tasks/9\""
+  g41_unran
+  g41_run "$G41_OLD" "$G41_PROJ" >/dev/null
+  assert_eq "41e: the old single-quoted -d body, given a pitfall with a quote and a \$(), sends it mangled and runs the \$(), so 41c's checks can fail" \
+    "notsame RAN" \
+    "$([ "$(jq -r '.task.pitfalls[0]' "$G41_CAP" 2>/dev/null)" = "$G41_I3" ] && echo same || echo notsame) $(g41_ran)"
+  g41_unran
+
+  # --- 41n1-41n8: break a copy, see the case that catches it ---
+  G41_PE="$G41_X/port/SKILL.md"
+  G41_OLDL="    -d '{\"task\": {\"why\": \"...\"}}' \\"
+  G41_PAT='    -d @"$BODY" \' G41_NEW="$G41_OLDL" awk \
+    '!d && $0 == ENVIRON["G41_PAT"] { print ENVIRON["G41_NEW"]; d = 1; next } { print }' "$G41_EN" > "$G41_PE"
+  assert_eq "41n1: Group 41: break-it - restoring a single-quoted -d body makes the sweep fail" \
+    "SHELL 2 BAD 1" "$(g41_sdq "$G41_PE")"
+  G41_M=${G41_PATCH/"'{task: \$t[0]}'"/"'{task: {}}'"}
+  g41_fields "$G41_S/.enrich-9.json"
+  g41_run "$G41_M" "$G41_PROJ" >/dev/null
+  assert_eq "41n2: break-it - a filter that drops the fields makes 41c's round-trip fail" "changed false" \
+    "$([ "$G41_M" != "$G41_PATCH" ] && echo changed || echo MISSING) $(jq --slurpfile e "$G41_S/.enrich-9.json" '.task == $e[0]' "$G41_CAP" 2>/dev/null)"
+  G41_M=${G41_PATCH/' || [ -L "$EN" ]'/}
+  assert_eq "41n3: break-it - without the fields-file symlink check the PATCH block sends a linked file, so 41d catches it" \
+    "changed  symfields" "$([ "$G41_M" != "$G41_PATCH" ] && echo changed || echo MISSING) $(g41_refuse "$G41_M" "$G41_S/.enrich-9.json")"
+  G41_M=${G41_PATCH/"case \"\$EN_ID\" in ''|*[!0-9]*) EN_ID='' ;; esac"/:}
+  G41_M=${G41_M/"EN_ID='9'"/"EN_ID='9x'"}
+  printf '{"why":"x"}\n' > "$G41_S/.enrich-9x.json"
+  g41_run "$G41_M" "$G41_PROJ" >/dev/null
+  G41_CHG=changed
+  case "$G41_M" in *"case \"\$EN_ID\""*) G41_CHG=MISSING ;; esac
+  assert_eq "41n4: break-it - without the id allow-list a non-digit id reaches the URL, so 41d2 catches it" \
+    "changed sent" \
+    "$G41_CHG $(grep -qxF 'https://stub.invalid/api/tasks/9x' "$G41_CAP.args" 2>/dev/null && echo sent || echo refused)"
+  rm -f "$G41_S/.enrich-9x.json"
+  G41_M=${G41_PATCH/' || [ -L "$RESP" ]'/}
+  assert_eq "41n5: break-it - without the response-file symlink check tee writes through a linked response file, so 41d catches it" \
+    "changed  symresp" "$([ "$G41_M" != "$G41_PATCH" ] && echo changed || echo MISSING) $(g41_refuse "$G41_M" "$G41_S/.enrich-9.json")"
+  G41_RCL='[ "$EN_RC" -eq 0 ] || { echo "curl exited $EN_RC, so the request may not have been sent: see $RESP" >&2; false; }'
+  G41_M=${G41_PATCH/"$G41_RCL"/:}
+  g41_fields "$G41_S/.enrich-9.json"
+  G41_R=$(G41_FAIL=1 g41_run "$G41_M" "$G41_PROJ")
+  assert_eq "41n6: break-it - without the curl status check a failed curl exits 0, so 41c5 catches it" \
+    "changed 0" "$([ "$G41_M" != "$G41_PATCH" ] && echo changed || echo MISSING) ${G41_R##*|}"
+  G41_M=${G41_PATCH/' and (.[0] | length) > 0'/}
+  assert_eq "41n7: break-it - without the non-empty check a bare {} is sent, so 41d catches it" \
+    "changed  emptyobj" "$([ "$G41_M" != "$G41_PATCH" ] && echo changed || echo MISSING) $(g41_refuse "$G41_M" "$G41_S/.enrich-9.json")"
+  if command -v iconv >/dev/null 2>&1; then
+    G41_UL='elif command -v iconv >/dev/null 2>&1 && ! iconv -f UTF-8 -t UTF-8 "$EN" >/dev/null 2>&1; then EN_WHY="$EN is not valid UTF-8"'
+    G41_M=${G41_PATCH/"$G41_UL"/}
+    assert_eq "41n8: break-it - without the UTF-8 check a non-UTF-8 fields file is sent, so 41d catches it" \
+      "changed  badutf8" "$([ "$G41_M" != "$G41_PATCH" ] && echo changed || echo MISSING) $(g41_refuse "$G41_M" "$G41_S/.enrich-9.json")"
+  else
+    echo "  SKIP: 41n8: iconv is not installed, so the block skips its UTF-8 check and 41d skips badutf8"
+  fi
+  rm -f "$G41_S/.enrich-9.json" "$G41_S/.enrich-new.json"
+
+  # --- 41p: the changelog ---
+  assert_eq "41p: the changelog carries this entry once between [Unreleased] and [1.43.1], as the first entry under [1.43.2]" "1 D412" \
+    "$(awk '/^## \[Unreleased\]/{f=1;next} f&&/^## \[1\.43\.1\]/{exit} f' "$G41_CL" | grep -c '^### Fixed — .*(D412)$') $(awk '/^## \[1\.43\.2\]/{f=1;next} f&&/^### /{s=$0; sub(/.*\(/, "", s); sub(/\)$/, "", s); print s; exit}' "$G41_CL")"
+
+  rm -rf "$G41_X"
+  assert_eq "41z: the break-it cases left the real files untouched" "$G41_SUM_BEFORE" \
+    "$(cksum < "$G41_EN") $(cksum < "$G41_CL")"
+else
+  echo "  SKIP: Test Group 41 (stride-enriching-tasks, the changelog or jq is missing)"
+fi
+
+# ============================================================================
+# Test Group 42: W2689 -- the [1.43.2] entry accounts for every 1.43.1 Known
+# issue
+# ============================================================================
+# The 1.43.2 release entry lists how each 1.43.1 Known issue stands, as the
+# 1.43.1 entry does for 1.43.0. 42a-42c run Group 35's counter with the
+# versions 1.43.2 and 1.43.1: one status bullet per 1.43.1 Known-issues
+# bullet, every bullet labelled "— fixed" or "— partly fixed", and the first
+# sentence's counts matching the bullets. They check labels and counts, never
+# whether a "fixed" is true. 42d checks the entry carries one heading per
+# task that shipped -- D407, D408, D409, D410, D411, W2688 and D412 -- so a
+# task whose commit changed no changelog (D408 changed only RELEASE.md) is
+# still named; 42e checks D408's heading and the line its runner proposed in
+# its completion notes appear once each in the entry. 42n1-42n6 mutate copies
+# of the changelog and show each check can fail; 42z checks the real file is
+# left untouched.
+# Reuses Group 27's g27_mut and Group 35's g35_counts, g35_a, g35_b and g35_c.
+echo ""
+echo "=== Test Group 42: the [1.43.2] entry accounts for every 1.43.1 Known issue (W2689) ==="
+
+G42_CL="$PORT_ROOT/CHANGELOG.md"
+G42_D408_LINE='- RELEASE.md step 2 now says the catalog secret scan stages the re-vendored tree and scans the index as well as history (D408).'
+# g42_slice <changelog>: the lines of the [1.43.2] entry
+g42_slice() { awk '/^## \[1\.43\.2\]/{f=1;next} f&&/^## \[/{exit} f' "$1"; }
+# g42_tasks <changelog>: "yes" when the entry has exactly one heading per shipped task
+g42_tasks() {
+  local id sl; sl=$(g42_slice "$1")
+  for id in D407 D408 D409 D410 D411 W2688 D412; do
+    [ "$(printf '%s\n' "$sl" | grep -c "^### .*($id)\$")" = "1" ] || { echo no; return; }
+  done
+  echo yes
+}
+# g42_d408 <changelog>: "<D408 headings> <D408 proposed lines>" in the entry
+g42_d408() {
+  local sl; sl=$(g42_slice "$1")
+  echo "$(printf '%s\n' "$sl" | grep -c '^### Changed — .*(D408)$') $(printf '%s\n' "$sl" | grep -cF -- "$G42_D408_LINE")"
+}
+if [ -f "$G42_CL" ]; then
+  G42_SUM_BEFORE=$(cksum < "$G42_CL")
+  G42_REAL=$(g35_counts "$G42_CL" 1.43.2 1.43.1)
+  assert_eq "42a: the [1.43.2] status list has one bullet per 1.43.1 Known issue" "yes" "$(printf '%s\n' "$G42_REAL" | g35_a)"
+  assert_eq "42b: every status bullet opens with fixed or partly fixed" "yes" "$(printf '%s\n' "$G42_REAL" | g35_b)"
+  assert_eq "42c: the entry's first sentence counts the fixed and partly fixed bullets" "yes" "$(printf '%s\n' "$G42_REAL" | g35_c)"
+  assert_eq "42d: the [1.43.2] entry has one heading for each of D407, D408, D409, D410, D411, W2688 and D412" "yes" "$(g42_tasks "$G42_CL")"
+  assert_eq "42e: the [1.43.2] entry carries D408's heading and its proposed RELEASE.md line once each" "1 1" "$(g42_d408 "$G42_CL")"
+  G42_TMP="$TMPDIR_TEST/g42"; mkdir -p "$G42_TMP"; G42_M="$G42_TMP/cl.md"
+  # g42_neg <label> <check fn> <old> <new>: the mutated copy must fail the check
+  g42_neg() {
+    if [ "$(g27_mut "$G42_CL" "$G42_M" "$3" "$4")" = "MISSING" ]; then
+      assert_eq "$1 (mutation target present)" "present" "MISSING"
+    else
+      assert_eq "$1" "no" "$(g35_counts "$G42_M" 1.43.2 1.43.1 | "$2")"
+    fi
+  }
+  g42_neg "42n1: break-it -- a status list missing one bullet fails 42a" g35_a \
+    '- **`exploratory_outcomes_ok` exempts a report that carries a root `verify` key** — fixed by D407.' \
+    '`exploratory_outcomes_ok` exempts a report that carries a root `verify` key — fixed by D407.'
+  G42_LAST="- **Group 34's runtime cases 34k5 to 34k10 have no break-it of their own** beyond the 34k4 control"
+  g42_neg "42n2: break-it -- an eighth 1.43.1 Known issue with no status bullet fails 42a" g35_a \
+    "$G42_LAST" "- **One more 1.43.1 issue.**
+$G42_LAST"
+  g42_neg "42n3: break-it -- a status bullet worded around the label fails 42b" g35_b \
+    '** — partly fixed by D412. ' '** — mostly addressed by D412. '
+  g42_neg "42n4: break-it -- a partial fix relabelled fixed fails 42c" g35_c \
+    '** — partly fixed by D412. ' '** — fixed by D412. '
+  if [ "$(g27_mut "$G42_CL" "$G42_M" 'secret scan as it now runs (D408)' 'secret scan as it now runs')" = "MISSING" ]; then
+    assert_eq "42n5: break-it (mutation target present)" "present" "MISSING"
+  else
+    assert_eq "42n5: break-it -- an entry whose D408 heading loses its id fails 42d and 42e" "no 0 1" "$(g42_tasks "$G42_M") $(g42_d408 "$G42_M")"
+  fi
+  if [ "$(g27_mut "$G42_CL" "$G42_M" "$G42_D408_LINE" '- RELEASE.md step 2 changed (D408).')" = "MISSING" ]; then
+    assert_eq "42n6: break-it (mutation target present)" "present" "MISSING"
+  else
+    assert_eq "42n6: break-it -- an entry without D408's proposed line fails 42e" "1 0" "$(g42_d408 "$G42_M")"
+  fi
+  assert_eq "42z: the break-it cases left the real changelog untouched" "$G42_SUM_BEFORE" "$(cksum < "$G42_CL")"
+else
+  echo "  SKIP: Test Group 42 (the changelog is missing)"
 fi
 
 echo ""

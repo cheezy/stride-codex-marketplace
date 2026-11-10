@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Top-level smoke-test runner for the stride-codex-exploratory-testing plugin.
 #
-# Runs every lib/test-*.sh check (structure + frontmatter) and aggregates
+# Runs every lib/test-*.sh check (structure, frontmatter and interrupt) and aggregates
 # the result. Pure shell — no network, no jq. Use this as the single entry
 # point to gate a release:
 #
@@ -13,7 +13,7 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-TESTS="test-structure.sh test-frontmatter.sh"
+TESTS="test-structure.sh test-frontmatter.sh test-interrupt.sh"
 
 RAN=0
 FAILED=0

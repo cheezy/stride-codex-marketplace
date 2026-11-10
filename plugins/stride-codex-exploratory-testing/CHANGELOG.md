@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.3] - 2026-11-10
+
+A fix to the PowerShell structure suite and two new interrupt tests, from D413 (`6af4319`), the one commit since 0.4.2. It resolves the second of 0.4.2's *Known issues*. No agent, skill, installer or manifest key changed. Both structure suites still run 415 checks each, with identical labels in bash and PowerShell, and each `test-all` runner now also runs its own interrupt script, `lib/test-interrupt.sh` from `test-all.sh` and `lib/test-interrupt.ps1` from `test-all.ps1`. The release commit bumps `.codex-plugin/plugin.json` to 0.4.3 and renames the `[Unreleased]` heading D413 added to this one, so the newest version is the first heading, as at 0.4.2.
+
+### Fixed
+
+- **`lib/test-structure.ps1` now exits non-zero when it is interrupted** (D413). This resolves the second of 0.4.2's *Known issues*: `pwsh -File` treated `SIGINT` as a normal exit, so an interrupted run exited 0 even after a check had failed. Everything after three flags now runs inside one `try`, and its `finally` makes every exit. A run that reaches the end records its own 0 or 1 before it marks itself finished, and the `finally` exits with that code, so no interrupt can land between the two; its 415 check labels are unchanged. An interrupt exits 130, as the bash suite's `INT` trap does. An uncaught error still exits 1 and writes its text and position, now written by the suite rather than in PowerShell's own error view. An interrupt that lands while PowerShell is loading a module surfaces as such an error, so it exits 1 rather than 130, which is still not 0. The one check that makes a temporary file now creates it inside its `try` and removes it with `[IO.File]::Delete` rather than `Remove-Item`, a cmdlet an interrupt could stop, so an interrupted run leaves it behind no longer. Both suites' header comments now list the interrupt exit codes; the bash suite's behaviour is unchanged. The 0.4.2 entry is left as it was written.
+
+### Added
+
+- **`lib/test-interrupt.sh` and `lib/test-interrupt.ps1`** (D413), run by both `test-all` runners, with identical labels. Each runs `lib/test-structure.ps1` in the background against scratch copies of the plugin and checks eight things: a completed run exits 0, or 1 when a check fails; a run sent `SIGINT` during its first check, mid-run, after a failing check, or after its last check prints no summary and exits non-zero; those interrupted runs leave nothing in their `TMPDIR`; and a run sent `SIGTERM` exits non-zero. Each signal is sent when a line the run prints appears rather than after a fixed delay, and the after-the-last-check case pauses its own copy before the summary. Both skip, exiting 0, on Windows, and the bash one also when `pwsh` is not installed.
+
+### Known issues
+
+- **A `SIGINT` that arrives before `pwsh` starts running the script still exits 0.** While the host starts up and parses the file, roughly the first 0.3 seconds on the machine where this was checked, none of the script has run, so nothing in it can catch the signal. A signal earlier still can be ignored, and the run then completes and reports its own result. A run started with `SIGINT` ignored, as a non-interactive shell starts a background job without job control, never sees the signal either, and also completes.
+- **`SIGTERM` and `SIGHUP` are not handled by the suite.** `pwsh` is ended by the signal with a non-zero status (143 or 129 in a shell), as at 0.4.2, but no `finally` block runs, so a run stopped this way during the one check that makes a temporary file can leave that file behind. The .NET runtime and `pwsh` also leave entries of their own in `TMPDIR`: two `clr-debug-pipe-*` files and a `dotnet-diagnostic-*` one, and after `SIGHUP` a `CoreFxPipe_PSHost.*` one too.
+- **Checked on macOS only.** The interrupt handling was checked with `pwsh` 7.6 by sending signals to background runs; Windows PowerShell, and Ctrl-C at a Windows console, were not tried, and both interrupt tests skip on Windows.
+- The first of 0.4.2's *Known issues*, that neither command-skill passes a `change context`, and 0.3.1's two are still open.
+
 ## [0.4.2] - 2026-11-10
 
 A fix to the bash structure suite and two command-skill changes, from W2686 (`955f6c3`), the one commit since 0.4.1. No agent, installer or other skill changed. Both structure suites now run 415 checks each, with identical labels in bash and PowerShell. The release commit bumps `.codex-plugin/plugin.json` to 0.4.2 and renames the `[Unreleased]` heading W2686 added to this one, so the newest version is the first heading, as at 0.4.1 and 0.4.0.

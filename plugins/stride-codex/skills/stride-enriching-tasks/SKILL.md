@@ -212,16 +212,48 @@ After enrichment is complete, submit via `POST /api/tasks`:
 
 `POST /api/tasks` takes a **request envelope**: the enriched task fields go under the `task` root key, and `agent_name` rides at the **top level, beside it** — set to `"Codex CLI"`, the exact same plain agent name sent as `agent_name` on claim and complete. A bare task object is rejected with `422 Missing 'task' key`.
 
+**Write the enriched fields to a file first — never into a shell literal (D412).** Every enriched field is free text drawn from the task and the codebase — a pitfall, a description, a `patterns_to_follow` line — so any of them can hold a single quote, a `$(...)` or a backtick. Inside a `-d` body written as a single-quoted shell string, a single quote ends that string: the request breaks, or the text after it runs as shell. So the task object never travels through the command line. **Write it with your file-editing tool** — exactly the JSON object the `task-enricher` agent returned, or the fields you enriched by hand, with no `task` envelope around it — to `.stride/.enrich-new.json` under the project root. The block below finds that root by the same walk-up as the completion block, builds the envelope with `jq --slurpfile` into `.stride/.enrich-body-new.json`, sends it with `-d @file`, and removes the body file afterwards. `agent_name` stays on `--arg` because you choose it, not the task. The block refuses to send, with one `not submitting:` line that names the path and the reason and with no request, when the root is unresolved, when `.stride/` is missing or a symlink, when the fields file is missing or a symlink, when the body file or the response file is a symlink, when the fields file is not valid UTF-8 (checked with `iconv` where it is installed), or when it is not exactly one JSON object holding at least one field and no `task` key. A field you set to `""`, `[]` or `null` is sent as that value, so leave out a field you are not changing. When `curl` itself fails, the block removes the body file and exits with `curl`'s status, naming the response file.
+
 ```bash
-curl -s -X POST \
-  -H "Authorization: Bearer $STRIDE_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "agent_name": "Codex CLI",
-    "task": {...enriched task JSON...}
-  }' \
-  $STRIDE_API_URL/api/tasks
+ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  d=$PWD
+  while [ "$d" != "/" ]; do
+    [ -f "$d/.stride.md" ] && { ROOT=$d; break; }
+    d=$(dirname "$d")
+  done
+fi
+# CDPATH= keeps cd from printing a CDPATH-resolved path into ROOT.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
+EN="$ROOT/.stride/.enrich-new.json"
+BODY="$ROOT/.stride/.enrich-body-new.json"
+RESP="$ROOT/.stride/.enrich-response-new.json"
+EN_WHY=''
+if [ -z "$ROOT" ]; then EN_WHY='no project root: set CODEX_PROJECT_DIR, or run this below the directory holding .stride.md'
+elif [ ! -d "$ROOT/.stride" ] || [ -L "$ROOT/.stride" ]; then EN_WHY="$ROOT/.stride is missing or a symlink"
+elif [ ! -f "$EN" ] || [ -L "$EN" ]; then EN_WHY="$EN is missing or a symlink"
+elif [ -L "$BODY" ] || [ -L "$RESP" ]; then EN_WHY="$BODY or $RESP is a symlink"
+elif command -v iconv >/dev/null 2>&1 && ! iconv -f UTF-8 -t UTF-8 "$EN" >/dev/null 2>&1; then EN_WHY="$EN is not valid UTF-8"
+elif ! jq -se 'length == 1 and (.[0] | type) == "object" and (.[0] | length) > 0 and (.[0] | has("task") | not)' "$EN" >/dev/null 2>&1; then
+  EN_WHY="$EN is not exactly one JSON object holding at least one field and no task key"
+fi
+if [ -n "$EN_WHY" ]; then
+  echo "not submitting: $EN_WHY" >&2; false
+elif ! jq -n --arg agent_name 'Codex CLI' --slurpfile t "$EN" '{agent_name: $agent_name, task: $t[0]}' > "$BODY"; then
+  rm -f "$BODY"; echo 'not submitting: could not build the request body' >&2; false
+else
+  curl -sS -A 'curl/8.7.1' -X POST "$STRIDE_API_URL/api/tasks" \
+    -H "Authorization: Bearer $STRIDE_API_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d @"$BODY" \
+    | tee "$RESP"
+  EN_RC=${PIPESTATUS[0]}
+  rm -f "$BODY"
+  [ "$EN_RC" -eq 0 ] || { echo "curl exited $EN_RC, so the request may not have been sent: see $RESP" >&2; false; }
+fi
 ```
+
+Keep the response on stdout — no `-o`, no redirect, and no pipe but the `| tee`, which also leaves a copy under `.stride/` to read the new identifier from. Delete `.stride/.enrich-new.json` once the response shows the task was created; on a `422`, fix the field in that file and run the block again.
 
 See the **Request Envelope** section in `stride-creating-tasks` for the full contract, including the five-step attribution order and why `agent_name` is display metadata only, never an authorization signal.
 
@@ -231,27 +263,54 @@ If a task already exists in Stride with minimal fields, use `PATCH /api/tasks/:i
 
 `PATCH /api/tasks/:id` needs the **same `task` root key** — a bare field object is rejected with `422 Missing 'task' key`. It takes **no `agent_name`**: attribution is create-only, and `created_by_agent` is forbidden on `PATCH`, so an existing task's attribution cannot be changed here.
 
+The enriched fields travel the same way as on `POST`: **never inside a single-quoted `-d` body (D412).** Write the fields you are adding — for example `key_files`, `testing_strategy`, `security_considerations`, `patterns_to_follow`, `verification_steps`, `pitfalls`, `acceptance_criteria`, `where_context`, `complexity`, `why` and `what`, as one JSON object with no `task` envelope — with your file-editing tool to `.stride/.enrich-<numeric id>.json` under the project root. Write the task's numeric id into the block's first line, inside the single quotes, only when it is already a plain run of digits; the block blanks anything else and then refuses. It wraps the file in the `task` key with `jq --slurpfile` into `.stride/.enrich-body-<numeric id>.json`, sends it with `-d @file`, and removes the body file afterwards, with the same refusals and the same `curl` failure line as the `POST` block, plus a refusal for an unusable id. Leave out any field you are not changing: a field sent as `""`, `[]` or `null` replaces what the task already holds.
+
 ```bash
-curl -s -X PATCH \
-  -H "Authorization: Bearer $STRIDE_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task": {
-      "key_files": [...],
-      "testing_strategy": {...},
-      "security_considerations": [...],
-      "patterns_to_follow": "...",
-      "verification_steps": [...],
-      "pitfalls": [...],
-      "acceptance_criteria": "...",
-      "where_context": "...",
-      "complexity": "medium",
-      "why": "...",
-      "what": "..."
-    }
-  }' \
-  $STRIDE_API_URL/api/tasks/:id
+EN_ID='<numeric id>'
+# LC_ALL=C: the allow-list below then matches ASCII digits only, on bash 3.2 too.
+LC_ALL=C
+case "$EN_ID" in ''|*[!0-9]*) EN_ID='' ;; esac
+[ "${#EN_ID}" -le 20 ] || EN_ID=''
+ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  d=$PWD
+  while [ "$d" != "/" ]; do
+    [ -f "$d/.stride.md" ] && { ROOT=$d; break; }
+    d=$(dirname "$d")
+  done
+fi
+# CDPATH= keeps cd from printing a CDPATH-resolved path into ROOT.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
+EN="$ROOT/.stride/.enrich-$EN_ID.json"
+BODY="$ROOT/.stride/.enrich-body-$EN_ID.json"
+RESP="$ROOT/.stride/.enrich-response-$EN_ID.json"
+EN_WHY=''
+if [ -z "$ROOT" ]; then EN_WHY='no project root: set CODEX_PROJECT_DIR, or run this below the directory holding .stride.md'
+elif [ -z "$EN_ID" ]; then EN_WHY='no usable numeric id on the first line'
+elif [ ! -d "$ROOT/.stride" ] || [ -L "$ROOT/.stride" ]; then EN_WHY="$ROOT/.stride is missing or a symlink"
+elif [ ! -f "$EN" ] || [ -L "$EN" ]; then EN_WHY="$EN is missing or a symlink"
+elif [ -L "$BODY" ] || [ -L "$RESP" ]; then EN_WHY="$BODY or $RESP is a symlink"
+elif command -v iconv >/dev/null 2>&1 && ! iconv -f UTF-8 -t UTF-8 "$EN" >/dev/null 2>&1; then EN_WHY="$EN is not valid UTF-8"
+elif ! jq -se 'length == 1 and (.[0] | type) == "object" and (.[0] | length) > 0 and (.[0] | has("task") | not)' "$EN" >/dev/null 2>&1; then
+  EN_WHY="$EN is not exactly one JSON object holding at least one field and no task key"
+fi
+if [ -n "$EN_WHY" ]; then
+  echo "not submitting: $EN_WHY" >&2; false
+elif ! jq -n --slurpfile t "$EN" '{task: $t[0]}' > "$BODY"; then
+  rm -f "$BODY"; echo 'not submitting: could not build the request body' >&2; false
+else
+  curl -sS -A 'curl/8.7.1' -X PATCH "$STRIDE_API_URL/api/tasks/$EN_ID" \
+    -H "Authorization: Bearer $STRIDE_API_TOKEN" \
+    -H 'Content-Type: application/json' \
+    -d @"$BODY" \
+    | tee "$RESP"
+  EN_RC=${PIPESTATUS[0]}
+  rm -f "$BODY"
+  [ "$EN_RC" -eq 0 ] || { echo "curl exited $EN_RC, so the request may not have been sent: see $RESP" >&2; false; }
+fi
 ```
+
+Delete `.stride/.enrich-<numeric id>.json` once the response shows the fields landed; on a `422`, fix the field in that file and run the block again.
 
 **Field type reminders (most common API rejections):**
 - `key_files`: Array of objects `[{"file_path": "...", "note": "...", "position": 0}]`

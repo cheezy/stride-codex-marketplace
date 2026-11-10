@@ -107,7 +107,7 @@ Use when you've finished implementing a Stride task and are ready to mark it com
 - [ ] **Is `workflow_steps` included in the complete payload?** If no → add it now. The array is required on every completion. It must contain one entry for each of the six step names (`explorer`, `planner`, `implementation`, `reviewer`, `after_doing`, `before_review`) — see the stride-workflow skill for the schema.
 - [ ] **Are `explorer_result` and `reviewer_result` included?** If no → add them now. Both are required on every completion, either as a dispatched-custom-agent result or as a self-reported skip with a reason from the fixed enum. See the Explorer/Reviewer Result Schema section below.
 - [ ] **Does `reviewer_result` carry the reviewer's full structured block, verbatim?** If a `task-reviewer` custom agent ran, `reviewer_result` must include the **entire** emitted JSON block — `status`, `issue_counts`, `issues[]`, `acceptance_criteria[]`, `project_checks[]`, and the section verdicts — produced by a mechanical **whole-object copy** of the parsed JSON (`reviewer_result = dict(structured)` then overlay legacy fields), NOT by hand-typing or sub-selecting keys. **Run the mandatory self-check before submitting (see the orchestrator's "Extracting the structured review block"): every section the reviewer produced must be present, and the submitted `project_checks` count must equal the count the reviewer emitted.** Hand-typing, re-typing, or a subset shortcut is FORBIDDEN — no exceptions, no small-task discount. Never re-enumerate which keys to copy; the structured key-set is owned by `agents/task-reviewer.md`. (A missing or trimmed `project_checks` leaves the Review queue's Code review panel silently empty — and is now hard-rejected by the server contract.)
-- [ ] **Did you embed `.stride-changed-files.json` into the payload as `changed_files`?** Read it INLINE inside the same shell invocation as the completion curl via `--argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '[]')"`. Use the absolute `$CLAUDE_PROJECT_DIR` path (not a relative `.stride-changed-files.json`) — a non-root agent CWD silently misses the file otherwise. In Codex CLI the snapshot is produced manually by the same `after_doing` hook commands the agent just ran; reading it in an earlier shell turn would pick up a stale snapshot from a prior task. See the Per-File Diff Capture (Manual) section below for the capture pattern.
+- [ ] **Did you embed `.stride-changed-files.json` into the payload as `changed_files`?** Read it INLINE inside the same shell invocation as the completion curl — the [API Request Format](#api-request-format) block does it for you: it reads `$ROOT/.stride-changed-files.json` from the project root it resolved (never a relative `.stride-changed-files.json`, which a non-root agent CWD silently misses), sends `[]` when the file is absent, and refuses to send, on one line, when the file is a symlink or is present but not exactly one JSON array (D411). In Codex CLI the snapshot is produced manually by the same `after_doing` hook commands the agent just ran; reading it in an earlier shell turn would pick up a stale snapshot from a prior task. See the Per-File Diff Capture (Manual) section below for the capture pattern.
 
 **If ANY answer is NO → Go back and do it now. Do NOT proceed to completion.** Why the checklist exists: `docs/completion-rationale.md` § The Steps Agents Dropped Under Pressure.
 
@@ -304,6 +304,8 @@ section below.
 ```bash
 OC_IDENT='<identifier>'
 OC_ID='<numeric id>'
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
 case "$OC_IDENT" in ''|*[!A-Za-z0-9_-]*) OC_IDENT='' ;; esac
 [ "${#OC_IDENT}" -le 64 ] || OC_IDENT=''
 case "$OC_ID" in ''|*[!0-9]*) OC_ID='' ;; esac
@@ -317,17 +319,23 @@ if [ -z "$ROOT" ]; then
     d=$(dirname "$d")
   done
 fi
+# CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
 OC="$ROOT/.stride/.outcomes-$OC_STEM.json"
+CF="$ROOT/.stride-changed-files.json"
+CF_JSON='[]'
 if [ -z "$ROOT" ] || [ -z "$OC_STEM" ] || [ ! -d "$ROOT/.stride" ] || [ -L "$ROOT/.stride" ] \
    || [ ! -f "$OC" ] || [ -L "$OC" ] \
    || ! jq -se 'length == 1 and (.[0] | type) == "object" and (.[0].completion_notes | type) == "string" and (.[0].completion_summary | type) == "string"' "$OC" >/dev/null 2>&1; then
   echo 'completion text file missing, malformed or a symlink: not submitting' >&2; false
+elif [ -L "$CF" ] || { [ -e "$CF" ] && ! CF_JSON=$(jq -sce 'if length == 1 and (.[0] | type) == "array" then .[0] else error end' "$CF" 2>/dev/null); }; then
+  echo 'changed-files snapshot is a symlink or not one JSON array: not submitting (re-run the capture, or delete the file to send [])' >&2; false
 else
-( cd "$ROOT" && curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
+( CDPATH= cd -- "$ROOT" && curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
   -H "Authorization: Bearer $STRIDE_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d "$(jq -n \
-    --argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '[]')" \
+    --argjson cf "$CF_JSON" \
     --slurpfile oc "$OC" \
     --arg agent_name 'Codex CLI' \
     --arg complexity 'small' \
@@ -339,27 +347,28 @@ else
        actual_files_changed: $files,
        changed_files: $cf
      }')" \
-  | tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json" )
+  | tee "$ROOT/.stride/.last-api-response.json" )
 fi
 ```
 
-Write this task's identifier and numeric id into the block's first two lines, inside the single quotes, only when each is already a plain token, exactly as in Step 8's block. The block changes into that root in a subshell before the curl, so the changed-files read and the `| tee` capture land there too when it runs from a subdirectory, and your shell's own directory is left as it was; a refusal prints one line and exits non-zero. `agent_name`, `complexity` and `files` stay on `--arg` because you choose them, not the application; never move a free-text field back onto one, or into the jq filter.
+Write this task's identifier and numeric id into the block's first two lines, inside the single quotes, only when each is already a plain token, exactly as in Step 8's block. The block changes into that root in a subshell before the curl, so the changed-files read and the `| tee` capture land there too when it runs from a subdirectory, and your shell's own directory is left as it was; a refusal prints one line and exits non-zero. **The root is made absolute before anything is read from it (D411)** — `CDPATH= cd -- "$ROOT" && pwd -P` — so a relative `CODEX_PROJECT_DIR` or `CLAUDE_PROJECT_DIR` names the same directory before and after the `cd`, and the changed-files read and the `| tee` use that root, never `${CLAUDE_PROJECT_DIR:-.}`, so they follow the `cd` even when the two variables differ. **The changed-files snapshot is checked before it is sent (D411):** a missing `.stride-changed-files.json` still sends `changed_files: []`, but a snapshot that is a symlink, or is present and is not exactly one JSON array — an object, an empty file, a truncated write, two documents — stops the block with one line, `changed-files snapshot is a symlink or not one JSON array: not submitting …`, and no curl, where it used to make `jq` fail mid-command and send an empty body, or send the wrong shape. Re-run the capture, or delete the file to send `[]`. `agent_name`, `complexity` and `files` stay on `--arg` because you choose them, not the application; never move a free-text field back onto one, or into the jq filter.
 
 **After Step 6.5, send the strings you checked.** The file above is the same file `stride-workflow` Step 8 checks — one file, one stem, one cleanup line — so there is nothing to reconcile and nothing to swap: write it once, with your file-editing tool, before Step 8's block runs, and make the call above only after `exploratory_outcomes_ok` printed `true`, so the notes and summary sent are byte for byte the ones the check read. The checker reads only `completion_notes` and `completion_summary`, so the other keys in the same file change no verdict. If you fix a line after a `false`, fix it in that file, never in a second copy. A missing or malformed file fails closed: the guard refuses to send.
 
 **Capture the response to the canonical file.** The `| tee` above writes the
 full, untruncated `/complete` response to
-`${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` **and** passes it
+`.stride/.last-api-response.json` under the block's project root **and** passes it
 through to stdout, so you still see the response inline. Codex CLI has no
 plugin hook reading your stdout — the capture is a durable record **you** can
 `cat` when the echoed response is truncated in your own context, which is
 exactly what the manual after_goal detection step below needs to inspect the
-full `hooks` array. Ensure the directory exists first
-(`mkdir -p "${CLAUDE_PROJECT_DIR:-.}/.stride"`). The same capture applies to
+full `hooks` array. The block's guard already requires `.stride/` to exist
+under that root. The same capture applies to
 the `/mark_reviewed` curl in the `needs_review=true` path — when you invoke
-`/mark_reviewed`, pipe its response through the identical
-`| tee "${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"` so
-after_goal detection works the same way after a review approval.
+`/mark_reviewed`, resolve the root with the block's own `ROOT` lines and pipe its
+response through the identical `| tee "$ROOT/.stride/.last-api-response.json"`,
+so after_goal detection, which resolves the root the same way, reads the file
+that curl wrote, whichever directory either runs from (D411).
 
 **Portability — `tee`-less shells.** `tee` is the one blessed pipe here (it
 preserves stdout while writing the file). Where `tee` is unavailable, **skip
@@ -437,7 +446,7 @@ match the `--arg` / `--argjson` / `--slurpfile` substitutions above):
 
 **Critical:** `after_doing_result`, `before_review_result`, `explorer_result`, `reviewer_result`, and `workflow_steps` are all REQUIRED. The API will reject requests without them.
 
-**Optional:** Include `changed_files` whenever `.stride-changed-files.json` exists in the project root — read it INLINE inside the same shell invocation as the completion curl (see the bash example above and the [Per-File Diff Capture (Manual)](#per-file-diff-capture-manual) section below). The `|| echo '[]'` fallback produces an empty array when the snapshot is absent or unreadable; emitting `changed_files: []` is a valid completion. The encoding rules (500-line truncation marker, binary placeholder, `{path, diff}` shape) live in `docs/diff-contract.md` and should not be duplicated into the example.
+**Optional:** Include `changed_files` whenever `.stride-changed-files.json` exists in the project root — read it INLINE inside the same shell invocation as the completion curl (see the bash example above and the [Per-File Diff Capture (Manual)](#per-file-diff-capture-manual) section below). The block sends an empty array when the snapshot is absent, and refuses to send, on one line, when it is present but not exactly one JSON array (D411); emitting `changed_files: []` is a valid completion. The encoding rules (500-line truncation marker, binary placeholder, `{path, diff}` shape) live in `docs/diff-contract.md` and should not be duplicated into the example.
 
 ## Per-File Diff Capture (Manual)
 
@@ -464,8 +473,9 @@ capture function lives in
 **at v1.36.0 or later** —
 source it from your shell, then call
 `capture_changed_files "$(cat .stride/task-base-ref)"` (the base ref persisted
-after before_doing — see below) and redirect to
-`$CLAUDE_PROJECT_DIR/.stride-changed-files.json`. The
+after before_doing — see below) and write
+`.stride-changed-files.json` under the project root, found as the completion
+block finds it (the lines below do both). The
 function handles working-tree-relative semantic, untracked-new-file
 synthesis, binary detection, and 500-line truncation per the contract.
 
@@ -484,9 +494,17 @@ mix credo --strict
 # from stride/hooks/stride-hook.sh AT v1.36.0 OR LATER (the block between the
 # `# --- Per-file diff capture` banner and the next `# ---` banner) into your own
 # script at any location you choose, then point CAPTURE_SCRIPT at it.
-bash -c 'source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.sh}" && \
-  capture_changed_files "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride/task-base-ref" 2>/dev/null || echo HEAD~1)" \
-  > "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || true'
+# (D411) The root is found exactly as the completion block finds it, so the
+# snapshot lands where that block reads it from any working directory. It is
+# written to a temporary file and renamed only on success, and a failed capture
+# removes the old snapshot, so it leaves no file -- never an empty, partial or
+# previous task's one -- and the completion then sends changed_files: [].
+bash -c 'ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"; if [ -z "$ROOT" ]; then d=$PWD; while [ "$d" != "/" ]; do [ -f "$d/.stride.md" ] && { ROOT=$d; break; }; d=$(dirname "$d"); done; fi; \
+  [ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"; [ -n "$ROOT" ] || exit 0; \
+  if source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.sh}" && \
+    capture_changed_files "$(cat "$ROOT/.stride/task-base-ref" 2>/dev/null || echo HEAD~1)" > "$ROOT/.stride-changed-files.json.tmp" 2>/dev/null; \
+  then mv -f "$ROOT/.stride-changed-files.json.tmp" "$ROOT/.stride-changed-files.json"; \
+  else rm -f "$ROOT/.stride-changed-files.json.tmp" "$ROOT/.stride-changed-files.json"; fi; true'
 ```
 
 **Base-ref warning (D142/D132).** The `HEAD~1` fallback applies only when
@@ -532,13 +550,16 @@ Codex because Codex agents often complete short tasks without an
 intermediate commit.
 
 **Why inline?** When you assemble the completion curl, read the snapshot
-INSIDE the same shell invocation via `jq -n --argjson cf "$(cat
-"${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo
-'[]')"`. The snapshot was written during the `after_doing` block you
+INSIDE the same shell invocation, as the [API Request Format](#api-request-format)
+block does: it checks `$ROOT/.stride-changed-files.json` with `jq` and passes
+it as `--argjson cf "$CF_JSON"`, `[]` when the file is absent. The snapshot was
+written during the `after_doing` block you
 JUST ran — reading it in an earlier shell turn (before you ran
-`after_doing`) would pick up a stale snapshot from a prior task. Using
-the absolute `$CLAUDE_PROJECT_DIR` path guards against the agent's CWD
-being something other than the project root.
+`after_doing`) would pick up a stale snapshot from a prior task. Reading it
+from the block's absolute project root guards against the agent's CWD
+being something other than the project root, and the check keeps an empty,
+truncated or non-array snapshot from reaching `--argjson`, where it used to
+make `jq` fail mid-command and send an empty body (D411).
 
 A fragment, not a command — the `text` fence is deliberate:
 
@@ -547,8 +568,8 @@ curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
   -H "Authorization: Bearer $STRIDE_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d "$(jq -n \
-    --argjson cf "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || echo '[]')" \
-    --slurpfile oc "${CLAUDE_PROJECT_DIR:-.}/.stride/.outcomes-<IDENTIFIER>.json" \
+    --argjson cf "$CF_JSON" \
+    --slurpfile oc "$ROOT/.stride/.outcomes-$OC_STEM.json" \
     '$oc[0] + {
        changed_files: $cf,
        actual_complexity: "small"
@@ -558,8 +579,11 @@ curl -X PATCH "$STRIDE_API_URL/api/tasks/$TASK_ID/complete" \
 This fragment shows only where `changed_files` sits. Every free-text field comes from the file you wrote with your file-editing tool, exactly as in [API Request Format](#api-request-format) — send the full block from there, with its root and stem lines, its missing-file, malformed-file and symlink guard and its `| tee`, never this fragment.
 
 If `.stride-changed-files.json` is absent — capture script not vendored,
-non-git project, jq or git missing — the inlined `|| echo '[]'` fallback
-produces an empty array. Empty `changed_files` is a valid shape; the
+non-git project, jq or git missing — the block sends an empty
+array. The capture lines above make that the only failure shape: they write
+to a temporary file and rename it only on success, and a failed capture
+removes the old snapshot, so it never leaves an empty, partial or previous
+task's file for the completion block to refuse or send (D411). Empty `changed_files` is a valid shape; the
 server accepts it. Do NOT synthesize diffs by hand to "fill in" the
 field; emit only what the capture function captured (or `[]`). Both
 shapes below are valid completions:
@@ -632,9 +656,17 @@ mix credo --strict
 # `# --- Per-file diff capture` banner and the next `# ---` banner into your own
 # script and point CAPTURE_SCRIPT at it. (D142) The base ref is read from
 # .stride/task-base-ref (persisted after before_doing), not the env var.
-bash -c 'source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.sh}" && \
-  capture_changed_files "$(cat "${CLAUDE_PROJECT_DIR:-.}/.stride/task-base-ref" 2>/dev/null || echo HEAD~1)" \
-  > "${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json" 2>/dev/null || true'
+# (D411) The root is found exactly as the completion block finds it, so the
+# snapshot lands where that block reads it from any working directory. It is
+# written to a temporary file and renamed only on success, and a failed capture
+# removes the old snapshot, so it leaves no file -- never an empty, partial or
+# previous task's one -- and the completion then sends changed_files: [].
+bash -c 'ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"; if [ -z "$ROOT" ]; then d=$PWD; while [ "$d" != "/" ]; do [ -f "$d/.stride.md" ] && { ROOT=$d; break; }; d=$(dirname "$d"); done; fi; \
+  [ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"; [ -n "$ROOT" ] || exit 0; \
+  if source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.sh}" && \
+    capture_changed_files "$(cat "$ROOT/.stride/task-base-ref" 2>/dev/null || echo HEAD~1)" > "$ROOT/.stride-changed-files.json.tmp" 2>/dev/null; \
+  then mv -f "$ROOT/.stride-changed-files.json.tmp" "$ROOT/.stride-changed-files.json"; \
+  else rm -f "$ROOT/.stride-changed-files.json.tmp" "$ROOT/.stride-changed-files.json"; fi; true'
 # (2) PUT the snapshot to the v1.16.0+ endpoint as the D61 transport-encoded
 # envelope {"changed_files":{"encoding":"base64","data":"<b64>"}} so an edge
 # request filter cannot misread the diff as an attack and drop the upload;
@@ -642,8 +674,12 @@ bash -c 'source "${CAPTURE_SCRIPT:-$HOME/.stride-scripts/capture-changed-files.s
 # unavailable (never a bare array — G174). The inline reads run AFTER step (1)
 # wrote the snapshot. Fire-and-forget — a 4xx/5xx or network failure must NOT
 # fail this after_doing hook.
-_cf="${CLAUDE_PROJECT_DIR:-.}/.stride-changed-files.json"
-if command -v base64 > /dev/null 2>&1; then
+ROOT=$(bash -c 'ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"; if [ -z "$ROOT" ]; then d=$PWD; while [ "$d" != "/" ]; do [ -f "$d/.stride.md" ] && { ROOT=$d; break; }; d=$(dirname "$d"); done; fi; \
+  [ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"; printf "%s" "$ROOT"')
+_cf="$ROOT/.stride-changed-files.json"
+if [ -z "$ROOT" ] || [ ! -f "$_cf" ]; then
+  :  # no root, or step (1) left no snapshot: nothing to PUT
+elif command -v base64 > /dev/null 2>&1; then
   _b64=$(base64 < "$_cf" 2>/dev/null | tr -d '\r\n')
   curl -s -X PUT "$STRIDE_API_URL/api/tasks/$TASK_ID/changed_files" \
     -H "Authorization: Bearer $STRIDE_API_TOKEN" \
@@ -846,7 +882,7 @@ Exploratory coverage: <p> performed, <q> partial, <r> not performed
 Exploratory testing skipped: <why Step 6.5 did not fire>
 ```
 
-- **The key.** `r<N>` is the `<N>` of that charter's `EXPLORATORY_REPORT_PATH` — the last dispatch of it that returned. `u<k>` (`u1`, `u2`, …) is a charter step 1 built but never ran: `not_dispatched` for one refused with `no signed-in surface` or a rendered view the explorer cannot observe, `crashed` for one whose every dispatch crashed or returned nothing. Pairing is by key, never by charter text, which the application can influence.
+- **The key.** `r<N>` is the `<N>` of that charter's `EXPLORATORY_REPORT_PATH` — the last dispatch of it that returned. `u<k>` (`u1`, `u2`, …) is a charter step 1 built but never ran: `not_dispatched` for one refused with `no signed-in surface` or a rendered view the explorer cannot observe, `crashed` for one whose every dispatch crashed or returned nothing. Pairing is by key, never by charter text, which the application can influence. **Every report path passed to the checker is a charter and needs its line:** no key in the report — a root `verify` key included — exempts it, so a record that leaves a line or an owner out for such a report fails, and the skip line is the record only when no report path was passed at all and no `exploratory report path: not sent` line shows that a dispatch ran.
 - **Copy, never judge, the three counted fields.** `stop_reason` is the report's `session_sheet.stop_reason` — `unrecognized` for a value outside the six, `unreadable` when no report and no fence could be read; `probes` is `session_sheet.probes_attempted` (`0` when unreadable); `surfaces` is `session_sheet.surfaces_used` joined by commas, `none` when empty or unreadable, `not recorded` for an explorer older than contract 1.1. A charter dispatched more than once — a re-run after an introduced Critical's fix — has one line, keyed to and copied from its last returned dispatch.
 - **The outcome never claims more than the report supports.** `performed` only for `charter_quiet` or `risk_acceptable`; `partial` at most for any other ending with probes; `not performed` for zero probes, `unreadable` and `no_observation_surface`. A `Visual pass` line for a `no_observation_surface` or `u<k>` charter lifts it to `partial`, never to `performed`. Claiming less is always allowed — a session above zero probes that still measured almost nothing is recorded `not performed`. No stride-codex step runs a visual pass yet, so never write a `Visual pass` line here: the format is kept so the line means the same in both editions.
 - **An owner for every `not performed`.** Either `owner=<identifier>` naming the follow-up filed for it, or `owner=HANDED BACK` plus a `HANDED BACK: <key> …` line saying what a human must do. Step 9 repeats every `HANDED BACK:` line to the user. A manual test or edge case cut by the cap or the budget is not a charter: hand it back on a `HANDED BACK: - …` line.
@@ -908,23 +944,42 @@ When the just-completed task is the **final remaining child of a parent goal**, 
 
 **Because stride-codex's plugin hook script records loop state only and never executes a `.stride.md` section, the agent is responsible for executing after_goal manually.** Five-step path:
 
-1. **Detect (read the canonical file, not your context)**: The `/complete` and `/mark_reviewed` curls wrote the full, untruncated response to `${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` (the `| tee` capture in the API Request Format section above). Read the after_goal entry — **and** its `hook.env` `GOAL_*` values — from that file with `jq`, because your in-context copy of the response may be truncated. Fall back to the in-context response body **only** when the file is absent, empty, or not valid JSON. Re-read these values from the file here rather than trusting env carried across shell turns — the export below does not survive a fresh turn.
+1. **Detect (read the canonical file, not your context)**: The `/complete` and `/mark_reviewed` curls wrote the full, untruncated response to `.stride/.last-api-response.json` under the project root (the `| tee` capture in the API Request Format section above). The block below finds that root with the API Request Format block's own root lines, so it reads the file the curl wrote whichever directory it runs from, never one under your shell's cwd (D411). Read the after_goal entry — **and** its `hook.env` `GOAL_*` values — from that file with `jq`, because your in-context copy of the response may be truncated. Fall back to the in-context response body **only** when the file is absent, empty, or not valid JSON. Write that fallback, with your file-writing tool and fresh for this response, to `.stride/.in-context-response.json` under the same root — never to a shared temp path, where another project or an earlier goal can leave a stale response (D411); with no root there is no fallback and 1a decides. Re-read these values from the file here rather than trusting env carried across shell turns — the export below does not survive a fresh turn.
 
 ```bash
-RESP="${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"
+# The project root, found exactly as the API Request Format block finds it (D411):
+# CODEX_PROJECT_DIR, then CLAUDE_PROJECT_DIR, then the nearest .stride.md above,
+# made absolute -- so this reads the file that block's `| tee` wrote, from any cwd.
+ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  d=$PWD
+  while [ "$d" != "/" ]; do
+    [ -f "$d/.stride.md" ] && { ROOT=$d; break; }
+    d=$(dirname "$d")
+  done
+fi
+# CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
+RESP="$ROOT/.stride/.last-api-response.json"
 # File-first: trust the canonical capture only when it is present, non-empty,
 # AND valid JSON. Otherwise fall back to the response body still visible in
-# your context (paste it into a temp file and point PAYLOAD_SRC at that).
-if [ -s "$RESP" ] && jq -e . "$RESP" > /dev/null 2>&1; then
+# your context (written to .stride/.in-context-response.json under the root, below).
+if [ -n "$ROOT" ] && [ -s "$RESP" ] && jq -e . "$RESP" > /dev/null 2>&1; then
   PAYLOAD_SRC="$RESP"
 else
-  PAYLOAD_SRC="${TMPDIR:-/tmp}/stride-in-context-response.json"  # fallback: the response you can see in context
+  # Fallback (D411): the response you can see in context, written FRESH with your
+  # file-writing tool to this path under the same root -- never a shared temp path
+  # another project or an earlier goal could have left there. No root, no fallback:
+  # PAYLOAD_SRC stays empty and 1a's fresh GET decides.
+  PAYLOAD_SRC=""
+  [ -n "$ROOT" ] && PAYLOAD_SRC="$ROOT/.stride/.in-context-response.json"
+  echo 'after_goal Detect: no usable capture under the project root; reading the in-context fallback, which you must write from this response first (or 1a when there is none)' >&2
 fi
 
 # Isolate the after_goal entry. An empty result has TWO causes, distinguished in 1a below:
 # (a) PAYLOAD_SRC parsed as valid JSON but had no after_goal entry -> lifecycle did not fire;
 # (b) PAYLOAD_SRC was unusable (truncated/absent) -> do NOT assume; run the fresh GET (1a).
-AFTER_GOAL_ENTRY=$(jq -c '.hooks[]? | select(.name == "after_goal")' "$PAYLOAD_SRC")
+AFTER_GOAL_ENTRY=$(jq -c '.hooks[]? | select(.name == "after_goal")' "$PAYLOAD_SRC" 2>/dev/null)
 if [ -n "$AFTER_GOAL_ENTRY" ]; then
   GOAL_ID=$(printf '%s' "$AFTER_GOAL_ENTRY"        | jq -r '.hook.env.GOAL_ID')
   GOAL_IDENTIFIER=$(printf '%s' "$AFTER_GOAL_ENTRY" | jq -r '.hook.env.GOAL_IDENTIFIER')
@@ -942,8 +997,26 @@ fi
 Source every input durably — re-read the URL/token from `.stride_auth.md` (the durable source your setup step already used) and re-derive `TASK_ID` from the captured response file. Never trust a variable an earlier turn exported.
 
 ```bash
+# The project root, found exactly as the API Request Format block finds it (D411):
+# CODEX_PROJECT_DIR, then CLAUDE_PROJECT_DIR, then the nearest .stride.md above,
+# made absolute -- so this reads the file that block's `| tee` wrote, from any cwd.
+ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  d=$PWD
+  while [ "$d" != "/" ]; do
+    [ -f "$d/.stride.md" ] && { ROOT=$d; break; }
+    d=$(dirname "$d")
+  done
+fi
+# CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
+if [ -z "$ROOT" ]; then
+  # No project root: nothing durable to read the URL and token from (D411).
+  echo 'after_goal 1a: no project root found: not checking; run this from inside the project' >&2
+  AFTER_GOAL_ENTRY=""
+else
 # Durable re-read from .stride_auth.md (mirror the setup step) — NOT a prior turn's export.
-AUTH="${CLAUDE_PROJECT_DIR:-.}/.stride_auth.md"
+AUTH="$ROOT/.stride_auth.md"
 STRIDE_API_URL=$(grep -oE 'https?://[^`" ]+' "$AUTH" | head -n1)
 # If .stride_auth.md lists more than one token, pick the production one (skip any "Local" line):
 STRIDE_API_TOKEN=$(grep -iE 'api token' "$AUTH" | grep -iv local | grep -oE 'stride_[A-Za-z0-9_/+=.-]+' | head -n1)
@@ -952,7 +1025,7 @@ TASK_ID=$(jq -r '.data.id // .data.identifier' "$PAYLOAD_SRC" 2>/dev/null)
 
 # Write the compact status straight to the canonical file with -o (no stdout to truncate),
 # then parse from disk.
-STATUS_FILE="${CLAUDE_PROJECT_DIR:-.}/.stride/.after-goal-status.json"
+STATUS_FILE="$ROOT/.stride/.after-goal-status.json"
 curl -s --max-time 10 -o "$STATUS_FILE" \
   -H "Authorization: Bearer $STRIDE_API_TOKEN" \
   "$STRIDE_API_URL/api/tasks/$TASK_ID/after_goal_status"
@@ -971,6 +1044,7 @@ else
   # Not armed, or the GET failed / returned invalid JSON: a clean no-op. Do NOT run
   # ## after_goal and do NOT PATCH. Leave AFTER_GOAL_ENTRY empty and skip steps 2-5.
   AFTER_GOAL_ENTRY=""
+fi
 fi
 ```
 

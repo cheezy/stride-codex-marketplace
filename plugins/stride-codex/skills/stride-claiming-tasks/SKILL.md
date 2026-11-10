@@ -228,8 +228,14 @@ git rev-parse HEAD > .stride/task-base-ref
 # The fix-path baseline (.review-fixbase-*.txt) goes with it: a stale one
 # would measure this attempt's fixes against another attempt's tree.
 RC_IDENT="$TASK_IDENTIFIER"
-case "$RC_IDENT" in *[!A-Za-z0-9_-]*|"") RC_IDENT="$TASK_ID" ;; esac
-case "$RC_IDENT" in *[!A-Za-z0-9_-]*|"") RC_IDENT="unknown" ;; esac
+RC_ID="$TASK_ID"
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
+case "$RC_IDENT" in ''|*[!A-Za-z0-9_-]*) RC_IDENT='' ;; esac
+[ "${#RC_IDENT}" -le 64 ] || RC_IDENT=''
+case "$RC_ID" in ''|*[!0-9]*) RC_ID='' ;; esac
+[ "${#RC_ID}" -le 20 ] || RC_ID=''
+RC_IDENT="${RC_IDENT:-${RC_ID:-unknown}}"
 rm -f "${CLAUDE_PROJECT_DIR:-.}/.stride/.review-rounds-$RC_IDENT.json" \
       "${CLAUDE_PROJECT_DIR:-.}/.stride/.review-fixbase-$RC_IDENT.txt"
 ```

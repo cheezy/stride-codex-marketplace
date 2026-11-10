@@ -64,8 +64,31 @@
     with ConvertFrom-Json — no network, no jq. Mirrors
     lib/test-structure.sh.
 
-    Exit code: 0 if every check passes; 1 if any check fails.
+    Exit code: 0 if every check passes; 1 if any check fails or an error
+    ends the run; 130 if the run is interrupted (Ctrl-C or SIGINT) before it
+    finishes, as the bash twin's INT trap does, or 1 when the interrupt lands
+    while PowerShell is loading a module. A SIGINT that arrives before pwsh
+    has started running this file still exits 0: nothing here has run yet.
+    lib/test-interrupt.ps1 checks that a completed run keeps its 0 or 1 and
+    that an interrupted one never exits 0.
 #>
+
+# An interrupt stops this script, and pwsh -File then exits 0, which a CI job
+# or wrapper would read as a pass. So everything after these flags runs inside
+# one try, left unindented rather than re-indenting some 3,000 lines. The
+# finally makes every exit: a run that reaches the end records its 0 or 1 in
+# $script:ExitCode, then sets $script:Finished, and the finally exits with
+# that code, so no interrupt can land between the flag and the exit. If the
+# try ends any other way, the finally exits 130, unless the catch kept an
+# error record: then it writes that error and exits 1, as an uncaught error
+# did before. (An interrupt that lands while PowerShell is loading a module
+# surfaces as such an error, so it exits 1, still not 0.) The finally uses no
+# cmdlet, which an interrupt could stop before it exits. Inner finally blocks
+# run first, and the one that removes a temporary file uses no cmdlet either.
+$script:Finished = $false
+$script:ExitCode = 1
+$script:Failure = $null
+try {
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -1080,14 +1103,15 @@ if ($contractReady -and $contract -ne '') {
 
         # A report value carrying a control character reaches the failure
         # detail escaped, never as a raw terminal sequence.
-        $ctlFile = [IO.Path]::GetTempFileName()
+        $ctlFile = $null
         try {
+            $ctlFile = [IO.Path]::GetTempFileName()
             [IO.File]::WriteAllText($ctlFile, '{"contract_version": "1.1\u001b[31m"}')
             $ctlDetails = @()
             foreach ($r in (Invoke-WithExplorerOutput $ctlFile)) {
                 if (-not $r[0] -and $r[1] -ceq 'EXPLORER_OUTPUT matches the contract') { $ctlDetails += Format-ReportDetail $r[2] }
             }
-        } finally { Remove-Item -LiteralPath $ctlFile -Force -ErrorAction SilentlyContinue }
+        } finally { if ($null -ne $ctlFile) { [IO.File]::Delete($ctlFile) } }
         if ($ctlDetails.Count -eq 1 -and -not $ctlDetails[0].Contains([string][char]27) -and $ctlDetails[0].Contains('\u001b')) {
             Test-Ok 'a control character in a report value is escaped in the failure detail'
         } else { Test-Nope 'a control character in a report value is escaped in the failure detail' 'the detail was missing or kept the raw character' }
@@ -3038,5 +3062,18 @@ if ($m -eq '') { Test-Ok $l } else { Test-Nope $l "stale:$m" }
 
 Write-Host ""
 Write-Host ("{0} passed, {1} failed" -f $script:Pass, $script:Fail)
-if ($script:Fail -gt 0) { exit 1 }
-exit 0
+$script:ExitCode = $(if ($script:Fail -gt 0) { 1 } else { 0 })
+$script:Finished = $true
+} catch {
+    $script:Failure = $_
+} finally {
+    if ($script:Finished) { exit $script:ExitCode }
+    if ($null -ne $script:Failure) {
+        $where = ''
+        if ($null -ne $script:Failure.InvocationInfo) { $where = $script:Failure.InvocationInfo.PositionMessage }
+        [Console]::Error.WriteLine($script:Failure.ToString())
+        if ($where) { [Console]::Error.WriteLine($where) }
+        exit 1
+    }
+    exit 130
+}

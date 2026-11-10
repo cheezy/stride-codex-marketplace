@@ -34,11 +34,11 @@ set up for the appended shape.
 copy of this tree under `plugins/stride-codex/` and registers it in
 `.agents/plugins/marketplace.json`, which has no version field. A sync is an
 `rsync` of this repository into that directory, a README version-cell update,
-validation, a drift check, a history-wide secret scan, then a catalog tag and
-GitHub release. The catalog's `RELEASE.md` is the runbook — follow it rather
-than any summary here. Its tag numbers are the catalog's own sequence and do
-not track this plugin's version. Note that this file is vendored along with
-everything else; that is expected.
+validation, a drift check, a secret scan of the staged tree and of the
+history, then a catalog tag and GitHub release. The catalog's `RELEASE.md` is
+the runbook — follow it rather than any summary here. Its tag numbers are the
+catalog's own sequence and do not track this plugin's version. Note that this
+file is vendored along with everything else; that is expected.
 
 Several older changelog entries (1.16.0 through 1.22.0) say this plugin is
 not distributed through any marketplace, so there is "no marketplace pin to
@@ -80,12 +80,13 @@ had to move the entries; this is the check that catches it.)
    1.43.0 and 1.43.1 release commits did, and run the suite again. Push
    `main`.
 
-   This repository's steps run no secret scan of their own. The history-wide
-   secret scan is step 5 of `stride-codex-marketplace`'s `RELEASE.md`, run
-   in the catalog after the re-vendor in step 5 below. As written there it
-   reads committed history only (`git grep … $(git rev-list --all)`), so the
-   files a re-vendor has just copied in are not scanned before that step
-   commits and pushes them.
+   This repository's steps run no secret scan of their own. The secret scan
+   is step 5 of `stride-codex-marketplace`'s `RELEASE.md`, run in the
+   catalog after the re-vendor in step 5 below. It stages the re-vendored
+   tree first (`git add -A`) and scans the index (`git grep --cached`) as
+   well as committed history (`$(git rev-list --all)`), so the files a
+   re-vendor has just copied in are scanned before that step commits and
+   pushes them.
 
 3. Tag the release commit (annotated) and push the tag:
 

@@ -59,7 +59,8 @@
 # manifest's JSON error goes to a mktemp file that every path removes.
 # Pure shell + python3 (for JSON) — no network, no jq.
 #
-# Exit code: 0 if every check passes; 1 if any check fails.
+# Exit code: 0 if every check passes; 1 if any check fails; 130 if the run
+# is interrupted (INT); 143 if it is terminated (TERM).
 
 set -u
 

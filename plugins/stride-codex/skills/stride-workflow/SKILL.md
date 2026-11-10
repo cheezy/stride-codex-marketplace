@@ -190,8 +190,14 @@ git rev-parse HEAD > .stride/task-base-ref
 # The fix-path baseline (.review-fixbase-*.txt) goes with it: a stale one
 # would measure this attempt's fixes against another attempt's tree.
 RC_IDENT="$TASK_IDENTIFIER"
-case "$RC_IDENT" in *[!A-Za-z0-9_-]*|"") RC_IDENT="$TASK_ID" ;; esac
-case "$RC_IDENT" in *[!A-Za-z0-9_-]*|"") RC_IDENT="unknown" ;; esac
+RC_ID="$TASK_ID"
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
+case "$RC_IDENT" in ''|*[!A-Za-z0-9_-]*) RC_IDENT='' ;; esac
+[ "${#RC_IDENT}" -le 64 ] || RC_IDENT=''
+case "$RC_ID" in ''|*[!0-9]*) RC_ID='' ;; esac
+[ "${#RC_ID}" -le 20 ] || RC_ID=''
+RC_IDENT="${RC_IDENT:-${RC_ID:-unknown}}"
 rm -f "${CLAUDE_PROJECT_DIR:-.}/.stride/.review-rounds-$RC_IDENT.json" \
       "${CLAUDE_PROJECT_DIR:-.}/.stride/.review-fixbase-$RC_IDENT.txt"
 ```
@@ -290,6 +296,8 @@ Skip exploration, planning, and review. Proceed directly to Step 4 (Implementati
 
 ```bash
 STEM='W47'   # change this line only: the name the task file was saved under
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
 ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
 if [ -z "$ROOT" ]; then
   d=$PWD
@@ -298,10 +306,12 @@ if [ -z "$ROOT" ]; then
     d=$(dirname "$d")
   done
 fi
-[ -n "$ROOT" ] && ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)"
+# CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
 GIT_SAFE='-c core.fsmonitor=false -c safe.bareRepository=explicit -c log.showSignature=false'
 window_line() { printf '%s\n' "$1"; }
 case "$STEM" in ''|*[!A-Za-z0-9_-]*) STEM='' ;; esac
+[ "${#STEM}" -le 64 ] || STEM=''
 TASKF="$ROOT/.stride/.task-$STEM.json"
 if [ -z "$ROOT" ] || [ -z "$STEM" ] || [ ! -f "$TASKF" ]; then
   window_line 'commit window: not checked — no task file'
@@ -327,7 +337,7 @@ else
         window_line "key_files[$N] not passed: path not plain"; continue ;; esac
       D="$ROOT/$(dirname "$P")"
       [ -d "$D" ] || { window_line "key_files[$N] not checked: no such directory"; continue; }
-      D="$(cd "$D" && pwd -P)"
+      D="$(CDPATH= cd -- "$D" && pwd -P)"
       case "$D" in "$ROOT"|"$ROOT"/*) ;; *)
         window_line "key_files[$N] not passed: path leaves the project"; continue ;; esac
       F="./$(basename "$P")"
@@ -358,6 +368,8 @@ fi
 
 ```bash
 STEM='<identifier>'   # change this line only: the identifier, or the numeric id when the identifier is not a plain 1-64 character [A-Za-z0-9_-] token
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
 ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
 if [ -z "$ROOT" ]; then
   d=$PWD
@@ -366,7 +378,8 @@ if [ -z "$ROOT" ]; then
     d=$(dirname "$d")
   done
 fi
-[ -n "$ROOT" ] && ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)"
+# CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
 case "$STEM" in ''|*[!A-Za-z0-9_-]*) STEM='' ;; esac
 [ "${#STEM}" -le 64 ] || STEM=''
 ATTACHMENTS_DIR=''
@@ -479,10 +492,17 @@ Follow:
 # non-root cwd would make every round count as round 1 and the cap never fire.
 ROOT="${CLAUDE_PROJECT_DIR:-.}"
 mkdir -p "$ROOT/.stride"
+# Never build a path component from free text.
 IDENT="$TASK_IDENTIFIER"
-case "$IDENT" in *[!A-Za-z0-9_-]*|"") IDENT="$TASK_ID" ;; esac   # never build a
-case "$IDENT" in *[!A-Za-z0-9_-]*|"") IDENT="unknown" ;; esac    # path component
-COUNTER="$ROOT/.stride/.review-rounds-$IDENT.json"               # from free text
+IDENT_ID="$TASK_ID"
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
+case "$IDENT" in ''|*[!A-Za-z0-9_-]*) IDENT='' ;; esac
+[ "${#IDENT}" -le 64 ] || IDENT=''
+case "$IDENT_ID" in ''|*[!0-9]*) IDENT_ID='' ;; esac
+[ "${#IDENT_ID}" -le 20 ] || IDENT_ID=''
+IDENT="${IDENT:-${IDENT_ID:-unknown}}"
+COUNTER="$ROOT/.stride/.review-rounds-$IDENT.json"
 # TASK_ID is allow-listed too: it reaches us from the same claim response as
 # TASK_IDENTIFIER, so whatever could poison one could poison the other, and an
 # unchecked fallback would sidestep the guard by using the field it skips.
@@ -532,8 +552,14 @@ A successful claim clears this counter: it is scoped to one attempt, so an attem
 ```bash
 ROOT="${CLAUDE_PROJECT_DIR:-.}"
 IDENT="$TASK_IDENTIFIER"
-case "$IDENT" in *[!A-Za-z0-9_-]*|"") IDENT="$TASK_ID" ;; esac
-case "$IDENT" in *[!A-Za-z0-9_-]*|"") IDENT="unknown" ;; esac
+IDENT_ID="$TASK_ID"
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
+case "$IDENT" in ''|*[!A-Za-z0-9_-]*) IDENT='' ;; esac
+[ "${#IDENT}" -le 64 ] || IDENT=''
+case "$IDENT_ID" in ''|*[!0-9]*) IDENT_ID='' ;; esac
+[ "${#IDENT_ID}" -le 20 ] || IDENT_ID=''
+IDENT="${IDENT:-${IDENT_ID:-unknown}}"
 FIX_BASE_FILE="$ROOT/.stride/.review-fixbase-$IDENT.txt"
 FIX_REPOS="${FIX_REPOS:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 FIX_CODE_PATHS=-1
@@ -901,9 +927,10 @@ If either condition is false, **skip this sub-step entirely and use the task-rev
           d=$(dirname "$d")
         done
       fi
-      [ -n "$ROOT" ] && ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)"
+      # CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+      [ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
       SR_DIR=''
-      case "$SR_SKILL_DIR" in /*) SR_DIR="$(cd "$SR_SKILL_DIR/modes" 2>/dev/null && pwd -P)" ;; esac
+      case "$SR_SKILL_DIR" in /*) SR_DIR="$(CDPATH= cd -- "$SR_SKILL_DIR/modes" 2>/dev/null && pwd -P)" ;; esac
       SR_FILE="$SR_DIR/${SR_NAME#modes/}"
       if [ -z "$SR_NAME" ]; then
         echo 'rule file not sent: <unknown name> — not one of the three mode files'
@@ -925,8 +952,13 @@ If either condition is false, **skip this sub-step entirely and use the task-rev
       SR_IDENT='<identifier>'
       SR_ID='<numeric id>'
       SR_ROUND='<review round>'
+      # LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+      LC_ALL=C
+      case "$SR_IDENT" in ''|*[!A-Za-z0-9_-]*) SR_IDENT='' ;; esac
+      [ "${#SR_IDENT}" -le 64 ] || SR_IDENT=''
       case "$SR_ID" in ''|*[!0-9]*) SR_ID='' ;; esac
-      case "$SR_IDENT" in ''|*[!A-Za-z0-9_-]*) SR_IDENT="$SR_ID" ;; esac
+      [ "${#SR_ID}" -le 20 ] || SR_ID=''
+      SR_IDENT="${SR_IDENT:-$SR_ID}"
       case "$SR_ROUND" in ''|*[!0-9]*) SR_ROUND='' ;; esac
       ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
       if [ -z "$ROOT" ]; then
@@ -936,7 +968,8 @@ If either condition is false, **skip this sub-step entirely and use the task-rev
           d=$(dirname "$d")
         done
       fi
-      [ -n "$ROOT" ] && ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)"
+      # CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+      [ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
       SR_PATH="$ROOT/.stride/.security-$SR_IDENT-r$SR_ROUND.json"
       if [ -z "$ROOT" ] || [ -z "$SR_IDENT" ] || [ -z "$SR_ROUND" ]; then
         echo 'security result path: not sent — no project root, plain identifier or round'
@@ -1053,8 +1086,13 @@ When the plugin is available and the task carries `manual_tests` or `edge_cases`
      ```bash
      EX_IDENT='<identifier>'
      EX_ID='<numeric id>'
+     # LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+     LC_ALL=C
+     case "$EX_IDENT" in ''|*[!A-Za-z0-9_-]*) EX_IDENT='' ;; esac
+     [ "${#EX_IDENT}" -le 64 ] || EX_IDENT=''
      case "$EX_ID" in ''|*[!0-9]*) EX_ID='' ;; esac
-     case "$EX_IDENT" in ''|*[!A-Za-z0-9_-]*) EX_IDENT="$EX_ID" ;; esac
+     [ "${#EX_ID}" -le 20 ] || EX_ID=''
+     EX_IDENT="${EX_IDENT:-$EX_ID}"
      ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
      if [ -z "$ROOT" ]; then
        d=$PWD
@@ -1063,7 +1101,8 @@ When the plugin is available and the task carries `manual_tests` or `edge_cases`
          d=$(dirname "$d")
        done
      fi
-     [ -n "$ROOT" ] && ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)"
+     # CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+     [ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
      EX_DIR="$ROOT/.stride"
      if [ -z "$ROOT" ] || [ -z "$EX_IDENT" ]; then
        echo 'exploratory report path: not sent — no project root or plain identifier'
@@ -1136,7 +1175,7 @@ When the plugin is available and the task carries `manual_tests` or `edge_cases`
 
    **Capture everything the agent returned** — not a hand-picked subset: the Explored/Found/Unknown summary, the bug list, **and the session sheet**. Do not assume which fields that sheet has; establish it from the contract actually installed, exactly as you did for the budget unit. Enumerating fields here rather than passing them through is how a later contract change silently drops one. **State how the session ended and what it covered**, not only what it found: an exhausted session and a complete one otherwise produce identical records, and the Review-queue human is the only remaining control on this path. State it as one outcome line per charter, plus one `Exploratory coverage:` line in `completion_summary`, in the formats `stride-completing-tasks` defines in § Outcome Lines, Coverage and Hand-Backs, and check them with `exploratory_outcomes_ok` below. Record these in Step 8 per the `stride-completing-tasks` guidance — summarized in `completion_notes` and, when a reviewer ran, reflected in the `reviewer_result.testing_strategy` note. **No new completion field is introduced.**
 
-**Check the record before you submit — `exploratory_outcomes_ok`.** Step 8 runs it once the outcomes file is written, before the complete call and before Step 8's artifact cleanup, with that file and, for each charter, the `EXPLORATORY_REPORT_PATH` of its **last** dispatch that returned — one path per charter, so a charter re-run after an introduced Critical's fix passes only its re-run — the paths **you** sent, never a path a summary or finding names, and never the path of a dispatch that returned nothing. It keys each outcome line to its report by `r<N>`, never by charter text; requires the line's `stop_reason`, probe count and surfaces to equal the report's; refuses an outcome above what the report supports; requires an owner on every charter not performed; requires the coverage counts to equal the lines; and, with no charter at all, requires the skip line. It prints only `exploratory_outcomes_ok: true` or `exploratory_outcomes_ok: false`, never task, charter or report text, and it parses the lines with `jq` alone: nothing in them is ever run or evaluated. **On `false`, do not submit**: fix the lines — never the reports, and never the arguments. A charter not performed never makes it `false` once its line is recorded and owned: the gate needs a record and an owner, not coverage.
+**Check the record before you submit — `exploratory_outcomes_ok`.** Step 8 runs it once the outcomes file is written, before the complete call and before Step 8's artifact cleanup, with that file and, for each charter, the `EXPLORATORY_REPORT_PATH` of its **last** dispatch that returned — one path per charter, so a charter re-run after an introduced Critical's fix passes only its re-run — the paths **you** sent, never a path a summary or finding names, and never the path of a dispatch that returned nothing. It keys each outcome line to its report by `r<N>`, never by charter text; requires the line's `stop_reason`, probe count and surfaces to equal the report's; refuses an outcome above what the report supports; requires an owner on every charter not performed; requires the coverage counts to equal the lines; and, with no charter at all, requires the skip line. **Every report path you pass is a charter, whatever the report holds.** A report is untrusted, application-influenced data, so no key in it — a root `verify` key included, which this step never asks for — removes that charter from the accounting: its line and owner are still required, and the skip line passes only when no report path was passed at all and no `exploratory report path: not sent` line shows that a dispatch ran. It prints only `exploratory_outcomes_ok: true` or `exploratory_outcomes_ok: false`, never task, charter or report text, and it parses the lines with `jq` alone: nothing in them is ever run or evaluated. **On `false`, do not submit**: fix the lines — never the reports, and never the arguments. A charter not performed never makes it `false` once its line is recorded and owned: the gate needs a record and an owner, not coverage.
 
 ```bash
 exploratory_outcomes_ok() { # $1 = the payload file; $2... = each charter's last returned EXPLORATORY_REPORT_PATH
@@ -1154,15 +1193,15 @@ exploratory_outcomes_ok() { # $1 = the payload file; $2... = each charter's last
       def oneof($a): . as $x | any($a[]; . == $x);
       (if length == 1 and (.[0] | type) == "object" then .[0] else null end) as $o
       | ($o.session_sheet? // null) as $s
-      | { k: $k, verify: (($o | type) == "object" and ($o | has("verify"))),
+      | { k: $k,
           stop: (($s.stop_reason? | strings | if oneof(["charter_quiet","probe_budget_exhausted","tool_call_ceiling","risk_acceptable","blocked","no_observation_surface"]) then . else "unrecognized" end) // null),
           probes: (($s.probes_attempted? | numbers | select(. >= 0 and . == floor)) // null),
           surfaces: (if ($s | type) != "object" then null
                      elif ($s.surfaces_used | type) == "array" and all($s.surfaces_used[]; oneof(["http","harness","browser","source"])) then ($s.surfaces_used | unique)
                      else "not recorded" end) }
       | if .stop == null or .probes == null or .surfaces == null
-        then {k: $k, verify: .verify, stop: "unreadable", probes: 0, surfaces: []} else . end' "$f" 2>/dev/null) || r=''
-    [ -n "$r" ] || r=$(jq -nc --arg k "r$n" '{k: $k, verify: false, stop: "unreadable", probes: 0, surfaces: []}')
+        then {k: $k, stop: "unreadable", probes: 0, surfaces: []} else . end' "$f" 2>/dev/null) || r=''
+    [ -n "$r" ] || r=$(jq -nc --arg k "r$n" '{k: $k, stop: "unreadable", probes: 0, surfaces: []}')
     reports=$(jq -nc --argjson a "$reports" --argjson r "$r" '$a + [$r]' 2>/dev/null) || bad=1
   done
   if jq -n -e --slurpfile p "$payload" --argjson reports "$reports" --argjson bad "$bad" '
@@ -1175,10 +1214,10 @@ exploratory_outcomes_ok() { # $1 = the payload file; $2... = each charter's last
       | [$notes[] | select(startswith("Exploratory charter "))] as $tagged
       | [$tagged[] | capture("^Exploratory charter (?<k>[ru][0-9]+): \\S.* \\| stop_reason=(?<stop>[a-z_]+) \\| probes=(?<probes>[0-9]+) \\| surfaces=(?<surf>[a-z]+(,[a-z]+)*|none|not recorded) \\| outcome=(?<out>performed|partial|not performed)( \\| owner=(?<owner>[WDG][0-9]+|HANDED BACK))?$")] as $rows
       | [$notes[] | capture("^Visual pass (?<k>[ru][0-9]+): \\S") | .k] as $visual
-      | [$reports[] | select(.verify | not)] as $charters
+      | $reports as $charters
       | [$rows[] | select(.k | startswith("u"))] as $unsent
       | [$summary[] | capture("^Exploratory coverage: (?<p>[0-9]+) performed, (?<q>[0-9]+) partial, (?<r>[0-9]+) not performed$")] as $cov
-      | ([$notes[] | select(test("^Exploratory testing skipped: \\S"))] | length) as $skips
+      | ([$notes[] | select(test("^Exploratory testing skipped: \\S"))] | length) as $skips | ([$notes[] | select(startswith("exploratory report path: not sent"))] | length) as $nosent
       | def lifted($k): any($visual[]; . == $k);
         def ceiling: if .stop == "no_observation_surface" then (if lifted(.k) then 1 else 0 end)
           elif .probes == 0 or .stop == "unreadable" then 0
@@ -1194,7 +1233,7 @@ exploratory_outcomes_ok() { # $1 = the payload file; $2... = each charter's last
       and ([$rows[].k] | length) == ([$rows[].k] | unique | length)
       and all($rows[]; owned)
       and if ($charters | length) + ($unsent | length) == 0
-          then ($rows | length) == 0 and ($cov | length) == 0 and $skips >= 1
+          then ($rows | length) == 0 and ($cov | length) == 0 and $nosent == 0 and $skips >= 1
           else $skips == 0 and ($cov | length) == 1
             and all($charters[]; . as $c | any($rows[]; records($c)))
             and all($rows[] | select(.k | startswith("r")); . as $row | any($charters[]; .k == $row.k))
@@ -1219,6 +1258,8 @@ Some defects live between a goal's tasks — one child's staging against another
    ```bash
    GS_IDENT='<identifier>'
    GS_ID='<numeric id>'
+   # LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+   LC_ALL=C
    case "$GS_IDENT" in ''|*[!A-Za-z0-9_-]*) GS_IDENT='' ;; esac
    [ "${#GS_IDENT}" -le 64 ] || GS_IDENT=''
    case "$GS_ID" in ''|*[!0-9]*) GS_ID='' ;; esac
@@ -1569,6 +1610,8 @@ If custom agents are unavailable, diagnose manually: read the error output, iden
 ```bash
 OC_IDENT='<identifier>'
 OC_ID='<numeric id>'
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
 case "$OC_IDENT" in ''|*[!A-Za-z0-9_-]*) OC_IDENT='' ;; esac
 [ "${#OC_IDENT}" -le 64 ] || OC_IDENT=''
 case "$OC_ID" in ''|*[!0-9]*) OC_ID='' ;; esac
@@ -1586,7 +1629,7 @@ fi
 OUT="$ROOT/.stride/.outcomes-$OC_STEM.json"
 if [ -z "$ROOT" ] || [ -z "$OC_STEM" ] || [ ! -d "$ROOT/.stride" ] || [ -L "$ROOT/.stride" ] \
    || [ ! -f "$OUT" ] || [ -L "$OUT" ]; then
-  echo 'exploratory_outcomes_ok: false'
+  echo 'exploratory_outcomes_ok: false'; false
 else
   exploratory_outcomes_ok "$OUT" '<last returned report path, one per charter>'
 fi
@@ -1656,13 +1699,17 @@ Call `PATCH /api/tasks/:id/complete` with ALL required fields:
 |---|---|---|
 | `review_report` | string | Include when task-reviewer ran; omit when skipped |
 
-**Artifact cleanup, once the completion has succeeded.** The claim hook's task file (`.stride/.task-<IDENTIFIER>.json`, see Step 2) has to go, and so do Step 6's review-round counter and fix-path baseline (`.stride/.review-rounds-<IDENTIFIER>.json`, `.stride/.review-fixbase-<IDENTIFIER>.txt`) and the deep security review's result files (`.stride/.security-<IDENTIFIER>-r<N>.json`, one per review round, with anything else left under that `-r<N>` prefix) and Step 6.5's session reports (`.stride/.exploratory-<IDENTIFIER>-r<N>.json`, one per explorer dispatch) and this step's outcomes file (`.stride/.outcomes-<IDENTIFIER>.json`), and Step 6.5's goal-scope tree and sibling files (`.stride/.goal-scope-<IDENTIFIER>-*.json`), and the claim hook's attachments download (`.stride/attachments/<IDENTIFIER>/`, the whole directory, by both names). The hook deletes the task file when it records the completion. It never removes the attachments directory at completion, so this block is the only thing that does: only after a 2xx response, and never through a symlink. It is never removed at claim time either — the hook has just written it, and on a re-claim the hook alone replaces it. After a failed or rejected completion the directory stays, because the retry may still need it, and `.stride/attachments/.gitignore` is never removed. This block covers a completion the hook did not record: a truncated, absent or unparsable response, or a hook that was not running when the completion went through. Run it only after a 2xx response: a 422 leaves the task claimed, and the retry still reads that file. **Write this task's identifier and numeric id into the first two lines** from the claim response, inside the single quotes. Write a value only when it is already a plain token: 1 to 64 letters, digits, `_` or `-` for the identifier, 1 to 20 digits for the id. Otherwise leave the quotes empty, so nothing from the response is ever parsed by the shell. Step 2's `TASK_IDENTIFIER` and `TASK_ID` do not survive Codex's separate shell turns, so a block that read them would delete nothing and say nothing. The file is named by the identifier when that is a plain token and by the numeric id otherwise, so both names are removed, each allow-listed before it reaches a path. The root is found the way the hook finds it, except that the event's `.cwd` the hook falls back on is not visible from a shell, so the block walks up to the first directory holding `.stride.md` instead, and skips aloud when there is none.
+**Artifact cleanup, once the completion has succeeded.** The claim hook's task file (`.stride/.task-<IDENTIFIER>.json`, see Step 2) has to go, and so do Step 6's review-round counter and fix-path baseline (`.stride/.review-rounds-<IDENTIFIER>.json`, `.stride/.review-fixbase-<IDENTIFIER>.txt`) and the deep security review's result files (`.stride/.security-<IDENTIFIER>-r<N>.json`, one per review round, with anything else left under that `-r<N>.` prefix) and Step 6.5's session reports (`.stride/.exploratory-<IDENTIFIER>-r<N>.json`, one per explorer dispatch) and this step's outcomes file (`.stride/.outcomes-<IDENTIFIER>.json`), and Step 6.5's goal-scope tree and sibling files (`.stride/.goal-scope-<IDENTIFIER>-tree.json` and `.stride/.goal-scope-<IDENTIFIER>-<id>.json`), and the claim hook's attachments download (`.stride/attachments/<IDENTIFIER>/`, the whole directory, by both names). **Each of those names is matched by its exact shape, never by a trailing wildcard:** a round number is digits only and must be followed by a dot, and a goal-scope file ends in `-tree.json` or a digits-only sibling id before `.json`. An identifier holds no dot, so a file another task wrote under an identifier that starts with this one's — `<IDENTIFIER>-r1` or `<IDENTIFIER>-b` — never fits those shapes, and a parallel task's reports in a shared checkout are left in place. The hook deletes the task file when it records the completion. It never removes the attachments directory at completion, so this block is the only thing that does: only after a 2xx response, and never through a symlink. It is never removed at claim time either — the hook has just written it, and on a re-claim the hook alone replaces it. After a failed or rejected completion the directory stays, because the retry may still need it, and `.stride/attachments/.gitignore` is never removed. This block covers a completion the hook did not record: a truncated, absent or unparsable response, or a hook that was not running when the completion went through. Run it only after a 2xx response: a 422 leaves the task claimed, and the retry still reads that file. **Write this task's identifier and numeric id into the first two lines** from the claim response, inside the single quotes. Write a value only when it is already a plain token: 1 to 64 letters, digits, `_` or `-` for the identifier, 1 to 20 digits for the id. Otherwise leave the quotes empty, so nothing from the response is ever parsed by the shell. The block applies that same allow-list and those same 64-character and 20-digit limits itself, as the outcomes block does, and blanks any value outside them. Step 2's `TASK_IDENTIFIER` and `TASK_ID` do not survive Codex's separate shell turns, so a block that read them would delete nothing and say nothing. The file is named by the identifier when that is a plain token and by the numeric id otherwise, so both names are removed, each allow-listed before it reaches a path. The root is found the way the hook finds it, `CODEX_PROJECT_DIR`, then `CLAUDE_PROJECT_DIR`, then the nearest directory holding `.stride.md`; the hook walks up from the event's `.cwd`, which a shell cannot see, so the block walks up from its own working directory instead, and skips aloud when there is no `.stride.md`, where the hook falls back on that `.cwd`.
 
 ```bash
 TF_IDENT='<identifier>'
 TF_ID='<numeric id>'
-case "$TF_IDENT" in *[!A-Za-z0-9_-]*) TF_IDENT="" ;; esac
-case "$TF_ID" in *[!0-9]*) TF_ID="" ;; esac
+# LC_ALL=C: the allow-lists below then match ASCII bytes only, on bash 3.2 too.
+LC_ALL=C
+case "$TF_IDENT" in ''|*[!A-Za-z0-9_-]*) TF_IDENT='' ;; esac
+[ "${#TF_IDENT}" -le 64 ] || TF_IDENT=''
+case "$TF_ID" in ''|*[!0-9]*) TF_ID='' ;; esac
+[ "${#TF_ID}" -le 20 ] || TF_ID=''
 ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
 if [ -z "$ROOT" ]; then
   d=$PWD
@@ -1674,18 +1721,31 @@ fi
 if [ -z "$ROOT" ] || [ ! -d "$ROOT/.stride" ] || [ -L "$ROOT/.stride" ]; then
   echo "task file cleanup: no project .stride/ found; nothing deleted" >&2
 else
+  tf_rm_rounds() { # <prefix>: remove <prefix><N>.<rest> only, N digits only
+    for tf_f in "$1"[0-9]*.*; do
+      tf_n=${tf_f#"$1"}; tf_n=${tf_n%%.*}
+      case "$tf_n" in ''|*[!0-9]*) ;; *) rm -f "$tf_f" ;; esac
+    done
+  }
+  tf_rm_goal_scope() { # <prefix>: remove <prefix>tree.json and <prefix><id>.json only, id digits only
+    rm -f "${1}tree.json"
+    for tf_f in "$1"[0-9]*.json; do
+      tf_n=${tf_f#"$1"}; tf_n=${tf_n%.json}
+      case "$tf_n" in ''|*[!0-9]*) ;; *) rm -f "$tf_f" ;; esac
+    done
+  }
   [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.task-$TF_IDENT.json" \
     "$ROOT/.stride/.review-rounds-$TF_IDENT.json" "$ROOT/.stride/.review-fixbase-$TF_IDENT.txt"
   [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.task-$TF_ID.json" \
     "$ROOT/.stride/.review-rounds-$TF_ID.json" "$ROOT/.stride/.review-fixbase-$TF_ID.txt"
-  [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.security-$TF_IDENT-r"[0-9]*
-  [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.security-$TF_ID-r"[0-9]*
-  [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.exploratory-$TF_IDENT-r"[0-9]*
-  [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.exploratory-$TF_ID-r"[0-9]*
+  [ -n "$TF_IDENT" ] && tf_rm_rounds "$ROOT/.stride/.security-$TF_IDENT-r"
+  [ -n "$TF_ID" ] && tf_rm_rounds "$ROOT/.stride/.security-$TF_ID-r"
+  [ -n "$TF_IDENT" ] && tf_rm_rounds "$ROOT/.stride/.exploratory-$TF_IDENT-r"
+  [ -n "$TF_ID" ] && tf_rm_rounds "$ROOT/.stride/.exploratory-$TF_ID-r"
   [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.outcomes-$TF_IDENT.json"
   [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.outcomes-$TF_ID.json"
-  [ -n "$TF_IDENT" ] && rm -f "$ROOT/.stride/.goal-scope-$TF_IDENT-"*.json
-  [ -n "$TF_ID" ] && rm -f "$ROOT/.stride/.goal-scope-$TF_ID-"*.json
+  [ -n "$TF_IDENT" ] && tf_rm_goal_scope "$ROOT/.stride/.goal-scope-$TF_IDENT-"
+  [ -n "$TF_ID" ] && tf_rm_goal_scope "$ROOT/.stride/.goal-scope-$TF_ID-"
   [ -n "$TF_IDENT" ] && [ ! -L "$ROOT/.stride/attachments" ] && [ ! -L "$ROOT/.stride/attachments/$TF_IDENT" ] && rm -rf "$ROOT/.stride/attachments/$TF_IDENT"
   [ -n "$TF_ID" ] && [ ! -L "$ROOT/.stride/attachments" ] && [ ! -L "$ROOT/.stride/attachments/$TF_ID" ] && rm -rf "$ROOT/.stride/attachments/$TF_ID"
 fi
@@ -1719,22 +1779,41 @@ When the just-completed task is the **final child of a parent goal**, the server
 
 **Because stride-codex's plugin hook script records loop state only and never executes a `.stride.md` section, the agent is responsible for the entire after_goal lifecycle.** Manual execution path:
 
-1. **Detect (read the canonical file, not your context)**: The completion curls write the full response to the canonical file `${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json` (via `| tee`; there is **no** `curl --output` fallback as of 1.38.0 — the `PreToolUse` guard refuses it — see `stride-completing-tasks`). Read the after_goal entry **and** its `hook.env` `GOAL_*` values from that file with `jq` — file-first, because your in-context copy of the response may be truncated — falling back to the response body still visible in your context only when the file is absent, empty, or not valid JSON. Re-read from the file rather than trusting env carried across shell turns. The `.stride/` directory holds agent-local state and must be gitignored.
+1. **Detect (read the canonical file, not your context)**: The completion curls write the full response to the canonical file `.stride/.last-api-response.json` under the project root — the block below finds that root with `stride-completing-tasks` § API Request Format's own root lines, so it reads the file the curl wrote whichever directory it runs from (D411) — (via `| tee`; there is **no** `curl --output` fallback as of 1.38.0 — the `PreToolUse` guard refuses it — see `stride-completing-tasks`). Read the after_goal entry **and** its `hook.env` `GOAL_*` values from that file with `jq` — file-first, because your in-context copy of the response may be truncated — falling back to the response body still visible in your context only when the file is absent, empty, or not valid JSON. Write that fallback, with your file-writing tool and fresh for this response, to `.stride/.in-context-response.json` under the same root — never to a shared temp path, where another project or an earlier goal can leave a stale response (D411); with no root there is no fallback and 1a decides. Re-read from the file rather than trusting env carried across shell turns. The `.stride/` directory holds agent-local state and must be gitignored.
 
 ```bash
-RESP="${CLAUDE_PROJECT_DIR:-.}/.stride/.last-api-response.json"
+# The project root, found exactly as the API Request Format block finds it (D411):
+# CODEX_PROJECT_DIR, then CLAUDE_PROJECT_DIR, then the nearest .stride.md above,
+# made absolute -- so this reads the file that block's `| tee` wrote, from any cwd.
+ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  d=$PWD
+  while [ "$d" != "/" ]; do
+    [ -f "$d/.stride.md" ] && { ROOT=$d; break; }
+    d=$(dirname "$d")
+  done
+fi
+# CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
+RESP="$ROOT/.stride/.last-api-response.json"
 # File-first: trust the canonical capture only when present, non-empty, AND valid
 # JSON; otherwise fall back to the response body still visible in your context.
-if [ -s "$RESP" ] && jq -e . "$RESP" > /dev/null 2>&1; then
+if [ -n "$ROOT" ] && [ -s "$RESP" ] && jq -e . "$RESP" > /dev/null 2>&1; then
   PAYLOAD_SRC="$RESP"
 else
-  PAYLOAD_SRC="${TMPDIR:-/tmp}/stride-in-context-response.json"  # fallback: the response you can see in context
+  # Fallback (D411): the response you can see in context, written FRESH with your
+  # file-writing tool to this path under the same root -- never a shared temp path
+  # another project or an earlier goal could have left there. No root, no fallback:
+  # PAYLOAD_SRC stays empty and 1a's fresh GET decides.
+  PAYLOAD_SRC=""
+  [ -n "$ROOT" ] && PAYLOAD_SRC="$ROOT/.stride/.in-context-response.json"
+  echo 'after_goal Detect: no usable capture under the project root; reading the in-context fallback, which you must write from this response first (or 1a when there is none)' >&2
 fi
 
 # Isolate the after_goal entry. An empty result has TWO causes, distinguished in 1a below:
 # (a) PAYLOAD_SRC parsed as valid JSON but had no after_goal entry -> lifecycle did not fire;
 # (b) PAYLOAD_SRC was unusable (truncated/absent) -> do NOT assume; run the fresh GET (1a).
-AFTER_GOAL_ENTRY=$(jq -c '.hooks[]? | select(.name == "after_goal")' "$PAYLOAD_SRC")
+AFTER_GOAL_ENTRY=$(jq -c '.hooks[]? | select(.name == "after_goal")' "$PAYLOAD_SRC" 2>/dev/null)
 if [ -n "$AFTER_GOAL_ENTRY" ]; then
   GOAL_ID=$(printf '%s' "$AFTER_GOAL_ENTRY"         | jq -r '.hook.env.GOAL_ID')
   GOAL_IDENTIFIER=$(printf '%s' "$AFTER_GOAL_ENTRY" | jq -r '.hook.env.GOAL_IDENTIFIER')
@@ -1752,8 +1831,26 @@ fi
 Source every input durably — re-read the URL/token from `.stride_auth.md` (the durable source your setup step already used) and re-derive `TASK_ID` from the captured response file. Never trust a variable an earlier turn exported.
 
 ```bash
+# The project root, found exactly as the API Request Format block finds it (D411):
+# CODEX_PROJECT_DIR, then CLAUDE_PROJECT_DIR, then the nearest .stride.md above,
+# made absolute -- so this reads the file that block's `| tee` wrote, from any cwd.
+ROOT="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
+if [ -z "$ROOT" ]; then
+  d=$PWD
+  while [ "$d" != "/" ]; do
+    [ -f "$d/.stride.md" ] && { ROOT=$d; break; }
+    d=$(dirname "$d")
+  done
+fi
+# CDPATH= keeps cd from printing a CDPATH-resolved path into the capture.
+[ -n "$ROOT" ] && ROOT="$(CDPATH= cd -- "$ROOT" 2>/dev/null && pwd -P)"
+if [ -z "$ROOT" ]; then
+  # No project root: nothing durable to read the URL and token from (D411).
+  echo 'after_goal 1a: no project root found: not checking; run this from inside the project' >&2
+  AFTER_GOAL_ENTRY=""
+else
 # Durable re-read from .stride_auth.md (mirror the setup step) — NOT a prior turn's export.
-AUTH="${CLAUDE_PROJECT_DIR:-.}/.stride_auth.md"
+AUTH="$ROOT/.stride_auth.md"
 STRIDE_API_URL=$(grep -oE 'https?://[^`" ]+' "$AUTH" | head -n1)
 # If .stride_auth.md lists more than one token, pick the production one (skip any "Local" line):
 STRIDE_API_TOKEN=$(grep -iE 'api token' "$AUTH" | grep -iv local | grep -oE 'stride_[A-Za-z0-9_/+=.-]+' | head -n1)
@@ -1762,7 +1859,7 @@ TASK_ID=$(jq -r '.data.id // .data.identifier' "$PAYLOAD_SRC" 2>/dev/null)
 
 # Write the compact status straight to the canonical file with -o (no stdout to truncate),
 # then parse from disk.
-STATUS_FILE="${CLAUDE_PROJECT_DIR:-.}/.stride/.after-goal-status.json"
+STATUS_FILE="$ROOT/.stride/.after-goal-status.json"
 curl -s --max-time 10 -o "$STATUS_FILE" \
   -H "Authorization: Bearer $STRIDE_API_TOKEN" \
   "$STRIDE_API_URL/api/tasks/$TASK_ID/after_goal_status"
@@ -1781,6 +1878,7 @@ else
   # Not armed, or the GET failed / returned invalid JSON: a clean no-op. Do NOT run
   # ## after_goal and do NOT PATCH. Leave AFTER_GOAL_ENTRY empty and skip steps 2-5.
   AFTER_GOAL_ENTRY=""
+fi
 fi
 ```
 

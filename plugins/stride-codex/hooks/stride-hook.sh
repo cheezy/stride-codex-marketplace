@@ -75,17 +75,55 @@ INPUT=$(cat)
 command -v jq > /dev/null 2>&1 || exit 0
 
 # --- Where the record lives ----------------------------------------------
-# Codex sets neither CODEX_PROJECT_DIR nor CLAUDE_PROJECT_DIR of its own
-# accord, but it DOES put the workspace root on the event as `.cwd`, so that
-# is the middle fallback rather than dropping straight to ".". Reading it from
-# the host's own event document is not the same as widening a path from an API
-# response body — the security rule that forbids the latter is about values
-# the Stride server controls, and `.cwd` is supplied by Codex itself.
+# >>> project root (D410) -- byte-identical in stride-hook.sh and stride-stop-gate.sh
+# The skills find the root as CODEX_PROJECT_DIR, then CLAUDE_PROJECT_DIR, then
+# the nearest directory at or above the working directory holding .stride.md
+# (D404). The hooks use the SAME order, walking up from the event's own `.cwd`
+# (Codex puts the workspace on the event; the hook's own cwd is not promised)
+# or, with no `.cwd`, from $PWD. Without that walk a nested repo or a
+# subdirectory put the loop-state and claim records in a .stride/ the skills
+# never read, and the Stop gate judged the wrong record.
+# - The walk stops at the NEAREST .stride.md, so the .stride_auth.md read from
+#   this root is never a parent project's.
+# - A relative `.cwd` is walked from $PWD, and the loop stops at "/" or when
+#   dirname stops shrinking, so it always ends. `/` is never searched for a
+#   .stride.md, though a `.cwd` spelled `//` is, and a `.cwd` of `/` with
+#   nothing found falls back to `/`.
+# - The found root is canonicalised with CDPATH cleared, so a CDPATH entry can
+#   never print a second path into the capture (every root block in the
+#   skills does the same, W2688).
+# - NO .stride.md anywhere above: the root is the event's `.cwd`, then ".",
+#   exactly as before D410. Unlike the skills, which then have no root and do
+#   nothing, the recorder must still write its record, and this never reaches
+#   ABOVE the event's cwd.
+# Reading `.cwd` from the host's own event document is not widening a path
+# from an API response body: `.cwd` is supplied by Codex, not the Stride
+# server. The type check keeps {"cwd": 5} from becoming the root "5".
 PROJECT_DIR="${CODEX_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-}}"
 if [ -z "$PROJECT_DIR" ]; then
-  PROJECT_DIR=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")
+  _event_cwd=$(printf '%s' "$INPUT" \
+    | jq -r 'try (if (.cwd | type) == "string" then .cwd else empty end) catch empty' 2>/dev/null || printf '')
+  _walk="${_event_cwd:-$PWD}"
+  case "$_walk" in /*) ;; *) _walk="$PWD/$_walk" ;; esac
+  # Fold `..` and `.` the way the shell's own $PWD is folded, so a lexical
+  # dirname never visits a directory BELOW the cwd (/a/p/x/.. would otherwise
+  # check /a/p/x). An absent directory keeps the lexical value, so a `..`
+  # across one can still walk below the start.
+  _norm=$(CDPATH= cd -- "$_walk" 2>/dev/null && pwd -L) && [ -n "$_norm" ] && _walk=$_norm
+  while [ -n "$_walk" ] && [ "$_walk" != "/" ]; do
+    if [ -f "$_walk/.stride.md" ]; then
+      PROJECT_DIR=$(CDPATH= cd -- "$_walk" 2>/dev/null && pwd -P) || PROJECT_DIR=""
+      [ -n "$PROJECT_DIR" ] || PROJECT_DIR="$_walk"
+      break
+    fi
+    _up=$(dirname -- "$_walk")
+    [ "$_up" != "$_walk" ] || break
+    _walk=$_up
+  done
+  [ -n "$PROJECT_DIR" ] || PROJECT_DIR="$_event_cwd"
 fi
 [ -n "$PROJECT_DIR" ] || PROJECT_DIR="."
+# <<< project root (D410)
 
 # The loop-state record. Path is identical across every port — Claude Code
 # (W2123), Gemini (W2144), Copilot (W2147) and this one must interoperate on

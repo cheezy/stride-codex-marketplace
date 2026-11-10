@@ -3,7 +3,7 @@
     Top-level smoke-test runner for the stride-codex-exploratory-testing plugin (PowerShell twin).
 
 .DESCRIPTION
-    Runs every lib/test-*.ps1 check (structure + frontmatter) and aggregates
+    Runs every lib/test-*.ps1 check (structure, frontmatter and interrupt) and aggregates
     the result. No network, no jq. Use this as the single entry point to gate
     a release on a PowerShell host:
 
@@ -16,7 +16,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Tests = @('test-structure.ps1', 'test-frontmatter.ps1')
+$Tests = @('test-structure.ps1', 'test-frontmatter.ps1', 'test-interrupt.ps1')
 
 $ran = 0
 $failed = 0
